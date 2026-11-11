@@ -815,7 +815,11 @@ function scheduleCustomerDashboardAfterPaint(task) {
   }
 
   function buildClinicRegistrationCard(visit) {
-    return upcomingVisitCard(visit.id, "Clinic", visit.pet_name || "Your pet", visit.service_day, visit.created_at);
+    const patients = visit.patients || [];
+    const label = patients.length > 1
+      ? `${patients.length} pets · ${patients.map((patient) => patient.pet_name).filter(Boolean).join(", ")}`
+      : visit.pet_name || "Your pet";
+    return upcomingVisitCard(visit.id, "Clinic", label, visit.service_day, visit.created_at);
   }
 
   function serviceLabel(booking) {
@@ -848,7 +852,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
     if (!trigger) return;
     const currentOpenRequest = ++visitSummaryOpenRequest;
     try {
-      visitSummaryModule = await import("./grooming-visit-summary.js?mobile-policy=20261110&cancellation-dialog=20261106-v2&customer-cancellation=20261106&v=grooming-time-20261105&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-v1&owner-name=20261108&body-condition=20261110-v2&short-notes=500-20261110");
+      visitSummaryModule = await import("./grooming-visit-summary.js?mobile-policy=20261110&cancellation-dialog=20261106-v2&customer-cancellation=20261106&v=grooming-time-20261105&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-v1&owner-name=20261108&body-condition=20261110-v2&short-notes=500-20261110&owner-session=20261111");
       if (currentOpenRequest !== visitSummaryOpenRequest) return;
       if (trigger.dataset.clinicSummary) {
         const visit = dashboardClinicVisits.find((item) => String(item.id) === trigger.dataset.clinicSummary);

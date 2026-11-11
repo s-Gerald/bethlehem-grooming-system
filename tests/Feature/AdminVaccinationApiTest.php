@@ -19,6 +19,105 @@ class AdminVaccinationApiTest extends TestCase
 {
     private $vaccinationMigration;
 
+    public function test_bulk_vaccination_checks_total_stock_and_preserves_each_patient_dose_on_retry(): void
+    {
+        Carbon::setTestNow('2026-07-23 14:15:00');
+        $this->authenticateAs('admin', 1);
+        Schema::create('walkins', fn (Blueprint $table) => $table->id());
+        (require database_path('migrations/2026_11_11_000001_create_clinic_visit_groups.php'))->up();
+        $group = \App\Models\ClinicVisitGroup::create(['source' => 'walk_in', 'service_day' => now()->toDateString()]);
+        $this->insertPet(101, 'Mochi', 'cat');
+        $this->insertPet(102, 'Rigby', 'dog');
+        $this->insertAppointment(201, 101);
+        $this->insertAppointment(202, 102);
+        DB::table('clinic_appointments')->update(['clinic_visit_group_id' => $group->id]);
+        $this->insertRabiesStock(301);
+        $price = DB::table('inventory_items')->where('item_id', 301)->value('selling_price');
+        $payload = ['inventory_item_id' => 301, 'patients' => [
+            ['id' => 201, 'request_key' => (string) \Illuminate\Support\Str::uuid(), 'inventory_quantity' => 3,
+                'dose_amount' => '0.5', 'dose_unit' => 'mL', 'route' => 'subcutaneous', 'administration_site' => 'Left shoulder',
+                'expected_price' => $price],
+            ['id' => 202, 'request_key' => (string) \Illuminate\Support\Str::uuid(), 'inventory_quantity' => 4,
+                'dose_amount' => '1', 'dose_unit' => 'mL', 'route' => 'subcutaneous', 'administration_site' => 'Right shoulder',
+                'expected_price' => $price],
+        ]];
+        $endpoint = '/api/admin/clinic-cases/201/bulk-treatments';
+        $this->postJson($endpoint, $payload)->assertUnprocessable()->assertJsonValidationErrors('patients.202.inventory_quantity');
+        $this->assertDatabaseCount('vaccination_records', 0);
+        $this->assertStockOnHand(301, '6');
+        $payload['patients'][0]['inventory_quantity'] = 1;
+        $payload['patients'][1]['inventory_quantity'] = 1;
+        $invalid = $payload;
+        $invalid['patients'][1]['dose_amount'] = 'invalid';
+        $this->postJson($endpoint, $invalid)->assertUnprocessable()->assertJsonValidationErrors('patients.202.dose_amount');
+        $this->assertDatabaseCount('vaccination_records', 0);
+        $this->assertStockOnHand(301, '6');
+        Schema::create('gateway_payments', function (Blueprint $table) {
+            $table->id(); $table->morphs('payable'); $table->string('context'); $table->string('status'); $table->json('snapshot');
+        });
+        Schema::create('gateway_stock_reservations', function (Blueprint $table) {
+            $table->id(); $table->unsignedBigInteger('gateway_payment_id'); $table->unsignedInteger('item_id'); $table->unsignedInteger('quantity');
+        });
+        $reservedReceipt = DB::table('inventory_transactions')->where('batch_number', 'LOT-EARLY')->value('transaction_id');
+        DB::table('gateway_payments')->insert(['id' => 1, 'payable_type' => User::class, 'payable_id' => 1,
+            'context' => 'pos', 'status' => 'pending',
+            'snapshot' => json_encode(['products' => [['item_id' => 301, 'receipt_id' => $reservedReceipt, 'quantity' => 2]]]),
+        ]);
+        DB::table('gateway_stock_reservations')->insert(['gateway_payment_id' => 1, 'item_id' => 301, 'quantity' => 2]);
+        $this->postJson($endpoint, $payload)->assertOk()->assertJsonCount(2, 'data');
+        $this->postJson($endpoint, $payload)->assertOk();
+        $this->assertDatabaseCount('vaccination_records', 2);
+        $this->assertDatabaseHas('vaccination_records', ['clinic_appointment_id' => 201, 'dose_amount' => 0.5]);
+        $this->assertDatabaseHas('vaccination_records', ['clinic_appointment_id' => 202, 'dose_amount' => 1]);
+        $this->assertSame(['LOT-LATE', 'LOT-LATE'], DB::table('vaccination_records')->orderBy('id')->pluck('batch_number')->all());
+        $this->assertDatabaseCount('clinic_charges', 2);
+        $this->assertStockOnHand(301, '4');
+    }
+
+    public function test_bulk_medicine_reviews_each_saved_weight_and_rolls_back_stale_quotes_before_publication(): void
+    {
+        $this->medicineStock();
+        Schema::create('walkins', fn (Blueprint $table) => $table->id());
+        (require database_path('migrations/2026_11_11_000001_create_clinic_visit_groups.php'))->up();
+        $group = \App\Models\ClinicVisitGroup::create(['source' => 'walk_in', 'service_day' => now()->toDateString()]);
+        $this->insertPet(102, 'Rigby', 'dog');
+        $this->insertAppointment(202, 102);
+        DB::table('clinic_appointments')->update(['clinic_visit_group_id' => $group->id]);
+        DB::table('inventory_items')->where('item_id', 301)->update(['pricing_method' => 'weight_based', 'weight_pricing_mode' => 'ranges']);
+        DB::table('inventory_item_weight_prices')->insert([
+            ['item_id' => 301, 'min_weight_kg' => 1, 'max_weight_kg' => 5, 'price' => 400],
+            ['item_id' => 301, 'min_weight_kg' => 5.01, 'max_weight_kg' => 15, 'price' => 650],
+        ]);
+        DB::table('clinic_vitals')->insert([
+            ['clinic_appointment_id' => 201, 'weight_kg' => 4],
+            ['clinic_appointment_id' => 202, 'weight_kg' => 10],
+        ]);
+        $endpoint = '/api/admin/clinic-cases/201/bulk-treatments';
+        $this->getJson($endpoint.'/301')->assertOk()
+            ->assertJsonPath('patients.0.price', '400.00')->assertJsonPath('patients.1.price', '650.00');
+        $payload = ['inventory_item_id' => 301, 'patients' => [
+            ['id' => 201, 'request_key' => (string) \Illuminate\Support\Str::uuid(), 'inventory_quantity' => 1,
+                'dose_amount' => '0.5', 'dose_unit' => 'mL', 'route' => 'oral', 'expected_price' => 400, 'expected_weight_kg' => 4],
+            ['id' => 202, 'request_key' => (string) \Illuminate\Support\Str::uuid(), 'inventory_quantity' => 1,
+                'dose_amount' => '1.5', 'dose_unit' => 'mL', 'route' => 'oral', 'expected_price' => 650, 'expected_weight_kg' => 10],
+        ]];
+        DB::table('clinic_vitals')->where('clinic_appointment_id', 202)->update(['weight_kg' => 11]);
+        $this->postJson($endpoint, $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('vaccination_records', 0);
+        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertStockOnHand(301, '2');
+        $payload['patients'][1]['expected_weight_kg'] = 11;
+        $this->postJson($endpoint, $payload)->assertOk()->assertJsonCount(2, 'data');
+        $this->postJson($endpoint, $payload)->assertOk();
+        $this->assertDatabaseCount('vaccination_records', 2);
+        $this->assertDatabaseCount('clinic_charges', 2);
+        $this->assertDatabaseHas('clinic_charges', ['clinic_appointment_id' => 201, 'amount' => 400, 'pet_weight_kg' => 4]);
+        $this->assertDatabaseHas('clinic_charges', ['clinic_appointment_id' => 202, 'amount' => 650, 'pet_weight_kg' => 11]);
+        $this->assertDatabaseHas('vaccination_records', ['clinic_appointment_id' => 201, 'dose_amount' => 0.5]);
+        $this->assertDatabaseHas('vaccination_records', ['clinic_appointment_id' => 202, 'dose_amount' => 1.5]);
+        $this->assertStockOnHand(301, '0');
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -1041,6 +1140,8 @@ class AdminVaccinationApiTest extends TestCase
     {
         $expected = [
             ['GET', 'api/admin/vaccination-options'],
+            ['GET', 'api/admin/clinic-cases/{id}/bulk-treatments/{itemId}'],
+            ['POST', 'api/admin/clinic-cases/{id}/bulk-treatments'],
             ['GET', 'api/admin/pets/{petId}/vaccinations'],
             ['POST', 'api/admin/pets/{petId}/vaccinations'],
             ['GET', 'api/admin/pets/{petId}/vaccinations/{vaccinationId}'],
@@ -1070,7 +1171,7 @@ class AdminVaccinationApiTest extends TestCase
             ),
         );
 
-        $this->assertCount(8, $controllerRoutes);
+        $this->assertCount(count($expected), $controllerRoutes);
 
         $clientRoute = $routes->first(
             fn (RoutingRoute $route) => $route->uri() === 'api/pets/{petId}/vaccinations'
@@ -1459,7 +1560,8 @@ class AdminVaccinationApiTest extends TestCase
         DB::table('clinic_vitals')->insert(['clinic_appointment_id' => 201, 'weight_kg' => 4.5, 'temperature_c' => 38.5, 'heart_rate_bpm' => 90, 'respiratory_rate_bpm' => 20]);
         DB::table('clinic_records')->insert(['clinic_appointment_id' => 201, 'primary_veterinarian_id' => 2]);
         foreach (['2026_10_13_000001_create_clinic_services_table.php', '2026_10_13_000002_create_clinic_case_services_table.php',
-            '2026_10_13_000004_create_clinic_confinements.php', '2026_10_14_000001_remove_clinic_service_type.php', '2026_10_14_000002_configure_confinement_charges.php'] as $migration) (require database_path('migrations/'.$migration))->up();
+            '2026_10_13_000004_create_clinic_confinements.php', '2026_10_14_000001_remove_clinic_service_type.php', '2026_10_14_000002_configure_confinement_charges.php',
+            '2026_11_10_120002_add_verification_history_to_confinement_observations.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         $service = \App\Models\ClinicService::create(['name' => 'Inpatient care', 'category_id' => DB::table('clinic_service_categories')->where('name', 'Confinement')->value('id'),
             'identity_key' => hash('sha256', 'inpatient'), 'pricing_method' => 'tiered', 'tier_basis' => 'weight_kg', 'charge_behavior' => 'base_confinement',
             'tiers' => array_map(fn ($size, $cutoff) => ['size' => $size, 'max_weight_kg' => $cutoff, 'price' => 500],
@@ -1471,7 +1573,10 @@ class AdminVaccinationApiTest extends TestCase
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertOk();
         $vaccineId = $this->insertFinalizableDraft(302, 201);
         $this->postJson("/api/admin/pets/101/vaccinations/{$vaccineId}/publish")->assertOk();
-        $this->postJson('/api/admin/clinic-cases/201/confinement/observations', ['request_key' => (string) \Illuminate\Support\Str::uuid(), 'notes' => 'Stable'])->assertCreated();
+        $this->postJson('/api/admin/clinic-cases/201/confinement/observations', [
+            'request_key' => (string) \Illuminate\Support\Str::uuid(), 'notes' => 'Stable',
+            'temperature_c' => 38.5, 'heart_rate_bpm' => 120, 'respiratory_rate_bpm' => 28,
+        ])->assertCreated();
         $ordinary = \App\Models\ClinicService::create(['name' => 'Sample service', 'category_id' => 2, 'identity_key' => hash('sha256', 'sample-service'), 'pricing_method' => 'fixed', 'price' => 500, 'is_active' => true]);
         $this->postJson('/api/admin/clinic-cases/201/services', ['clinic_service_id' => $ordinary->id, 'request_key' => (string) \Illuminate\Support\Str::uuid()])->assertCreated();
         $this->assertDatabaseHas('clinic_appointments', ['id' => 201, 'status' => 'in_consultation', 'total_amount' => 1000]);

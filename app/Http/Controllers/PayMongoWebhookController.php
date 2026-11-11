@@ -105,7 +105,22 @@ class PayMongoWebhookController extends Controller
                     }
                 }
             } elseif ($attempt->context === 'clinic') {
-                if ($payable->paid) {
+                if ($payable instanceof \App\Models\ClinicVisitGroup) {
+                    if ($payable->paid_at) {
+                        $attempt->update(['reconciliation_reason' => 'clinic_already_paid']);
+                    } else {
+                        try {
+                            DB::transaction(function () use ($payable, $attempt) {
+                                $service = app(\App\Services\ClinicPaymentSettlementService::class);
+                                $patients = $service->eligible($service->patients($payable, lock: true));
+                                $actor = $attempt->initiated_by ? User::find($attempt->initiated_by)?->user_id : null;
+                                $service->settleGroup($payable, $patients, 'online', $actor, gateway: $attempt);
+                            });
+                        } catch (\Illuminate\Validation\ValidationException) {
+                            $attempt->update(['reconciliation_reason' => 'clinic_breakdown_conflict']);
+                        }
+                    }
+                } elseif ($payable->paid) {
                     $attempt->update(['reconciliation_reason' => 'clinic_already_paid']);
                 } else {
                     app(\App\Services\ClinicPaymentSettlementService::class)->settle(
@@ -140,6 +155,6 @@ class PayMongoWebhookController extends Controller
                 }
             }
             return response()->json(['success' => true]);
-        });
+        }, lockClinicPatients: true);
     }
 }

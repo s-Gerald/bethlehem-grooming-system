@@ -51,7 +51,7 @@ function adminTransactions() {
       if (paymentId || posId || clinicId || reference) {
         const tx = this.transactions.find((record) => posId
           ? this.isProductSale(record) && String(record.id) === posId
-          : clinicId ? this.isClinicPayment(record) && String(record.id) === clinicId
+          : clinicId ? this.isClinicPayment(record) && (String(record.id) === clinicId || record.patients?.some(patient => String(patient.id) === clinicId))
           : paymentId ? !this.isProductSale(record) && !this.isClinicPayment(record) && String(record.id) === paymentId
           : record.reference === reference);
         if (tx) {
@@ -195,7 +195,7 @@ function adminTransactions() {
     },
 
     petNames(tx) {
-      const names = (tx.paymentSummary?.pets || []).map(pet => pet.pet_name).filter(Boolean);
+      const names = (tx.patients || tx.paymentSummary?.pets || []).map(pet => pet.pet_name).filter(Boolean);
       return names.length ? names : (tx.petName || "").split(",").map(name => name.trim()).filter(Boolean);
     },
 
@@ -213,7 +213,7 @@ function adminTransactions() {
     },
     transactionName(tx) { return this.isProductSale(tx) ? "Product Sale" : tx.ownerName || "—"; },
     transactionDetails(tx) {
-      if (!this.isProductSale(tx)) return this.compactPetNames(tx);
+      if (!this.isProductSale(tx)) return (tx.patients?.length > 1 ? tx.patients.length + " pets · " : "") + this.compactPetNames(tx);
       const items = tx.items || [];
       if (!items.length) return "Products";
       const first = items[0];
@@ -256,6 +256,7 @@ function adminTransactions() {
           providerPaymentId: window.PaymentInvoice.paymentId(tx.providerPaymentId, tx.paymentMethod),
           caseReference: tx.reference,
           ownerName: tx.ownerName,
+          patients: tx.patients || [],
           patientName: tx.petName,
           patientInfo: "",
           charges: tx.charges || [],

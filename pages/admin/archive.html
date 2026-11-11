@@ -204,7 +204,7 @@
     <link rel="stylesheet" href="/css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="/css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="/scripts/components/admin-loading.js?v=universal-20261018&urls=20261103"></script>
-    <link rel="preload" as="script" href="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110" />
+    <link rel="preload" as="script" href="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&owner-session=20261111" />
     <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110" />
     <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
     <link rel="stylesheet" href="/css/short-notes.css" />
@@ -323,7 +323,7 @@
           </button>
         </div>
       </aside>
-      <script src="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110"></script>
+      <script src="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&owner-session=20261111"></script>
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-policy-20261110"></script>
       <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110"></script>
 
@@ -532,16 +532,16 @@
                     <template x-if="archiveType === 'clinic'">
                       <article class="clinic-row">
                         <div class="clinic-patient">
-                          <h4 x-text="clinicText(booking.pet?.name)"></h4>
-                          <p class="clinic-owner" x-show="clinicText(booking.ownerName)" x-text="clinicText(booking.ownerName)"></p>
-                          <p class="clinic-reference" x-text="booking.appointment_reference"></p>
+                          <h4 x-text="booking.session ? booking.ownerName : clinicText(booking.pet?.name)"></h4>
+                          <p class="clinic-owner" x-show="booking.session || clinicText(booking.ownerName)" x-text="booking.session ? booking.session.patients.length + ' pets' : clinicText(booking.ownerName)"></p>
+                          <p class="clinic-reference" x-text="booking.session ? booking.session.patients.map(patient => patient.pet?.name).filter(Boolean).join(', ') : booking.appointment_reference"></p>
                         </div>
-                        <div class="clinic-reason" x-show="clinicReason(booking)"><p class="history-label">Reason for visit</p><p class="note-text" x-text="clinicReason(booking)"></p></div>
-                        <div class="clinic-outcome" x-show="clinicDiagnosis(booking)"><p class="history-label">Working diagnosis</p><p class="note-text" x-text="clinicDiagnosis(booking)"></p></div>
-                        <div class="clinic-care" x-show="clinicCareSummary(booking)"><p class="history-label">Care provided</p><p x-text="clinicCareSummary(booking)"></p></div>
-                        <div class="clinic-row-payment" x-show="clinicHasPayment(booking)"><p class="history-amount" x-show="clinicMoney(booking.total_amount)" x-text="clinicMoney(booking.total_amount)"></p><p class="history-label" x-text="booking.payment_status_label"></p></div>
+                        <div class="clinic-reason" x-show="!booking.session && clinicReason(booking)"><p class="history-label">Reason for visit</p><p class="note-text" x-text="clinicReason(booking)"></p></div>
+                        <div class="clinic-outcome" x-show="!booking.session && clinicDiagnosis(booking)"><p class="history-label">Working diagnosis</p><p class="note-text" x-text="clinicDiagnosis(booking)"></p></div>
+                        <div class="clinic-care" x-show="!booking.session && clinicCareSummary(booking)"><p class="history-label">Care provided</p><p x-text="clinicCareSummary(booking)"></p></div>
+                        <div class="clinic-row-payment" x-show="booking.session ? !!booking.session.paid_at : clinicHasPayment(booking)"><p class="history-amount" x-show="clinicMoney(booking.session ? booking.session.total_amount : booking.total_amount)" x-text="clinicMoney(booking.session ? booking.session.total_amount : booking.total_amount)"></p><p class="history-label" x-text="booking.payment_status_label"></p></div>
                         <div class="clinic-row-action">
-                          <span class="clinic-status" :class="clinicStatusClass(booking.status)" x-text="booking.final_status_label"></span>
+                          <span class="clinic-status" :class="clinicStatusClass(booking.status)" x-text="booking.session?.paid_at ? 'Completed' : booking.final_status_label"></span>
                           <button type="button" @click="viewClinicRecord(booking, $event.currentTarget)" :aria-label="'View Visit for ' + booking.pet?.name + ', ' + booking.appointment_reference" class="history-details-button">View Visit</button>
                         </div>
                       </article>
@@ -552,6 +552,9 @@
               </div>
             </template>
 
+            <div x-show="archiveType === 'clinic' && clinicPage < clinicLastPage" class="mt-4 text-center">
+              <button type="button" @click="loadArchive({page: clinicPage + 1})" :disabled="loading" class="history-details-button">Load more clinic visits</button>
+            </div>
           </section>
 
           <!-- View Details Modal -->
@@ -727,6 +730,15 @@
                 <button type="button" x-ref="clinicVisitClose" @click="closeClinicRecord()" class="clinic-visit-close" aria-label="Close clinic record"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg></button>
               </header>
               <div x-ref="clinicVisitBody" class="clinic-visit-body" tabindex="0" aria-label="Clinic record details">
+                <section x-show="detailsClinicSession" class="clinic-visit-section">
+                  <h5 x-text="detailsClinicRecord?.ownerName + ' · ' + (detailsClinicSession?.patients?.length || 0) + ' pets'"></h5>
+                  <p x-show="detailsClinicSession?.paid_at" x-text="'Total paid ' + clinicMoney(detailsClinicSession?.total_amount)"></p>
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <template x-for="patient in detailsClinicSession?.patients || []" :key="patient.id">
+                      <button type="button" @click="viewClinicPatient(patient)" :disabled="clinicPatientLoading" :aria-pressed="patient.id === detailsClinicRecord?.id" class="history-details-button" x-text="(patient.pet?.name || 'Patient') + ' · ' + patient.appointment_reference"></button>
+                    </template>
+                  </div>
+                </section>
                 <section class="clinic-visit-section" x-show="clinicSummaryFields.length || clinicMedicalAttachments.length" aria-labelledby="clinic-summary-title">
                   <h5 id="clinic-summary-title">Visit Summary</h5>
                   <dl class="clinic-visit-fields">
@@ -804,7 +816,7 @@
                   </dl>
                 </section>
                 <section class="clinic-visit-section clinic-visit-payment" x-show="clinicHasPayment(detailsClinicRecord)" aria-labelledby="clinic-payment-title">
-                  <h5 id="clinic-payment-title">Payment</h5><p class="history-amount" x-show="clinicMoney(detailsClinicRecord?.total_amount)" x-text="clinicMoney(detailsClinicRecord?.total_amount)"></p><p class="history-label" x-text="detailsClinicRecord?.payment_status_label"></p>
+                  <h5 id="clinic-payment-title" x-text="detailsClinicSession ? 'Patient subtotal' : 'Payment'">Payment</h5><p class="history-amount" x-show="clinicMoney(detailsClinicRecord?.total_amount)" x-text="clinicMoney(detailsClinicRecord?.total_amount)"></p><p class="history-label" x-text="detailsClinicRecord?.payment_status_label"></p>
                   <a x-show="clinicTransactionUrl()" :href="clinicTransactionUrl()" class="history-transaction-link">View Full Transaction →</a>
                 </section>
               </div>
@@ -820,7 +832,7 @@
 
     <script src="/scripts/components/clinic-attachments.js?v=20261015"></script>
     <script src="/scripts/components/recorded-product-pricing.js?v=20261029"></script>
-    <script src="/scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261110&invoice-products=20261029&urls=20261103&queue-copy=20261103-admin-v1&pet-history=20261110&service-history=20261111&history-link=20261111"></script>
+    <script src="/scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261110&invoice-products=20261029&urls=20261103&queue-copy=20261103-admin-v1&pet-history=20261110&service-history=20261111&history-link=20261111&owner-session=20261111"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261111&urls=20261103&inventory-expiry=20261111"></script>
   </body>

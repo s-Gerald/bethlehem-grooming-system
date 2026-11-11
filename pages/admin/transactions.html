@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="/css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="/css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="/scripts/components/admin-loading.js?v=universal-20261018&urls=20261103"></script>
-    <link rel="preload" as="script" href="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110" />
+    <link rel="preload" as="script" href="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&owner-session=20261111" />
     <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110" />
     <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
     <link rel="stylesheet" href="/css/short-notes.css" />
@@ -130,7 +130,7 @@
           </button>
         </div>
       </aside>
-      <script src="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110"></script>
+      <script src="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&owner-session=20261111"></script>
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-policy-20261110"></script>
       <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110"></script>
 
@@ -396,6 +396,14 @@
                     <section class="transaction-detail-section" aria-labelledby="transaction-clinic-breakdown-title">
                       <h3 id="transaction-clinic-breakdown-title">Payment Breakdown</h3>
                       <dl class="transaction-line-items">
+                        <template x-for="patient in selectedTransaction.patients || []" :key="patient.id">
+                          <div class="space-y-1 rounded-xl border border-slate-200 p-3">
+                            <div class="flex flex-wrap justify-between gap-2 font-semibold text-[#2f4b66]"><span x-text="(patient.pet_name || 'Patient') + ' · ' + patient.reference"></span><span x-text="formatInvoicePeso(patient.subtotal)"></span></div>
+                            <template x-for="charge in patient.charges" :key="charge.id">
+                              <div class="flex justify-between gap-2 text-sm"><span x-text="charge.description"></span><span x-text="formatInvoicePeso(charge.amount)"></span></div>
+                            </template>
+                          </div>
+                        </template>
                         <template x-for="charge in selectedTransaction.charges || []" :key="charge.id">
                           <div><dt><span x-text="charge.description"></span><small x-show="Number(charge.quantity) > 1" x-text="'Qty ' + paymentChargeQuantity(charge)"></small></dt><dd x-text="formatInvoicePeso(charge.amount)"></dd></div>
                         </template>
@@ -473,9 +481,9 @@
 
 
     <script src="/scripts/components/recorded-product-pricing.js?v=20261029"></script>
-    <script src="/scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023&presentation=20261024&mobile-format=20261110&invoice-products=20261029&references=20261031&urls=20261103&short-notes=20261110"></script>
+    <script src="/scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023&presentation=20261024&mobile-format=20261110&invoice-products=20261029&references=20261031&urls=20261103&short-notes=20261110&owner-session=20261111"></script>
     <script src="/scripts/components/product-sale-invoice.js?v=pos-20261007&payments=cash-only-20261023&presentation=20261024&references=20261031&urls=20261103"></script>
-    <script src="/scripts/components/admin-transactions.js?v=clinic-payments-20261015&payments=qrph-20261023&loading-ui=universal-20261018&icons=20261018&qr-workflow=20261023&veterinary=20261024&legacy-qr=off-20261026&references=20261031"></script>
+    <script src="/scripts/components/admin-transactions.js?v=clinic-payments-20261015&payments=qrph-20261023&loading-ui=universal-20261018&icons=20261018&qr-workflow=20261023&veterinary=20261024&legacy-qr=off-20261026&references=20261031&owner-session=20261111"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261111&urls=20261103&inventory-expiry=20261111"></script>
   </body>

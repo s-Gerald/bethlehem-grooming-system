@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import * as weightTools from "../scripts/components/pet-weight-size.js";
 import { renderBodyConditionChip } from "../scripts/components/pet-body-condition.js";
+import { CLINIC_MAX_PATIENTS, CLINIC_PATIENT_LIMIT_MESSAGE } from "../scripts/services/clinic-visit-service.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const page = readFileSync(path.join(root, "pages/admin/walk-in-pet-details.html"), "utf8");
@@ -134,9 +135,14 @@ async function runStep(owner, { draft = null, apiPets = null } = {}) {
   });
 
   const renderedSteps = [];
+  let renderedClinicPatients = [];
   const stubs = {
     "./walk-in-services-step.js": { renderWalkInServicesStep() { renderedSteps.push("grooming"); } },
-    "./walk-in-clinic-complaint-step.js": { renderWalkInClinicComplaintStep() { renderedSteps.push("clinic"); } },
+    "./walk-in-clinic-complaint-step.js": {
+      restoreWalkInClinicStep() {},
+      renderWalkInClinicComplaintStep({ pets }) { renderedSteps.push("clinic"); renderedClinicPatients = pets; },
+    },
+    "../services/clinic-visit-service.js": { CLINIC_MAX_PATIENTS, CLINIC_PATIENT_LIMIT_MESSAGE },
     "./breed-combobox.js": { createBreedCombobox: combobox },
     "./breed-coat-combobox.js": { createBreedCoatCombobox: combobox },
     "./fixed-option-combobox.js": { createFixedOptionCombobox: combobox },
@@ -163,7 +169,8 @@ async function runStep(owner, { draft = null, apiPets = null } = {}) {
     resolvePets({ customer: { pets: apiPets } });
     await new Promise((resolve) => setImmediate(resolve));
   }
-  return { ui, calls, resolvePets, rejectPets, handlers: main.namespace, window: context.window, renderedSteps, stored };
+  return { ui, calls, resolvePets, rejectPets, handlers: main.namespace, window: context.window, renderedSteps, stored,
+    get renderedClinicPatients() { return renderedClinicPatients; } };
 }
 
 const savedPet = { id: 42, petName: "Mochi", species: "Dog", breed: "Poodle", size: "small", sizeVerified: true };
@@ -197,7 +204,7 @@ const unregistered = await runStep(unregisteredOwner, { apiPets: [savedPet] });
 assert.deepEqual(unregistered.calls, [["unregistered", 9]]);
 assert.equal(unregistered.ui("showExistingPetBtn").getAttribute("aria-pressed"), "true");
 assert.match(unregistered.ui("existingPetCards").innerHTML, /Mochi/);
-assert.equal(unregistered.ui("selectedPetCount").textContent, "0 / 1 selected");
+assert.equal(unregistered.ui("selectedPetCount").textContent, "0 / 13 selected");
 
 const newGroomingOwner = ownerDraft(null, "grooming");
 assert.equal(newGroomingOwner.ownerRecordType, "new");
@@ -220,7 +227,16 @@ const newClinicOwner = await runStep(ownerDraft(null, "clinic"));
 assert.deepEqual(newClinicOwner.calls, []);
 assert.equal(newClinicOwner.ui("petSelectionTabs").classList.contains("hidden"), true);
 assert.equal(newClinicOwner.ui("addPetSection").classList.contains("hidden"), false);
-assert.equal(newClinicOwner.ui("selectedPetCount").textContent, "0 / 1 selected");
+assert.equal(newClinicOwner.ui("selectedPetCount").textContent, "0 / 13 selected");
+
+const maximum = await runStep(ownerDraft(null, "clinic"), { draft: { pets: Array.from({ length: 14 }, (_, index) => ({
+  id: `patient-${index}`, isNew: true, petName: `Patient ${index}`, petType: "Cat", weight: "", size: "small",
+})) } });
+assert.equal(maximum.ui("selectedPetCount").textContent, "13 / 13 selected");
+assert.equal(maximum.ui("savePetBtn").disabled, true);
+assert.equal(maximum.ui("petSelectionLimitText").textContent, CLINIC_PATIENT_LIMIT_MESSAGE);
+maximum.handlers.handleNext();
+assert.equal(maximum.renderedClinicPatients.length, 13);
 
 for (const appointmentType of ["grooming", "clinic"]) {
   const flow = await runStep(ownerDraft(null, appointmentType), { draft: { pets: [{

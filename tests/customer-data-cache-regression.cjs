@@ -475,14 +475,15 @@ async function testActualPageLoaders() {
   assert.equal(settings.element("accountInitials").textContent, "UO");
   assert.deepEqual(env.calls.slice(count).map(call => call.endpoint), ["/me", "/customer/security-changes/email"]);
   const clinicPending = deferred();
-  env.respond((endpoint) => endpoint === "/clinic/history" ? clinicPending.promise : bookings);
+  env.respond((endpoint) => endpoint === "/clinic/history?summary=1&page=1" ? clinicPending.promise : bookings);
   const history = mountPage(env, "grooming-history.html");
   assert.equal(history.element("historyContent").hasAttribute("inert"), false);
   assert.match(history.element("historyList").innerHTML, /No history found/);
-  clinicPending.resolve({ medical_records: [{ id: 9, appointment_reference: "CL-CACHE-9", appointment_date: "2026-10-16", pet: { pet_name: "Mochi" } }] });
+  clinicPending.resolve({ visits: [{ id: 9, appointment_reference: "CL-CACHE-9", appointment_date: "2026-10-16",
+    patients: [{ id: 9, pet: { pet_name: "Mochi" } }] }] });
   await flush();
-  assert.match(history.element("historyList").innerHTML, /CL-CACHE-9/);
-  assert.equal(env.calls.filter(call => call.endpoint === "/clinic/history").length, 1);
+  assert.match(history.element("historyList").innerHTML, /Mochi[\s\S]*data-history-key="9"/);
+  assert.equal(env.calls.filter(call => call.endpoint === "/clinic/history?summary=1&page=1").length, 1);
 
   env.advance(61000);
   const update = deferred();

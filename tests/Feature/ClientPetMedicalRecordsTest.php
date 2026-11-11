@@ -11,6 +11,37 @@ use Tests\TestCase;
 
 class ClientPetMedicalRecordsTest extends TestCase
 {
+    public function test_customer_history_searches_group_by_sibling_and_keeps_pet_records_individual(): void
+    {
+        Schema::create('users', fn (Blueprint $table) => $table->increments('user_id'));
+        DB::table('users')->insert(['user_id' => 10]);
+        Schema::create('walkins', fn (Blueprint $table) => $table->id());
+        (require database_path('migrations/2026_11_11_000001_create_clinic_visit_groups.php'))->up();
+        $group = \App\Models\ClinicVisitGroup::create([
+            'user_id' => 10, 'source' => 'pre_registered', 'service_day' => '2026-10-10',
+            'total_amount' => 3000, 'paid_at' => '2026-10-10 13:00:00', 'payment_method' => 'cash',
+        ]);
+        $this->insertPet(1, 10, 'Mochi');
+        $this->insertPet(2, 10, 'Rigby');
+        $this->insertAppointment(101, 1, 'completed', 'CL-MOCHI', '2026-10-10');
+        $this->insertAppointment(102, 2, 'completed', 'CL-RIGBY', '2026-10-10');
+        $this->insertAppointment(103, 1, 'completed', 'CL-LEGACY', '2026-10-10');
+        DB::table('clinic_appointments')->whereIn('id', [101, 102])->update(['clinic_visit_group_id' => $group->id]);
+        $this->authenticateCustomer(10);
+        $this->getJson('/api/clinic/history?summary=1')->assertOk()->assertJsonCount(2, 'visits');
+        foreach (['Rigby', 'CL-RIGBY'] as $search) {
+            $this->getJson('/api/clinic/history?summary=1&search='.$search)->assertOk()->assertJsonCount(1, 'visits')
+                ->assertJsonCount(2, 'visits.0.patients')->assertJsonPath('visits.0.patients.0.pet.pet_name', 'Mochi');
+        }
+        $this->getJson('/api/clinic/history/101')->assertOk()->assertJsonPath('payment.total_paid', '3000.00')
+            ->assertJsonPath('patients.0.diagnosis', 'Diagnosis for CL-MOCHI')
+            ->assertJsonPath('patients.1.diagnosis', 'Diagnosis for CL-RIGBY');
+        $this->getJson('/api/pets/1/medical-records')->assertOk()->assertJsonCount(2, 'medical_records')
+            ->assertJsonMissing(['appointment_reference' => 'CL-RIGBY']);
+        $this->authenticateCustomer(20);
+        $this->getJson('/api/clinic/history/101')->assertNotFound();
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

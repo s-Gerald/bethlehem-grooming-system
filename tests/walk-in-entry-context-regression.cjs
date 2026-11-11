@@ -77,12 +77,12 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
     sessionStorage: { getItem: key => saved.get(key), setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) },
     API: { waitForSessionVerification: async () => true },
     createGroomingEstimateFlow,
-    mountClinicVisitReasonFields: () => ({}), getClinicVisitSummaryMarkup: () => "", formatClinicVisitReason: () => "",
+    mountClinicPatientReasons: () => ({}), getClinicVisitSummaryMarkup: () => "", escapeHtml: String,
   });
   const source = read(`scripts/components/${file}.js`).replace(/^import\s+[\s\S]*?from\s+"[^"]+";\s*/gm, "").replace(/^export /gm, "");
   vm.runInContext(source, context);
-  const markup = vm.runInContext(`${markupFunction}()`, context);
-  if (file === "walk-in-clinic-complaint-step") await context.renderWalkInClinicComplaintStep();
+  const markup = vm.runInContext(`${markupFunction}(${file === "walk-in-clinic-consent-step" ? "[]" : ""})`, context);
+  if (file === "walk-in-clinic-complaint-step") await context.renderWalkInClinicComplaintStep({ pets: [{ id: 1, petName: "Mochi" }] });
   else vm.runInContext("refreshElements(); bindEvents();", context);
 
   const top = markup.match(new RegExp(`<([a-z]+)\\b([^>]*\\bid="${topId}"[^>]*)>([\\s\\S]*?)<\\/\\1>`));

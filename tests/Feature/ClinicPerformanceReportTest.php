@@ -81,7 +81,7 @@ class ClinicPerformanceReportTest extends TestCase
     {
         CarbonImmutable::setTestNow();
         if ($this->app && preg_match('/^bethlehem_reports_test_[a-f0-9]{12}$/', DB::connection()->getDatabaseName())) {
-            foreach (['clinic_charges', 'clinic_case_services', 'clinic_services', 'gateway_payments', 'clinic_appointments'] as $table) {
+            foreach (['clinic_charges', 'clinic_case_services', 'clinic_services', 'gateway_payments', 'clinic_appointments', 'clinic_visit_groups'] as $table) {
                 Schema::dropIfExists($table);
             }
         }
@@ -105,6 +105,35 @@ class ClinicPerformanceReportTest extends TestCase
     private function report(string $query = '')
     {
         return $this->getJson('/api/admin/reports/clinic'.$query);
+    }
+
+    public function test_owner_session_counts_patients_and_services_individually_and_one_settlement(): void
+    {
+        Schema::create('clinic_visit_groups', function (Blueprint $table) {
+            $table->id();
+            $table->decimal('total_amount', 12, 2);
+            $table->string('payment_method');
+            $table->timestamp('paid_at');
+            $table->unsignedBigInteger('gateway_payment_id')->nullable();
+        });
+        Schema::table('clinic_appointments', fn (Blueprint $table) => $table->unsignedBigInteger('clinic_visit_group_id')->nullable());
+        $group = DB::table('clinic_visit_groups')->insertGetId([
+            'total_amount' => 10000, 'payment_method' => 'cash', 'paid_at' => '2026-10-10 10:00:00',
+        ]);
+        for ($i = 0; $i < 13; $i++) {
+            $id = $this->clinicCase(['clinic_visit_group_id' => $group, 'total_amount' => 700]);
+            DB::table('clinic_case_services')->insert([
+                'clinic_appointment_id' => $id, 'service_snapshot' => json_encode(['name' => 'Consultation']),
+            ]);
+        }
+        $this->clinicCase(['total_amount' => 500]);
+
+        $this->report()->assertOk()
+            ->assertJsonPath('overview.completedVisits', 14)
+            ->assertJsonPath('overview.collections', 10500)
+            ->assertJsonPath('overview.paidCases', 2)
+            ->assertJsonPath('overview.averageSale', 5250)
+            ->assertJsonPath('services.0.count', 13);
     }
 
     public function test_collections_use_only_completed_paid_cash_and_linked_successful_live_clinic_payments(): void

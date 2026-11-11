@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use Illuminate\Validation\Rule;
+
 class ClinicConcerns
 {
     public const OPTIONS = [
@@ -17,6 +19,15 @@ class ClinicConcerns
         'Limping / injury',
         'Other',
     ];
+
+    public static function rules(): array
+    {
+        return [
+            'common_concerns' => ['required', 'array', 'min:1', 'max:'.count(self::OPTIONS)],
+            'common_concerns.*' => ['required', 'string', 'distinct', Rule::in(self::OPTIONS)],
+            'chief_complaint' => ['nullable', 'string', 'max:500'],
+        ];
+    }
 
     public static function summary(array $concerns, ?string $details): string
     {

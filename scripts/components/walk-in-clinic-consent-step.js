@@ -1,22 +1,22 @@
 import { tooLong } from "../utils/short-notes.js?v=500-20261110";
 import { WalkInOwnerValidation } from "../utils/walk-in-owner-validation.js?v=names-20261110";
 import { getPetWeightSubmission, getPetWeightSubmissionValidationMessage } from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
-import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?registration=fcfs-20261027-v1&pet-care=20261027-v1&short-notes=20261110";
-import { formatClinicVisitReason } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103&short-notes=500-20261110";
+import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?owner-session=20261111";
+import { clinicRegistrationError, CLINIC_MAX_PATIENTS, validateClinicVisitReason } from "../services/clinic-visit-service.js?owner-session=20261111";
+import { escapeHtml } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 
 const WALK_IN_OWNER_KEY = "walkInOwnerStep";
 const WALK_IN_CLINIC_CONFIRMED_KEY = "walkInClinicConfirmation";
 
 const state = {
-  pet: null,
-  chiefComplaint: "",
-  commonConcerns: [],
+  patients: [],
   onBack: null,
 };
 
 let elements = {};
 
-function getMarkup(pet, commonConcerns, chiefComplaint) {
+function getMarkup(patients) {
+  const owner = getStoredOwner();
   return `
     <main class="registration-step mx-auto max-w-5xl px-4 py-8 md:px-6 lg:px-8">
       <a
@@ -46,11 +46,10 @@ function getMarkup(pet, commonConcerns, chiefComplaint) {
           <h2 class="text-2xl font-bold text-[#2f4b66]">Clinic Visit Summary</h2>
         </div>
 
-        ${getClinicVisitSummaryMarkup({
-          visitType: "Clinic Walk-in",
-          pet,
-          reason: formatClinicVisitReason(commonConcerns, chiefComplaint),
-        })}
+        <p class="mb-4 text-sm text-slate-600">${escapeHtml([owner.firstName, owner.lastName].filter(Boolean).join(" "))} &middot; ${patients.length} ${patients.length === 1 ? "pet" : "pets"}</p>
+        ${patients.map(({ pet, commonConcerns, chiefComplaint }) => getClinicVisitSummaryMarkup({
+          pet, concerns: commonConcerns, details: chiefComplaint,
+        })).join("")}
 
         <div
           id="clinicConsentStatus"
@@ -170,10 +169,16 @@ async function handleSubmit(event) {
     return;
   }
 
-  const weightMessage = getPetWeightSubmissionValidationMessage(state.pet);
-  if (weightMessage) {
-    showError(weightMessage);
+  if (!state.patients.length || state.patients.length > CLINIC_MAX_PATIENTS
+      || state.patients.some(({ commonConcerns, chiefComplaint }) => validateClinicVisitReason(commonConcerns, chiefComplaint))) {
     resetSubmitButton();
+    showError("Review the selected pets and provide a reason for each before submitting.");
+    return;
+  }
+  const weightMessage = state.patients.map(({ pet }) => getPetWeightSubmissionValidationMessage(pet)).find(Boolean);
+  if (weightMessage) {
+    resetSubmitButton();
+    showError(weightMessage);
     return;
   }
 
@@ -186,19 +191,20 @@ async function handleSubmit(event) {
     customer_user_id: owner.customerUserId || null,
     unregistered_customer_id: owner.unregisteredCustomerId || null,
     confirm_similar_name: Boolean(owner.confirmSimilarName),
-    pet_id:             state.pet?.petId || null,
-    pet_name:          state.pet?.petName || "",
-    species:           state.pet?.petType || "",
-    breed:             state.pet?.breed || null,
-    fur_type:          state.pet?.furType || null,
-    ...getPetWeightSubmission(state.pet),
-    size:              normalizeSizeForApi(state.pet?.size),
-    ...(!state.pet?.petId && state.pet?.bodyCondition ? { body_condition: state.pet.bodyCondition } : {}),
-    color:             state.pet?.color || null,
-    ...(state.pet?.petId && tooLong(state.pet.medicalNotes)
-      ? {} : {medical_conditions: state.pet?.medicalNotes || null}),
-    chief_complaint:   state.chiefComplaint,
-    common_concerns:   state.commonConcerns,
+    patients: state.patients.map(({ pet, commonConcerns, chiefComplaint }) => ({
+      pet_id: pet.petId || null,
+      pet_name: pet.petName,
+      species: pet.petType,
+      breed: pet.breed || null,
+      fur_type: pet.furType || null,
+      ...getPetWeightSubmission(pet),
+      size: normalizeSizeForApi(pet.size),
+      ...(!pet.petId && pet.bodyCondition ? { body_condition: pet.bodyCondition } : {}),
+      color: pet.color || null,
+      ...(pet.petId && tooLong(pet.medicalNotes) ? {} : { medical_conditions: pet.medicalNotes || null }),
+      chief_complaint: chiefComplaint,
+      common_concerns: commonConcerns,
+    })),
     terms_agreed:      true,
   };
 
@@ -207,32 +213,17 @@ async function handleSubmit(event) {
 
     sessionStorage.setItem(
       WALK_IN_CLINIC_CONFIRMED_KEY,
-      JSON.stringify({
-        appointment_reference: response.appointment_reference,
-        queue_number:          response.queue_number,
-        appointment_id:        response.appointment_id,
-        appointment_date:      response.appointment_date,
-        status:                response.status,
-        checked_in_at:         response.checked_in_at,
-        returning_customer:    response.returning_customer,
-        submitted_at:          new Date().toISOString(),
-        owner: {
-          fullName: response.owner?.name || "",
-          phone:    response.owner?.phone || "",
-          email:    response.owner?.email || "",
-        },
-        pet: response.pet,
-        chief_complaint: response.chief_complaint,
-        common_concerns: response.common_concerns,
-        terms_agreed: payload.terms_agreed,
-      }),
+      JSON.stringify({ ...response.session, terms_agreed: payload.terms_agreed }),
     );
+    sessionStorage.removeItem("walkInClinicComplaint");
+    sessionStorage.removeItem("walkInPetStep");
+    sessionStorage.removeItem(WALK_IN_OWNER_KEY);
 
     window.location.href = "/admin/walk-in/clinic/confirmed";
   } catch (error) {
     if (WalkInOwnerValidation.serverErrors(owner, error.errors, 'clinic')) { resetSubmitButton(); return; }
-    showError(error.message || "Failed to submit clinic walk-in. Please try again.");
     resetSubmitButton();
+    showError(clinicRegistrationError(error, state.patients) || "Failed to submit clinic walk-in. Please try again.");
   }
 }
 
@@ -269,41 +260,16 @@ function bindEvents() {
   elements.backButton.addEventListener("click", handleBackClick);
 }
 
-export async function renderWalkInClinicConsentStep({ pet = null, commonConcerns = [], chiefComplaint = "", onBack = null } = {}) {
+export async function renderWalkInClinicConsentStep({ patients, onBack }) {
   if (!await API.waitForSessionVerification()) return;
-  state.pet = pet;
-  state.chiefComplaint = chiefComplaint;
-  state.commonConcerns = commonConcerns;
+  state.patients = patients;
   state.onBack = onBack;
 
   document.title = "Walk-in Clinic — Review & Confirm";
   document.body.className = "min-h-screen bg-slate-50 text-slate-800";
-  document.querySelector("main").outerHTML = getMarkup(pet, commonConcerns, chiefComplaint);
+  document.querySelector("main").outerHTML = getMarkup(patients);
 
   refreshElements();
   bindEvents();
   syncSubmitButton();
 }
-
-document.addEventListener("DOMContentLoaded", async () => {
-  if (!document.getElementById("clinicConsentForm")) {
-    return;
-  }
-
-  if (!await API.waitForSessionVerification()) return;
-
-  // Loaded directly — try to restore from sessionStorage
-  try {
-    const saved = JSON.parse(sessionStorage.getItem("walkInClinicComplaint") || "{}");
-    state.pet = saved.pet || null;
-    state.chiefComplaint = saved.chiefComplaint || "";
-    state.commonConcerns = saved.commonConcerns || [];
-  } catch {
-    // ignore
-  }
-
-  document.querySelector("main").outerHTML = getMarkup(state.pet, state.commonConcerns, state.chiefComplaint);
-  refreshElements();
-  bindEvents();
-  syncSubmitButton();
-});

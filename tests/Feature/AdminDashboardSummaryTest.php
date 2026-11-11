@@ -404,6 +404,32 @@ class AdminDashboardSummaryTest extends TestCase
         $this->assertSame(0, $controller->dashboardSummary()->getData(true)['summary']['completedToday']['grooming']);
     }
 
+    public function test_grouped_clinic_revenue_counts_once_while_completed_patients_count_individually(): void
+    {
+        Schema::create('walkins', fn (Blueprint $table) => $table->id());
+        Schema::table('clinic_appointments', function (Blueprint $table) {
+            $table->string('payment_method')->nullable();
+            $table->decimal('total_amount', 10, 2)->nullable();
+        });
+        (require database_path('migrations/2026_11_11_000001_create_clinic_visit_groups.php'))->up();
+        $group = \App\Models\ClinicVisitGroup::create([
+            'source' => 'walk_in', 'service_day' => '2026-06-24',
+            'paid_at' => '2026-06-24 11:45:00', 'payment_method' => 'cash', 'total_amount' => 8950,
+        ]);
+        foreach (range(1, 13) as $patient) {
+            DB::table('clinic_appointments')->insert([
+                'appointment_reference' => "CL-{$patient}", 'appointment_date' => '2026-06-24',
+                'status' => 'completed', 'paid' => true, 'clinic_visit_group_id' => $group->id,
+                'payment_method' => 'cash', 'total_amount' => 100,
+                'consultation_finished_at' => '2026-06-24 11:00:00', 'paid_at' => '2026-06-24 11:45:00',
+            ]);
+        }
+        \Laravel\Sanctum\Sanctum::actingAs(new User(['role' => 'admin', 'is_active' => true]));
+        $this->getJson('/api/admin/dashboard/summary')->assertOk()
+            ->assertJsonPath('summary.completedToday.clinic', 13)->assertJsonPath('summary.revenueToday', 8950)
+            ->assertJsonPath('summary.revenuePaymentCount', 1);
+    }
+
     public function test_clinic_completion_dates_payment_and_role_breakdowns_are_consistent(): void
     {
         $this->completedGrooming();

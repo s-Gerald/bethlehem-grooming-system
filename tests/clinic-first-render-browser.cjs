@@ -62,7 +62,7 @@ async function fixture(browser, staffSubrole) {
       status = state.identityStatus;
       data = status === 200 ? { sidebar_revision: 'clinic-test-1', user: { user_id: 7, role: staffSubrole ? 'staff' : 'admin',
         staff_type: staffSubrole ? 'clinic' : undefined, staff_subrole: staffSubrole,
-        first_name: 'Local', last_name: 'Admin', clinic_permissions: { access: state.access, clinical: true, payment: true } } }
+        first_name: 'Local', last_name: 'Admin', clinic_permissions: { access: state.access, clinical: true, payment: true, billing_view: true } } }
         : { message: 'Local identity verification failed.' };
     }
     if (endpoint.pathname === '/api/admin/clinic-cases') {
@@ -72,6 +72,38 @@ async function fixture(browser, staffSubrole) {
         appointment_date: '2026-10-19', pet: { id: i + 1, name: `Local patient ${i + 1}`, species: 'Dog' },
         owner: { first_name: 'Local', last_name: 'Owner' },
       })) };
+      if (state.ownerSession) data = { ...data, cases: state.ownerSession.patients, sessions: [state.ownerSession] };
+    }
+    if (state.ownerSession && endpoint.pathname === '/api/admin/clinic-cases/1/charges') {
+      data = { session: {
+        id: state.ownerSession.id, eligible_count: 13, ready_count: 12, can_pay: false, total_amount: '6500.00',
+        patients: state.ownerSession.patients.map(patient => ({
+          id: patient.id, pet_name: patient.pet.name, reference: patient.appointment_reference, status: patient.status,
+          subtotal: '500.00', charges: [{ id: patient.id, description: 'Consultation', amount: '500.00' }],
+        })),
+      } };
+    }
+    if (state.ownerSession && endpoint.pathname === '/api/admin/clinic-cases/1/bulk-services/9') {
+      data = { patients: state.ownerSession.patients.slice(0, 2).map((patient, index) => ({
+        id: patient.id, name: patient.pet.name, reference: patient.appointment_reference,
+        pricing: { resolved_price: index === 0 ? '350.00' : '600.00', pet_weight_kg: index === 0 ? 4.5 : 35 },
+      })) };
+    }
+    if (state.ownerSession && endpoint.pathname === '/api/admin/clinic-cases/1/bulk-services') {
+      state.bulkPayload = route.request().postDataJSON();
+      data = { data: [] };
+    }
+    if (state.ownerSession && endpoint.pathname === '/api/admin/clinic-cases/1/bulk-treatments/301') {
+      data = { administered_date: '2026-11-11', available_quantity: 2, unit: 'bottle',
+        patients: state.ownerSession.patients.slice(0, 2).map((patient, index) => ({
+          id: patient.id, name: patient.pet.name, reference: patient.appointment_reference,
+          weight: index === 0 ? 4.5 : 35, priced_weight: index === 0 ? 4.5 : 35, price: index === 0 ? '350.00' : '600.00',
+        })),
+      };
+    }
+    if (state.ownerSession && endpoint.pathname === '/api/admin/clinic-cases/1/bulk-treatments') {
+      state.treatmentPayload = route.request().postDataJSON();
+      data = { data: [] };
     }
     if (endpoint.pathname === '/api/admin/clinic/activity') data = { activeClinicCount: 16 };
     if (endpoint.pathname === '/api/admin/clinic-records') data = { records: [], current_page: 1, last_page: 1 };
@@ -325,9 +357,98 @@ async function mobileNavigation(browser, staffSubrole) {
   } finally { f.state.sessionHold?.resolve(); await f.context.close(); }
 }
 
+async function ownerSessionReview(browser) {
+  const f = await fixture(browser);
+  const patients = Array.from({ length: 13 }, (_, index) => ({
+    id: index + 1, clinic_visit_group_id: 1, appointment_reference: `CL-GROUP-${index + 1}`,
+    queue_number: 21 + index, status: index === 0 ? 'in_consultation' : 'for_payment',
+    ownerName: 'Jamie Santos', pet: { id: index + 1, name: `Group patient ${index + 1}` },
+  }));
+  f.state.ownerSession = { id: 1, owner_name: 'Jamie Santos', state: 'active-cases', ready_count: 12, eligible_count: 13, patients };
+  try {
+    await f.page.setViewportSize({ width: 414, height: 844 });
+    await f.page.goto(url, { waitUntil: 'domcontentloaded' });
+    await ready(f.page);
+    const groupHeading = f.page.getByRole('heading', { name: 'Jamie Santos · 13 pets' });
+    await groupHeading.waitFor();
+    assert.equal(await groupHeading.count(), 1);
+    assert.equal(await f.page.getByRole('button', { name: /#\d+ · Group patient/ }).count(), 13);
+    assert.equal(await f.page.getByRole('button', { name: 'Review Payment' }).isDisabled(), true);
+    await f.page.getByRole('button', { name: 'View Billing' }).click();
+    await f.page.getByRole('heading', { name: 'Owner Session Billing' }).waitFor();
+    await f.page.getByRole('heading', { name: 'Group patient 13 · CL-GROUP-13' }).waitFor();
+    assert.equal(await f.page.getByRole('button', { name: 'Confirm Payment' }).isVisible(), false);
+    await f.page.getByRole('button', { name: 'Close', exact: true }).filter({ visible: true }).click();
+
+    await f.page.evaluate(() => window.dispatchEvent(new CustomEvent('clinic-bulk-open', {
+      detail: { kind: 'services', caseId: 1, item: { id: 9, name: 'Consultation', billing_unit: 'visit' } },
+    })));
+    const dialog = f.page.getByRole('dialog', { name: 'Apply to multiple pets' });
+    await dialog.getByRole('button', { name: 'Select all eligible' }).click();
+    await dialog.getByRole('button', { name: 'Apply to 2 pets' }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    assert.deepEqual(f.state.bulkPayload.patients.map(({ id, expected_price }) => [id, expected_price]), [[1, '350.00'], [2, '600.00']]);
+
+    await f.page.evaluate(() => window.dispatchEvent(new CustomEvent('clinic-bulk-open', {
+      detail: { kind: 'treatments', caseId: 1, item: { item_id: 301, item_name: 'Clinic medicine', category: 'medicine' } },
+    })));
+    await dialog.getByRole('button', { name: 'Select all eligible' }).click();
+    const apply = dialog.getByRole('button', { name: 'Apply to 2 pets' });
+    assert.equal(await apply.isDisabled(), true, 'Each patient needs an independent dose review');
+    for (let index = 0; index < 2; index++) {
+      await dialog.getByLabel('Quantity used', { exact: true }).nth(index).fill('1');
+      await dialog.getByLabel('Dose', { exact: true }).nth(index).fill(index === 0 ? '0.5' : '1.5');
+      await dialog.getByLabel(/^Dose unit/).nth(index).selectOption('mL');
+      await dialog.getByLabel(/^Route/).nth(index).selectOption('oral');
+    }
+    await dialog.getByLabel('Quantity used', { exact: true }).nth(1).fill('2');
+    assert.equal(await apply.isDisabled(), true, 'Combined quantity cannot exceed stock');
+    await dialog.getByLabel('Quantity used', { exact: true }).nth(1).fill('1');
+    await apply.click();
+    await dialog.waitFor({ state: 'hidden' });
+    assert.deepEqual(f.state.treatmentPayload.patients.map(({ id, dose_amount, expected_price, expected_weight_kg }) =>
+      [id, dose_amount, expected_price, expected_weight_kg]), [[1, '0.5', '350.00', 4.5], [2, '1.5', '600.00', 35]]);
+    await f.page.evaluate(async () => {
+      const {mountClinicPatientReasons} = await import('/scripts/components/clinic-visit-reason-fields.js');
+      const root = document.createElement('div');
+      root.id = 'clinicReasonReview';
+      document.body.append(root);
+      const patients = Array.from({length: 13}, (_, index) => ({pet: {id: index + 1, petName: `Patient ${index + 1}`}}));
+      window.reasonReview = mountClinicPatientReasons(root, patients, rows => { window.savedReasons = structuredClone(rows); });
+      window.restoreReasons = () => { window.reasonReview = mountClinicPatientReasons(root, window.savedReasons, rows => { window.savedReasons = structuredClone(rows); }); };
+    });
+    const reasons = f.page.locator('#clinicReasonReview');
+    assert.equal(await f.page.evaluate(() => window.reasonReview.validate()), false);
+    for (let index = 0; index < 13; index++) {
+      const patient = reasons.locator(`[data-reason-patient="${index}"]`);
+      if (await patient.getAttribute('aria-expanded') !== 'true') await patient.click();
+      assert.equal(await reasons.locator('[data-clinic-concern][aria-pressed="true"]').count(), 0, 'Reasons are never copied between pets');
+      await reasons.getByRole('button', {name: index === 0 ? 'Routine check-up' : 'Vaccination', exact: true}).click();
+      await reasons.getByLabel('Tell us more').fill(`Independent reason ${index + 1}`);
+    }
+    assert.equal(await f.page.evaluate(() => window.reasonReview.validate()), true);
+    assert.deepEqual(await f.page.evaluate(() => window.savedReasons.map(row => row.chiefComplaint)),
+      Array.from({length: 13}, (_, index) => `Independent reason ${index + 1}`));
+    await f.page.evaluate(() => window.restoreReasons());
+    await reasons.locator('[data-reason-patient="0"]').click();
+    assert.equal(await reasons.getByLabel('Tell us more').inputValue(), 'Independent reason 1');
+    await reasons.evaluate(element => element.remove());
+    assert.equal(await f.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    assert.deepEqual(f.errors, []);
+    console.log('Clinic owner-session mobile case list, billing readiness, and bulk review passed');
+  } catch (error) {
+    console.error('Owner session fixture state', await f.page.evaluate(selector => {
+      const cases = Alpine.$data(document.querySelector(selector));
+      return { tab: cases.tab, activeSessions: cases.activeSessions?.length, headings: [...document.querySelectorAll('main h4')].map(h => h.textContent).slice(0, 8) };
+    }, selector), f.errors);
+    throw error;
+  } finally { await f.context.close(); }
+}
+
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {
+    if (process.env.CLINIC_OWNER_SESSION_ONLY) return await ownerSessionReview(browser);
     if (!process.env.CLINIC_BASELINE && !process.env.CLINIC_RENDER_ONLY) for (const role of process.env.CLINIC_MOBILE_ROLES?.split(',') || ['admin', 'veterinarian', 'clinic_receptionist']) await mobileNavigation(browser, role === 'admin' ? undefined : role);
     if (process.env.CLINIC_MOBILE_ONLY) return;
     if (!process.env.CLINIC_BASELINE) await firstPaint(browser);

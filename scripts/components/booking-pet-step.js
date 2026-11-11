@@ -17,10 +17,12 @@ import {
 import { formatPetSizeLabel, normalizePetSize } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import {
   CLINIC_VISIT_PETS_KEY,
+  CLINIC_MAX_PATIENTS,
+  CLINIC_PATIENT_LIMIT_MESSAGE,
   readClinicVisitDraft,
   requireCustomerSession,
   updateClinicVisitDraft,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103&short-notes=500-20261110";
+} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103&short-notes=500-20261110&owner-session=20261111";
 import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261030-v1";
 import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261030-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
@@ -58,7 +60,7 @@ const IS_CLINIC_VISIT = window.location.pathname.startsWith("/account/registrati
 const SELECTED_PETS_STORAGE_KEY = IS_CLINIC_VISIT
   ? CLINIC_VISIT_PETS_KEY
   : undefined;
-const MAX_PETS_PER_BOOKING = IS_CLINIC_VISIT ? 1 : GROOMING_MAX_PETS;
+const MAX_PETS_PER_BOOKING = IS_CLINIC_VISIT ? CLINIC_MAX_PATIENTS : GROOMING_MAX_PETS;
 let savedPetsLoading = false;
 let petAvailabilityFailed = false;
 let groomingCatalogueStatus = "loading";
@@ -227,7 +229,8 @@ function renderStepError() {
   const catalogueError = !IS_CLINIC_VISIT && groomingCatalogueStatus === "failed";
   const groomingError = catalogueError ? GROOMING_AVAILABILITY_ERROR
     : sizeError ? "One or more selected pets are currently ineligible for grooming. Check the highlighted pets below." : "";
-  const message = [stepError, groomingError].filter(Boolean).join(" ");
+  const atClinicLimit = IS_CLINIC_VISIT && getBookingPets().length >= CLINIC_MAX_PATIENTS;
+  const message = [stepError, groomingError, atClinicLimit ? CLINIC_PATIENT_LIMIT_MESSAGE : ""].filter(Boolean).join(" ");
   if (elements.petStepError.textContent !== message) elements.petStepError.textContent = message;
   elements.petStepError.className = message === GROOMING_MINIMUM_AGE_MESSAGE
     ? "mb-6 text-sm text-slate-600"
@@ -270,8 +273,9 @@ function buildStepTwoDraft() {
 
 function saveStepTwoDraft() {
   if (IS_CLINIC_VISIT) {
+    const previous = new Map(readClinicVisitDraft().patients?.map((row) => [String(row.pet.id), row]));
     return updateClinicVisitDraft({
-      pet: getBookingPets()[0] || null,
+      patients: getBookingPets().map((pet) => ({ ...previous.get(String(pet.id)), pet })),
       newPetForm: getFormValues(elements.addPetForm),
       activePetSection,
     });
@@ -500,6 +504,7 @@ function renderSelectedPets() {
   renderStepError();
 
   elements.selectedPetCards.innerHTML = "";
+  if (IS_CLINIC_VISIT) elements.savePetBtn.disabled = bookingPets.length >= CLINIC_MAX_PATIENTS;
   elements.selectedPetCount.textContent = `${bookingPets.length} / ${MAX_PETS_PER_BOOKING} selected`;
   elements.removeAllSelectedPetsBtn.classList.toggle(
     "hidden",
@@ -672,7 +677,7 @@ function validatePetForm(values) {
   }
 
   if (getBookingPets().length >= MAX_PETS_PER_BOOKING) {
-    return `Only ${MAX_PETS_PER_BOOKING} pets are allowed per visit.`;
+    return IS_CLINIC_VISIT ? CLINIC_PATIENT_LIMIT_MESSAGE : `Only ${MAX_PETS_PER_BOOKING} pets are allowed per visit.`;
   }
 
   return "";
@@ -796,6 +801,7 @@ async function handleAddPetSubmit(event) {
     showStepError(error.message);
   } finally {
     petSaveConfirmation.setSaving(false);
+    if (IS_CLINIC_VISIT) elements.savePetBtn.disabled = getBookingPets().length >= CLINIC_MAX_PATIENTS;
   }
 }
 
@@ -822,11 +828,6 @@ function handleNext() {
 
   if (bookingPets.length === 0) {
     showStepError("Please select or add at least one pet before continuing.");
-    return;
-  }
-
-  if (IS_CLINIC_VISIT && bookingPets.length !== 1) {
-    showStepError("Please select exactly one pet for the clinic visit.");
     return;
   }
 
@@ -916,6 +917,11 @@ async function initStepState(availability) {
     saveBookingPets([]);
   }
 
+  if (IS_CLINIC_VISIT) {
+    const stored = getBookingPets();
+    const restored = readClinicVisitDraft().patients?.map(({ pet }) => pet) ?? [];
+    saveBookingPets((stored.length ? stored : restored).slice(0, CLINIC_MAX_PATIENTS));
+  }
   restoreAddPetFormDraft();
   savedPetsLoading = true;
   renderSelectedPets();
@@ -957,8 +963,8 @@ function configurePageForFlow() {
   elements.backLabel.textContent = "Back to Home";
   elements.pageTitle.textContent = "Pet Information";
   elements.savedPetsInstruction.textContent =
-    "Select one pet from your saved pet list.";
-  elements.selectedPetsTitle.textContent = "Selected Pet";
+    "Select pets from your saved pet list.";
+  elements.selectedPetsTitle.textContent = "Selected Pets";
 }
 
 export async function initBookingPetStep(availability) {

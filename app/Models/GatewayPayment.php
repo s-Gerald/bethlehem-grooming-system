@@ -46,9 +46,25 @@ class GatewayPayment extends Model
 
     public static function assertClinicUnlocked(ClinicAppointment $appointment): void
     {
-        if (Schema::hasTable('gateway_payments') && static::forPayable($appointment, 'clinic')->unresolved()->exists()) {
+        if (static::clinicPaymentPending($appointment)) {
             throw ValidationException::withMessages(['payment' => 'Cancel the active online payment first.']);
         }
+    }
+
+    public static function clinicPaymentPending(ClinicAppointment $appointment): bool
+    {
+        if (! Schema::hasTable('gateway_payments')) {
+            return false;
+        }
+
+        $payable = $appointment->clinic_visit_group_id
+            ? (new ClinicVisitGroup)->forceFill(['id' => $appointment->clinic_visit_group_id])
+            : $appointment;
+
+        $pending = static::forPayable($payable, 'clinic')->unresolved();
+        return DB::transactionLevel() > 0
+            ? $pending->lockForUpdate()->first(['id']) !== null
+            : $pending->exists();
     }
 
     /** Never release stock based on a local timeout or browser redirect. */

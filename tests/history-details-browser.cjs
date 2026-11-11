@@ -21,7 +21,7 @@ const grooming = {booking_id: 91, booking_reference: 'GR-91', status: 'released'
   payment_summary: {...payment, final_booking_total: 1000},
   pets: [{booking_pet_id: 11, pet_name: 'First pet', services: [{service_name: 'Recorded grooming'}]},
     {booking_pet_id: 12, pet_name: 'Clicked pet', services: [{service_name: 'Recorded bath'}]}]};
-const clinic = {appointment_reference: 'CL-91', appointment_date: '2026-11-10', status: 'completed',
+const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-11-10', status: 'completed',
   pet: {pet_id: 12, pet_name: 'Clicked pet'}, treatment_given: 'Recorded care',
   payment: {...payment, total_paid: 3100, payment_method_label: 'Online Payment ' + 'LongLabel'.repeat(12)}};
 
@@ -42,7 +42,7 @@ const clinic = {appointment_reference: 'CL-91', appointment_date: '2026-11-10', 
     await page.route('https://history.test/**', async route => {
       const url = new URL(route.request().url());
       if (url.pathname === '/admin/history') {
-        return route.fulfill({contentType: 'text/html', body: `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">${styles}</head>
+        return route.fulfill({contentType: 'text/html', body: `<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${styles}</head>
           <body>${adminContent}
           <script src="/scripts/components/admin-loading.js"></script>
           <script src="/scripts/components/recorded-product-pricing.js"></script><script src="/scripts/components/admin-archive.js"></script>
@@ -65,9 +65,14 @@ const clinic = {appointment_reference: 'CL-91', appointment_date: '2026-11-10', 
         window.historyCalls++;
         if (window.holdHistory) await new Promise(resolve => { window.releaseHistory = resolve; });
         if (window.failHistory) throw new Error('History service is temporarily unavailable.');
+        const patients = [81, 82].map(id => ({
+          id, appointment_reference: `CL-${id}`, appointment_date: '2024-02-10', status: 'completed',
+          pet: {id, name: id === 81 ? 'Clinic pet' : 'Clinic sibling'}, ownerName: 'Recorded Owner',
+          record: {working_diagnosis: id === 81 ? 'First patient findings' : 'Sibling findings'},
+          treatment_count: 0, service_count: 0,
+        }));
         return {archived: window.emptyHistory ? [] : type === 'grooming' ? [session] : [{
-          id: 81, appointment_reference: 'CL-81', appointment_date: '2024-02-10', status: 'completed',
-          pet: {name: 'Clinic pet'}, ownerName: 'Recorded Owner',
+          ...patients[0], session: {id: 1, patients, total_amount: 3000, paid_at: '2024-02-10T10:00:00+08:00'},
         }]};
       };
       window.API = {
@@ -81,7 +86,20 @@ const clinic = {appointment_reference: 'CL-91', appointment_date: '2026-11-10', 
         },
         getGroomingSignedConsent: () => { window.consentCalls++; return new Promise(() => {}); },
         getBookingHistory: async () => ({history: [grooming]}),
-        getCustomerClinicHistory: async () => ({medical_records: [clinic]}),
+        getClinicCase: async id => {
+          window.clinicPatientCalls = (window.clinicPatientCalls || 0) + 1;
+          return {case: {id, appointment_reference: `CL-${id}`, appointment_date: '2024-02-10', status: 'completed',
+            pet: {id, name: 'Clinic sibling'}, ownerName: 'Recorded Owner', record: {working_diagnosis: 'Sibling findings'},
+            treatment_count: 0, service_count: 0}};
+        },
+        getCustomerClinicHistory: async () => {
+          window.customerCalls++;
+          return {visits: [{...clinic, patients: [clinic]}], current_page: 1, last_page: 1};
+        },
+        getCustomerClinicHistoryVisit: async () => {
+          window.clinicDetailCalls = (window.clinicDetailCalls || 0) + 1;
+          return {patients: [clinic], grouped: false};
+        },
         loadCustomerData: async (endpoint, load, render) => { window.customerCalls++; render(await load()); },
         getMe: async () => ({user: {first_name: 'Owner', last_name: 'Test'}}),
       };
@@ -143,6 +161,21 @@ const clinic = {appointment_reference: 'CL-91', appointment_date: '2026-11-10', 
     await page.getByRole('button', {name: 'Clinic', exact: true}).click();
     await page.locator('.clinic-row').waitFor();
     assert.equal(await startup.error.isVisible(), false);
+    await page.locator('.clinic-row').getByRole('button', {name: /View Visit/}).click();
+    const clinicDialog = page.getByRole('dialog', {name: 'Clinic Record'});
+    await clinicDialog.waitFor({state: 'visible'});
+    await clinicDialog.getByRole('button', {name: 'Clinic sibling · CL-82'}).click();
+    await clinicDialog.getByRole('heading', {name: 'Clinic sibling', exact: true}).waitFor();
+    assert.match(await clinicDialog.innerText(), /Sibling findings/);
+    assert.doesNotMatch(await clinicDialog.innerText(), /First patient findings/);
+    assert.match(await clinicDialog.innerText(), /Total paid.*3,000/);
+    assert.equal(await page.evaluate(() => window.clinicPatientCalls), 1);
+    if (process.env.HISTORY_SCREENSHOT_DIR) {
+      await page.evaluate(async () => Promise.all(document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity)
+        .map(animation => animation.finished.catch(() => {}))));
+      await page.screenshot({path: path.join(process.env.HISTORY_SCREENSHOT_DIR, 'clinic-owner-session.png')});
+    }
+    await page.keyboard.press('Escape');
     await page.goto('https://history.test/admin/history?scenario=clinic-only');
     await page.waitForFunction(() => typeof window.releaseHistory === 'function');
     await page.evaluate(() => { window.emptyHistory = true; window.holdHistory = false; window.releaseHistory(); });
@@ -194,6 +227,7 @@ const clinic = {appointment_reference: 'CL-91', appointment_date: '2026-11-10', 
     assert.equal(await page.evaluate(() => document.activeElement.textContent.trim()), 'Close', 'Focus stays inside the dialog');
     await page.keyboard.press('Escape');
     await page.locator('[data-history-type="clinic"]').click();
+    await customerDialog.getByRole('heading', {name: 'Clicked pet', exact: true}).waitFor();
     assert.match(await customerDialog.innerText(), /Total paid[\s\S]*₱3,100.00[\s\S]*Online Payment/);
     for (const width of [320, 375, 414, 768, 1280]) {
       await page.setViewportSize({width, height: 850});
@@ -209,6 +243,7 @@ const clinic = {appointment_reference: 'CL-91', appointment_date: '2026-11-10', 
       assert.equal(await customerDialog.evaluate(el => el.scrollWidth <= el.clientWidth), true, `Payment fits ${width}px`);
     }
     assert.equal(await page.evaluate(() => window.customerCalls), 2, 'Opening details makes no payment request');
+    assert.equal(await page.evaluate(() => window.clinicDetailCalls), 1, 'Only the selected clinic visit loads clinical details');
     assert.deepEqual(errors, []);
     console.log('History browser checks passed: pre-Alpine paint/reload, loading, error/retry, empty/Clinic/cache states, deep links, focus and responsive customer payments.');
   } finally { await browser.close(); }

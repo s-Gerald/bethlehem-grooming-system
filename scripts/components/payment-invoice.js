@@ -89,14 +89,36 @@ window.PaymentInvoice = (() => {
     <p x-show="receiptModal.contactNumber" x-text="window.PhilippineMobile.format(receiptModal.contactNumber)"></p>
   </section>
 
-  ${clinic ? `<section class="payment-invoice-section">
+  ${clinic ? `<section x-show="receiptModal.patients?.length" class="payment-invoice-section">
+    <h2>Clinic Charges</h2>
+    <template x-for="patient in receiptModal.patients || []" :key="patient.id">
+      <article class="payment-invoice-pet">
+        <header class="payment-invoice-pet-header">
+          <h3 x-text="patient.pet_name || 'Patient'"></h3><p x-text="patient.reference"></p>
+        </header>
+        <table class="payment-invoice-table">
+          <thead><tr><th scope="col">Description</th><th scope="col">Qty</th><th scope="col">Unit Price</th><th scope="col">Amount</th></tr></thead>
+          <tbody>
+            <template x-for="charge in patient.charges" :key="charge.id">
+              <tr>
+                <td x-text="charge.description"></td><td x-text="paymentChargeQuantity(charge)"></td>
+                <td x-text="formatInvoicePeso(charge.unit_price)"></td><td x-text="formatInvoicePeso(charge.amount)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <div class="payment-invoice-category-total payment-invoice-pet-subtotal"><span>Subtotal</span><strong x-text="formatInvoicePeso(patient.subtotal)"></strong></div>
+      </article>
+    </template>
+  </section>
+  <section x-show="!receiptModal.patients?.length" class="payment-invoice-section">
     <h2>Patient</h2>
     <header class="payment-invoice-pet-header">
       <h3 x-text="receiptModal.patientName"></h3>
       <p x-text="receiptModal.patientInfo"></p>
     </header>
   </section>
-  <section class="payment-invoice-section">
+  <section x-show="!receiptModal.patients?.length" class="payment-invoice-section">
     <h2>Clinic Charges</h2>
     <table class="payment-invoice-table">
       <thead><tr><th scope="col">Description</th><th scope="col">Qty</th><th scope="col">Unit Price</th><th scope="col">Amount</th></tr></thead>

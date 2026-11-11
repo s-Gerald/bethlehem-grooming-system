@@ -13,7 +13,8 @@ class OnlinePaymentService
     public function metadata(GatewayPayment $attempt): array
     {
         $key = match ($attempt->context) {
-            'clinic' => 'clinic_appointment_id', 'pos' => 'cashier_id', default => 'booking_id',
+            'clinic' => $this->isClinicGroup($attempt) ? 'clinic_visit_group_id' : 'clinic_appointment_id',
+            'pos' => 'cashier_id', default => 'booking_id',
         };
         return ['gateway_payment_id' => (string) $attempt->id, $key => (string) $attempt->payable_id, 'context' => $attempt->context];
     }
@@ -37,25 +38,33 @@ class OnlinePaymentService
         $url = $base.$page;
         return $url.'?'.http_build_query([
             'gateway_payment' => $attempt->id, 'payment_context' => $attempt->context,
-            'payment_return' => $outcome, 'payable' => $attempt->payable_id,
+            'payment_return' => $outcome, 'payable' => $this->isClinicGroup($attempt) ? $attempt->snapshot['appointment_id'] : $attempt->payable_id,
         ]).($attempt->context === 'pos' ? '#sell-product' : '');
     }
 
     /** Lock order shared by cash, QR, checkout cancellation and webhook settlement. */
-    public function locked(GatewayPayment $attempt, \Closure $callback): mixed
+    public function locked(GatewayPayment $attempt, \Closure $callback, bool $lockClinicPatients = false): mixed
     {
         $model = match ($attempt->context) {
             'grooming' => \App\Models\Booking::class,
-            'clinic' => \App\Models\ClinicAppointment::class,
+            'clinic' => $this->isClinicGroup($attempt) ? \App\Models\ClinicVisitGroup::class : \App\Models\ClinicAppointment::class,
             'pos' => \App\Models\User::class,
             default => null,
         };
         abort_unless($model && $attempt->payable_type === (new $model)->getMorphClass(), 422, 'Unknown online payment.');
-        return DB::transaction(function () use ($attempt, $callback, $model) {
+        return DB::transaction(function () use ($attempt, $callback, $model, $lockClinicPatients) {
             $payable = $model::whereKey($attempt->payable_id)->lockForUpdate()->firstOrFail();
+            if ($lockClinicPatients && $payable instanceof \App\Models\ClinicVisitGroup) {
+                $payable->appointments()->orderBy('id')->lockForUpdate()->get(['id']);
+            }
             $current = GatewayPayment::where('provider', 'paymongo')->whereKey($attempt->id)->lockForUpdate()->firstOrFail();
             return $callback($current, $payable);
         }, 3);
+    }
+
+    private function isClinicGroup(GatewayPayment $attempt): bool
+    {
+        return $attempt->context === 'clinic' && $attempt->payable_type === (new \App\Models\ClinicVisitGroup)->getMorphClass();
     }
 
     /** The attempt/reservations are committed before this single external request. */

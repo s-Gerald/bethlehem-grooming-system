@@ -19,6 +19,43 @@ use Tests\TestCase;
 
 class ClinicCaseServiceBillingTest extends TestCase
 {
+    public function test_bulk_services_review_per_pet_then_apply_atomically_and_idempotently(): void
+    {
+        Schema::create('walkins', fn (Blueprint $table) => $table->id());
+        (require database_path('migrations/2026_11_11_000001_create_clinic_visit_groups.php'))->up();
+        $group = \App\Models\ClinicVisitGroup::create(['source' => 'walk_in', 'service_day' => now()->toDateString()]);
+        ClinicAppointment::findOrFail(1)->update(['clinic_visit_group_id' => $group->id]);
+        $group->appointments()->create(['status' => 'in_consultation', 'pet_id' => 1]);
+        ClinicAppointment::create(['status' => 'in_consultation', 'pet_id' => 1]);
+        $service = $this->catalog(['pricing_method' => 'tiered', 'tier_basis' => 'pet_size', 'price' => null, 'tiers' => [
+            ['size' => 'small', 'price' => 350], ['size' => 'medium', 'price' => 500], ['size' => 'large', 'price' => 600],
+        ]]);
+        DB::table('clinic_vitals')->insert(['clinic_appointment_id' => 1, 'weight_kg' => 4.5]);
+        $base = '/api/admin/clinic-cases/1/bulk-services';
+        $this->getJson($base.'/'.$service->id)->assertOk()
+            ->assertJsonPath('patients.0.pricing.resolved_price', '350.00')
+            ->assertJsonPath('patients.1.pricing.resolved_price', null);
+        $payload = ['clinic_service_id' => $service->id, 'patients' => [
+            ['id' => 1, 'request_key' => (string) Str::uuid(), 'expected_price' => 350],
+            ['id' => 2, 'request_key' => (string) Str::uuid(), 'expected_price' => 600],
+        ]];
+        $outside = $payload;
+        $outside['patients'][1]['id'] = 3;
+        $this->postJson($base, $outside)->assertUnprocessable();
+        $this->postJson($base, $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('clinic_charges', 0);
+
+        DB::table('clinic_vitals')->insert(['clinic_appointment_id' => 2, 'weight_kg' => 35]);
+        $saved = $this->postJson($base, $payload)->assertOk()->assertJsonCount(2, 'data');
+        $this->postJson($base, $payload)->assertOk();
+        $this->assertDatabaseCount('clinic_charges', 2);
+        $this->assertDatabaseHas('clinic_charges', ['clinic_appointment_id' => 1, 'amount' => 350]);
+        $this->assertDatabaseHas('clinic_charges', ['clinic_appointment_id' => 2, 'amount' => 600]);
+        $this->deleteJson('/api/admin/clinic-cases/1/services/'.$saved->json('data.0.id'))->assertOk();
+        $this->assertDatabaseCount('clinic_charges', 1);
+        $this->assertDatabaseHas('clinic_charges', ['clinic_appointment_id' => 2, 'amount' => 600]);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

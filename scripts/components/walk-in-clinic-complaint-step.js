@@ -1,9 +1,10 @@
-import { renderWalkInClinicConsentStep } from "./walk-in-clinic-consent-step.js?pet-weight=pet-weight-size-20261107-v1&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&registration=fcfs-20261027-v1&pet-care=20261027-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108&body-condition=20261110-v2&name-policy=20261110&short-notes=500-20261110";
-import { mountClinicVisitReasonFields } from "./clinic-visit-reason-fields.js?registration=fcfs-20261027-v1&urls=20261103&short-notes=500-20261110";
+import { renderWalkInClinicConsentStep } from "./walk-in-clinic-consent-step.js?pet-weight=pet-weight-size-20261107-v1&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&registration=fcfs-20261027-v1&pet-care=20261027-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108&body-condition=20261110-v2&name-policy=20261110&short-notes=500-20261110&owner-session=20261111";
+import { mountClinicPatientReasons } from "./clinic-visit-reason-fields.js?registration=fcfs-20261027-v1&urls=20261103&short-notes=500-20261110&owner-session=20261111";
+
+import { validateClinicVisitReason } from "../services/clinic-visit-service.js?owner-session=20261111";
 
 const WALK_IN_CLINIC_COMPLAINT_KEY = "walkInClinicComplaint";
 
-let state = { pet: null, fields: null };
 
 function getMarkup() {
   return `
@@ -50,46 +51,59 @@ function restoreDraft() {
   }
 }
 
-function handleSubmit(event) {
-  event.preventDefault();
-  if (!state.fields.validate()) return;
-
-  const commonConcerns = state.fields.concerns();
-  const chiefComplaint = state.fields.details.value.trim();
+function patientRows(pets) {
   const draft = restoreDraft();
-  const termsAgreed = draft.termsAgreed === true && draft.chiefComplaint === chiefComplaint
-    && JSON.stringify(draft.commonConcerns) === JSON.stringify(commonConcerns)
-    && JSON.stringify(draft.pet) === JSON.stringify(state.pet);
-  sessionStorage.setItem(WALK_IN_CLINIC_COMPLAINT_KEY,
-    JSON.stringify({ commonConcerns, chiefComplaint, pet: state.pet, termsAgreed }));
+  const saved = Array.isArray(draft.patients) ? draft.patients : draft.pet ? [draft] : [];
+  const previous = new Map(saved.filter((row) => row?.pet?.id).map((row) => [String(row.pet.id), row]));
+  return pets.map((pet) => {
+    const { commonConcerns, chiefComplaint } = previous.get(String(pet.id)) ?? {};
+    return { pet, commonConcerns, chiefComplaint };
+  });
+}
 
-  window.history.pushState(null, "", "/admin/walk-in/pets?step=clinic-consent");
+function savePatients(patients) {
+  const draft = restoreDraft();
+  const termsAgreed = draft.termsAgreed === true && JSON.stringify(draft.patients) === JSON.stringify(patients);
+  sessionStorage.setItem(WALK_IN_CLINIC_COMPLAINT_KEY, JSON.stringify({ patients, termsAgreed }));
+}
+
+function showConsent(pets, patients) {
   renderWalkInClinicConsentStep({
-    pet: state.pet,
-    commonConcerns,
-    chiefComplaint,
+    patients,
     onBack: () => {
-      window.history.pushState(null, "", "/admin/walk-in/pets?step=clinic-complaint");
-      renderWalkInClinicComplaintStep({ pet: state.pet });
+      window.history.replaceState(null, "", "/admin/walk-in/pets?step=clinic-complaint");
+      renderWalkInClinicComplaintStep({ pets });
     },
   });
 }
 
-export async function renderWalkInClinicComplaintStep({ pet = null } = {}) {
-  if (!await API.waitForSessionVerification()) return;
-  state = { pet, fields: null };
+export function restoreWalkInClinicStep(pets) {
+  const step = new URLSearchParams(window.location.search).get("step");
+  if (step === "clinic-consent") {
+    const patients = patientRows(pets);
+    if (patients.every(({ commonConcerns, chiefComplaint }) => !validateClinicVisitReason(commonConcerns, chiefComplaint))) {
+      savePatients(patients);
+      showConsent(pets, patients);
+      return;
+    }
+  }
+  if (step === "clinic-complaint" || step === "clinic-consent") renderWalkInClinicComplaintStep({ pets });
+}
+
+export async function renderWalkInClinicComplaintStep({ pets = [] } = {}) {
+  if (!pets.length || !await API.waitForSessionVerification()) return;
   document.title = "Walk-in Clinic — Reason for Visit";
   document.body.className = "min-h-screen bg-[#f6fafd] text-slate-800";
   document.querySelector("main").outerHTML = getMarkup();
 
-  const draft = restoreDraft();
-  state.fields = mountClinicVisitReasonFields(
-    document.getElementById("clinicComplaintFields"),
-    pet?.petName,
-    draft.commonConcerns,
-    draft.chiefComplaint,
-  );
-  document.getElementById("clinicComplaintForm").addEventListener("submit", handleSubmit);
+  const patients = patientRows(pets);
+  const fields = mountClinicPatientReasons(document.getElementById("clinicComplaintFields"), patients, savePatients);
+  document.getElementById("clinicComplaintForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!fields.validate()) return;
+    window.history.pushState(null, "", "/admin/walk-in/pets?step=clinic-consent");
+    showConsent(pets, patients);
+  });
   document.getElementById("clinicComplaintBackBtn").addEventListener("click", () => {
     window.location.href = "/admin/walk-in/pets";
   });

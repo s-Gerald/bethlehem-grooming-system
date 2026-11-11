@@ -407,7 +407,8 @@ for (const integration of ["my-pets", "admin-customers", "booking-pet-step", "wa
         const handler = ui.source.slice(ui.source.indexOf(`function ${name}()`), ui.source.indexOf("function validatePetForm("));
         const draft = { newPetForm: { petType: species, breed, furType: coat } };
         const restore = vm.runInNewContext(`(${handler.trim()})`, {
-          ...shared, elements: { ...shared.elements, bodyCondition: element() }, state: {}, readStepTwoDraft: () => draft, readPetStepDraft: () => draft,
+          ...shared, elements: { ...shared.elements, bodyCondition: element() }, state: {}, IS_CLINIC: false,
+          readStepTwoDraft: () => draft, readPetStepDraft: () => draft,
         });
         restore();
         restore();

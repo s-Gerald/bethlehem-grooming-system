@@ -30,7 +30,7 @@
     <link rel="stylesheet" href="/css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="/scripts/components/product-search-dropdown.js?v=20261029-v2"></script>
     <script src="/scripts/components/admin-loading.js?v=universal-20261018&urls=20261103"></script>
-    <link rel="preload" as="script" href="/scripts/api.js?undo-admission=20261110-v1&auth-reliability=20261107&clinical-history=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&product-dropdown=20261029-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110" />
+    <link rel="preload" as="script" href="/scripts/api.js?undo-admission=20261110-v1&auth-reliability=20261107&clinical-history=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&product-dropdown=20261029-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&owner-session=20261111" />
     <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110" />
     <link rel="stylesheet" href="/css/short-notes.css" />
     <script type="module" src="/scripts/utils/short-notes.js?v=500-20261110"></script>
@@ -122,7 +122,7 @@
           </button>
         </div>
       </aside>
-      <script src="/scripts/api.js?undo-admission=20261110-v1&auth-reliability=20261107&clinical-history=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&product-dropdown=20261029-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-pet-editor=20261107-v1&clinic-activity=20261110"></script>
+      <script src="/scripts/api.js?undo-admission=20261110-v1&auth-reliability=20261107&clinical-history=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&product-dropdown=20261029-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-pet-editor=20261107-v1&clinic-activity=20261110&owner-session=20261111"></script>
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-policy-20261110"></script>
       <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110"></script>
 
@@ -179,12 +179,41 @@
           <section x-show="['active-cases', 'for-payment', 'expected'].includes(tab)" class="mt-5 rounded-2xl border border-[#cfe0ee] bg-white shadow-sm">
             <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <h3 class="font-bold text-[#2f4b66]" x-text="tab === 'expected' ? 'Expected' : tab === 'for-payment' ? 'For Payment' : 'Active Cases'">Active Cases</h3>
-              <span class="rounded-full bg-[#eef5fb] px-2.5 py-1 text-xs font-bold text-[#315b7e]" x-text="caseRows.length"></span>
+              <span class="rounded-full bg-[#eef5fb] px-2.5 py-1 text-xs font-bold text-[#315b7e]" x-text="caseRows.length + visibleSessions.length"></span>
             </div>
 
 
-            <div x-show="activeCasesLoaded && !activeCasesError && caseRows.length === 0" class="px-4 py-5 text-sm text-slate-400" x-text="tab === 'expected' ? 'No expected arrivals.' : tab === 'for-payment' ? 'No cases for payment.' : 'No active cases.'"></div>
-            <div x-show="activeCasesLoaded && caseRows.length" class="divide-y divide-slate-100">
+            <div x-show="activeCasesLoaded && !activeCasesError && caseRows.length === 0 && visibleSessions.length === 0" class="px-4 py-5 text-sm text-slate-400" x-text="tab === 'expected' ? 'No expected arrivals.' : tab === 'for-payment' ? 'No cases for payment.' : 'No active cases.'"></div>
+            <div x-show="activeCasesLoaded && (caseRows.length || visibleSessions.length)" class="divide-y divide-slate-100">
+              <template x-for="session in visibleSessions" :key="'session-' + session.id">
+                <article class="border-b border-slate-200">
+                  <header class="flex flex-wrap items-center justify-between gap-3 bg-[#f0f7fd] px-4 py-3">
+                    <div>
+                      <h4 class="font-semibold text-[#2f4b66]" x-text="session.owner_name + (session.patients.length > 1 ? ' · ' + session.patients.length + ' pets' : '')"></h4>
+                      <p class="mt-1 text-xs text-slate-600" x-text="sessionStatus(session)"></p>
+                    </div>
+                    <div x-show="permissions.billing_view || permissions.payment" class="flex flex-wrap items-center gap-3">
+                      <button x-show="permissions.billing_view" type="button" @click="viewSessionBilling(session)" class="rounded-xl border border-[#cfe0ee] bg-white px-3 py-2 text-xs font-semibold text-[#315b7e]">View Billing</button>
+                      <span class="text-xs text-slate-600" x-text="session.ready_count + ' of ' + session.eligible_count + ' ready for payment'"></span>
+                      <button x-show="permissions.payment && session.ready_count > 0" type="button" @click="reviewSessionPayment(session)" :disabled="session.state !== 'for-payment'" class="rounded-xl bg-[#315b7e] px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Review Payment</button>
+                    </div>
+                  </header>
+                  <ul class="divide-y divide-slate-100">
+                    <template x-for="caseItem in session.patients" :key="caseItem.id">
+                      <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+                        <div>
+                          <button type="button" @click="permissions.clinical && ['in_consultation', 'for_payment'].includes(caseItem.status) ? openCase(caseItem, caseItem.confined ? 'confinement' : null) : openCaseProfile(caseItem, $event.currentTarget)" class="text-left text-sm font-semibold text-[#315b7e] hover:underline" x-text="casePatientLabel(caseItem)"></button>
+                          <p class="mt-0.5 text-xs text-slate-500" x-text="[caseItem.appointment_reference, caseItem.confined ? 'Confined' : caseStatus(caseItem)].filter(Boolean).join(' · ')"></p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                          <button x-show="caseActionLabel(caseItem)" type="button" @click="caseItem.confined ? openCase(caseItem, 'confinement') : runCaseAction(caseItem)" :disabled="caseBusyId !== null" class="rounded-xl bg-[#eef5fb] px-3 py-2 text-xs font-semibold text-[#315b7e] disabled:opacity-50" x-text="caseActionLabel(caseItem)"></button>
+                          <button x-show="canCancelCase(caseItem) && !caseItem.confined" type="button" @click="cancelCase(caseItem)" :disabled="caseBusyId !== null" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-red-600 disabled:opacity-50">Cancel Case</button>
+                        </div>
+                      </li>
+                    </template>
+                  </ul>
+                </article>
+              </template>
               <template x-for="caseItem in caseRows" :key="caseItem.id">
                 <div>
                   <div class="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" :class="tab !== 'for-payment' ? 'cursor-pointer transition hover:bg-[#f0f7fd]' : ''"
@@ -352,15 +381,27 @@
             <template x-if="!payment.recorded">
               <form @submit.prevent="recordPayment()" class="flex min-h-0 flex-col" :aria-busy="payment.saving">
                 <header class="shrink-0 border-b border-slate-200 px-6 py-5">
-                  <h3 id="clinic-payment-title" class="text-lg font-bold text-[#2f4b66]">Collect Payment</h3>
-                  <p class="mt-1 break-words text-sm font-semibold text-slate-700" x-text="[payment.case?.pet?.name, payment.case?.appointment_reference].filter(Boolean).join(' · ')"></p>
+                  <h3 id="clinic-payment-title" tabindex="-1" x-text="payment.viewOnly ? 'Owner Session Billing' : 'Collect Payment'" class="text-lg font-bold text-[#2f4b66]">Collect Payment</h3>
+                  <p class="mt-1 break-words text-sm font-semibold text-slate-700" x-text="payment.session ? payment.session.eligible_count + ' patients' : [payment.case?.pet?.name, payment.case?.appointment_reference].filter(Boolean).join(' · ')"></p>
                   <p class="mt-1 text-sm text-slate-500" x-text="payment.case?.ownerName || 'Owner'"></p>
                 </header>
                 <div class="receipt-modal-scroll space-y-5 px-6 py-5">
                   <section aria-labelledby="clinic-breakdown-title">
                     <h4 id="clinic-breakdown-title" class="text-sm font-bold text-[#2f4b66]">Payment Breakdown</h4>
                     <p class="mb-3 mt-1 text-xs text-slate-500">Finalized charges from Clinic Billing.</p>
-                    <div class="divide-y divide-slate-100">
+                    <div x-show="payment.session" class="space-y-3">
+                      <template x-for="patient in (payment.session?.patients || []).filter(row => row.status !== 'cancelled')" :key="patient.id">
+                        <section class="rounded-xl border border-slate-200 p-3">
+                          <div class="flex flex-wrap justify-between gap-2 text-sm font-semibold text-[#2f4b66]">
+                            <div><h5 x-text="(patient.pet_name || 'Patient') + ' · ' + patient.reference"></h5><p x-show="payment.viewOnly" class="mt-1 text-xs font-normal text-slate-600" x-text="patient.confined ? 'Confined' : caseStatus(patient)"></p></div><span x-text="money(patient.subtotal)"></span>
+                          </div>
+                          <template x-for="charge in patient.charges" :key="charge.id">
+                            <div class="mt-1 flex justify-between gap-2 text-sm text-slate-600"><span x-text="charge.description"></span><span x-text="money(charge.amount)"></span></div>
+                          </template>
+                        </section>
+                      </template>
+                    </div>
+                    <div x-show="!payment.session" class="divide-y divide-slate-100">
                       <template x-for="charge in (payment.case?.charges || [])" :key="charge.id">
                         <div class="flex justify-between gap-3 py-2 text-sm">
                           <div class="min-w-0"><p class="break-words font-semibold text-slate-700" x-text="charge.description"></p><p class="mt-1 text-xs text-slate-500" x-text="paymentChargeDetail(charge)"></p><p x-show="charge.pet_weight_kg != null" class="text-xs text-slate-500" x-text="'Pet weight: ' + charge.pet_weight_kg + ' kg · ' + clinicPriceRange(charge)"></p></div>
@@ -368,20 +409,20 @@
                         </div>
                       </template>
                     </div>
-                    <p x-show="!payment.case?.charges?.length" class="text-sm text-slate-500">No chargeable items recorded.</p>
+                    <p x-show="!payment.session && !payment.case?.charges?.length" class="text-sm text-slate-500">No chargeable items recorded.</p>
                   </section>
-                  <div class="payment-total-due"><span>Total Due</span><strong x-text="money(paymentTotalDue)"></strong></div>
-                  <fieldset x-show="!payment.online" :disabled="payment.saving || !!payment.online">
+                  <div class="payment-total-due"><span x-text="payment.viewOnly ? 'Current total' : 'Total Due'">Total Due</span><strong x-text="money(paymentTotalDue)"></strong></div>
+                  <fieldset x-show="!payment.viewOnly && !payment.online" :disabled="payment.viewOnly || payment.saving || !!payment.online">
                     <legend class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Payment Method</legend>
                     <div class="grid gap-2 sm:grid-cols-2">
                       <label class="flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold" :class="payment.method === 'cash' ? 'border-[#315b7e] bg-[#eef5fb] text-[#315b7e]' : 'border-slate-200 text-slate-700'"><input type="radio" name="clinic-payment-method" value="cash" x-model="payment.method" class="accent-[#315b7e]" />Cash</label>
                       <label class="flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold" :class="payment.method === 'online' ? 'border-[#315b7e] bg-[#eef5fb] text-[#315b7e]' : 'border-slate-200 text-slate-700'"><input type="radio" name="clinic-payment-method" value="online" x-model="payment.method" class="accent-[#315b7e]" /><span>Online Payment</span></label>
                     </div>
                   </fieldset>
-                  <div x-show="payment.method === 'cash' && !payment.online" class="grid gap-4 sm:grid-cols-2">
+                  <div x-show="!payment.viewOnly && payment.method === 'cash' && !payment.online" class="grid gap-4 sm:grid-cols-2">
                     <div>
                       <label for="clinic-cash-received" class="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">Cash Received</label>
-                      <input id="clinic-cash-received" type="text" inputmode="decimal" :required="payment.method === 'cash' && !payment.online" x-model="payment.amountPaid" @input="updatePaymentCash()" @blur="payment.touched = true" :disabled="payment.saving || payment.method !== 'cash' || !!payment.online" :aria-invalid="payment.touched && !!paymentCashError" aria-describedby="clinic-cash-help clinic-cash-error" class="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm tabular-nums disabled:opacity-60" :class="payment.touched && paymentCashError ? 'border-red-400' : ''" placeholder="0.00" />
+                      <input id="clinic-cash-received" type="text" inputmode="decimal" :required="!payment.viewOnly && payment.method === 'cash' && !payment.online" x-model="payment.amountPaid" @input="updatePaymentCash()" @blur="payment.touched = true" :disabled="payment.saving || payment.method !== 'cash' || !!payment.online" :aria-invalid="payment.touched && !!paymentCashError" aria-describedby="clinic-cash-help clinic-cash-error" class="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm tabular-nums disabled:opacity-60" :class="payment.touched && paymentCashError ? 'border-red-400' : ''" placeholder="0.00" />
                       <p id="clinic-cash-help" class="mt-1 text-xs text-slate-500" x-text="'Maximum ' + money(paymentMaximumAmount)"></p>
                       <p id="clinic-cash-error" x-show="payment.touched && paymentCashError" class="mt-1 text-xs text-red-600" role="alert" x-text="paymentCashError"></p>
                     </div>
@@ -398,8 +439,8 @@
                   <p x-show="payment.error" class="text-sm text-red-600" role="alert" x-text="payment.error"></p>
                 </div>
                 <footer class="receipt-modal-actions flex flex-wrap justify-end gap-3 border-t border-slate-200 px-6 py-4">
-                  <button type="button" @click="closePayment()" :disabled="payment.saving" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50" x-text="payment.online ? 'Close' : 'Cancel'"></button>
-                  <button type="submit" x-show="!payment.online" :disabled="!canConfirmPayment" class="whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#274864] disabled:cursor-not-allowed disabled:opacity-50" x-text="payment.saving ? 'Processing…' : payment.method === 'online' ? 'Create Online Payment' : 'Confirm Payment'"></button>
+                  <button type="button" @click="closePayment()" :disabled="payment.saving" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50" x-text="payment.viewOnly || payment.online ? 'Close' : 'Cancel'"></button>
+                  <button type="submit" x-show="!payment.viewOnly && !payment.online" :disabled="!canConfirmPayment" class="whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#274864] disabled:cursor-not-allowed disabled:opacity-50" x-text="payment.saving ? 'Processing…' : payment.method === 'online' ? 'Create Online Payment' : 'Confirm Payment'"></button>
                 </footer>
               </form>
             </template>
@@ -414,6 +455,14 @@
                 <div class="receipt-modal-scroll receipt-success-body">
                   <section class="receipt-success-section">
                     <h5>Payment Breakdown</h5>
+                    <template x-for="patient in receiptModal.patients || []" :key="patient.id">
+                      <div class="mt-2 rounded-xl border border-slate-200 p-3">
+                        <div class="flex justify-between gap-2"><h6 class="font-semibold" x-text="patient.pet_name + ' · ' + patient.reference"></h6><strong x-text="money(patient.subtotal)"></strong></div>
+                        <template x-for="charge in patient.charges" :key="charge.id">
+                          <div class="receipt-success-service"><span x-text="charge.description"></span><strong x-text="money(charge.amount)"></strong></div>
+                        </template>
+                      </div>
+                    </template>
                     <template x-for="charge in receiptModal.charges" :key="charge.id"><div class="receipt-success-service"><span class="min-w-0 break-words"><span x-text="charge.description"></span><small class="block text-slate-500" x-text="paymentChargeDetail(charge)"></small></span><strong x-text="money(charge.amount)"></strong></div></template>
                   </section>
                   <section class="receipt-success-section">
@@ -712,7 +761,7 @@
       @keydown.escape.window="if (open && !$store.clinicFeedback.dialog.open) { if (chargesOpen) { $event.stopImmediatePropagation(); closeCharges(); } else if (activeSection !== 'vaccinations') closeModal(); }"
       class="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto bg-slate-900/60 px-4 py-8"
     >
-      <div x-data="clinicCaseWorkspace()" x-effect="syncWorkspace(open, currentAppt, chargesOpen ? 'billing' : activeSection)" data-case-workspace @clinic-treatment-updated.window="if (workspaceCaseId && $store.clinicAccess.permissions.billing_view) loadBilling()" class="relative flex max-h-[calc(100dvh-4rem)] w-full max-w-6xl flex-col overflow-clip rounded-3xl bg-white shadow-2xl" @keydown.tab="trapFocus($event)" role="dialog" aria-modal="true" aria-labelledby="patient-record-title">
+      <div x-data="clinicCaseWorkspace()" @clinic-bulk-applied.window="if ($event.detail.caseId === workspaceCaseId && $event.detail.kind === 'services') { loadServices(); if ($store.clinicAccess.permissions.billing_view) loadBilling() }" x-effect="syncWorkspace(open, currentAppt, chargesOpen ? 'billing' : activeSection)" data-case-workspace @clinic-treatment-updated.window="if (workspaceCaseId && $store.clinicAccess.permissions.billing_view) loadBilling()" class="relative flex max-h-[calc(100dvh-4rem)] w-full max-w-6xl flex-col overflow-clip rounded-3xl bg-white shadow-2xl" @keydown.tab="trapFocus($event)" role="dialog" aria-modal="true" aria-labelledby="patient-record-title">
         <div :inert="chargesOpen" class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-4 sm:px-6">
           <h2 id="patient-record-title" class="min-w-0 break-words text-lg font-bold text-[#2f4b66]" x-text="title">Medical Record</h2>
           <div class="ml-auto flex shrink-0 items-center gap-2">
@@ -1117,6 +1166,7 @@
                 </fieldset>
                 <p x-show="serviceError" role="alert" x-text="serviceError" class="text-sm text-red-600"></p>
                 <div class="flex flex-wrap justify-end gap-2">
+                  <button type="button" x-show="workspaceAppointment?.bulk_eligible_count >= 2 && selectedService" @click="$dispatch('clinic-bulk-open', {kind: 'services', caseId: workspaceCaseId, item: selectedService})" :disabled="serviceSaving || !!pendingPayload" class="rounded-xl border border-[#cfe0ee] bg-white px-4 py-2 text-sm font-semibold text-[#315b7e] disabled:opacity-50">Apply to multiple pets</button>
                   <button type="submit" :disabled="!canMutateServices || serviceSaving || serviceRemovingId !== null || (!pendingPayload && (pricingLoading || !servicePricing || !!servicePricing.error))" class="whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#274864] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] active:bg-[#274864] disabled:cursor-not-allowed disabled:opacity-50" x-text="serviceSaving ? 'Adding…' : pendingPayload ? 'Retry Request' : 'Add Service'"></button>
                 </div>
               </div></template>
@@ -1160,6 +1210,18 @@
             <div class="flex flex-wrap items-start justify-between gap-3"><h3 id="case-charges-title" class="text-base font-bold text-[#2f4b66]">Charges</h3><button type="button" @click="loadBilling()" :disabled="billingLoading" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Refresh</button><button type="button" @click="closeCharges()" aria-label="Close charges" class="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg></button></div>
             <admin-loader x-cloak x-show="billingLoading"></admin-loader><p x-show="billingError" role="alert" x-text="billingError" class="text-sm text-red-600"></p>
             <p x-show="!billingLoading && !billingError && !chargeRows.length" class="py-6 text-center text-sm text-slate-500">No chargeable items recorded.</p>
+            <section x-show="billingSession?.patients?.length > 1" class="space-y-2 rounded-xl border border-slate-200 p-4">
+              <header class="flex flex-wrap justify-between gap-2 text-sm font-semibold text-[#2f4b66]"><h4>Owner Session Billing</h4><span x-text="money(billingSession?.total_amount)"></span></header>
+              <p class="text-xs text-slate-600" x-text="billingSession?.paid_at ? 'Paid' : billingSession?.ready_count + ' of ' + billingSession?.eligible_count + ' pets ready for payment'"></p>
+              <template x-for="patient in billingSession?.patients || []" :key="patient.id">
+                <details class="rounded-lg border border-slate-100 p-2">
+                  <summary class="cursor-pointer text-sm font-semibold text-[#315b7e]" x-text="(patient.pet_name || 'Patient') + ' · ' + (patient.status === 'cancelled' ? 'Cancelled' : money(patient.subtotal))"></summary>
+                  <template x-for="charge in patient.charges" :key="charge.id">
+                    <div class="mt-1 flex justify-between gap-2 text-sm text-slate-600"><span x-text="charge.description"></span><span x-text="money(charge.amount)"></span></div>
+                  </template>
+                </details>
+              </template>
+            </section>
             <div x-show="chargeRows.length" class="overflow-hidden rounded-xl border border-slate-200"><div class="overflow-x-auto" role="region" aria-label="Clinic billing breakdown" tabindex="0"><table class="w-full table-fixed text-left text-xs sm:text-sm"><caption class="sr-only">Case charges, including services, medicines and treatments</caption><thead class="border-b border-slate-200 bg-slate-50 text-xs text-slate-500"><tr><th scope="col" class="w-[45%] px-2 py-3 sm:px-3">Description</th><th scope="col" class="w-1/4 px-2 py-3 sm:px-3">Source</th><th scope="col" class="px-2 py-3 sm:px-3 text-right">Amount</th></tr></thead><tbody class="divide-y divide-slate-100"><template x-for="charge in chargeRows" :key="charge.id"><tr><td class="max-w-xs break-words px-2 py-3 sm:px-3 font-semibold text-[#2f4b66]" x-text="charge.description"></td><td class="break-words px-2 py-3 sm:px-3"><span class="text-slate-600" x-text="charge.clinic_case_service_id ? 'Service' : charge.vaccination_record_id ? 'Treatment' : charge.kind"></span></td><td class="px-2 py-3 sm:px-3 break-words text-right font-semibold tabular-nums" x-text="money(charge.amount)"></td></tr></template></tbody></table></div></div>
             <button x-show="chargePage < chargeLastPage" type="button" @click="loadBilling(chargePage + 1)" :disabled="billingLoading" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 disabled:opacity-50">Load more charges</button>
             <div class="flex flex-wrap items-center justify-between gap-4 border-t border-slate-200 pt-4"><div><p class="text-xs text-slate-500" x-text="workspaceAppointment?.paid ? 'Paid case total' : 'Case total'"></p><p class="mt-1 text-xl font-bold tabular-nums text-[#2f4b66]" x-text="money(billingTotal)"></p></div><button x-show="canRecordCasePayment" type="button" @click="requestCasePayment()" :disabled="billingLoading || !!billingError || billingTotal == null" class="whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#274864] disabled:opacity-50">Review &amp; Collect Payment</button></div>
@@ -1283,7 +1345,8 @@
 
         <!-- Current-case treatment entry -->
         <section
-          x-data="adminClinicVaccinations()" x-init="inline = true" x-ref="treatmentPane"
+          x-data="adminClinicVaccinations()" x-init="inline = true"
+          @clinic-bulk-applied.window="if ($event.detail.caseId === appointment?.id && $event.detail.kind === 'treatments') { loadVaccinations(); $dispatch('clinic-treatment-updated') }" x-ref="treatmentPane"
           x-effect="$dispatch('clinic-workspace-busy', {id: appointment?.id, saving: formModal.saving || actionBusyId !== null})"
           @keydown.escape.window="if (open && activeSection === 'vaccinations' && !$store.clinicFeedback.dialog.open) { $event.stopImmediatePropagation(); if (detailModal.open) closeDetails(); else closeModal() }"
           :inert="chargesOpen"
@@ -1345,6 +1408,7 @@
                             <p class="mt-1 text-xs" :class="selectedProduct.stock_status === 'low_stock' ? 'text-amber-700' : 'text-slate-600'" x-text="productAvailabilityLabel(selectedProduct)"></p>
                           </div>
                           <button type="button" @click="clearProduct()" :disabled="formModal.saving" aria-label="Change product" class="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e] disabled:opacity-50">Change</button>
+                          <button type="button" x-show="currentAppt?.bulk_eligible_count >= 2 && formModal.mode === 'create' && recordKind === 'inventory'" @click="$dispatch('clinic-bulk-open', {kind: 'treatments', caseId: appointment.id, item: selectedProduct})" class="rounded-xl border border-[#cfe0ee] bg-white px-3 py-2 text-xs font-semibold text-[#315b7e]">Apply to multiple pets</button>
                         </div>
                         <div>
                           <label for="treatment-inventory-quantity" class="mb-1 block text-xs font-semibold text-slate-600">Quantity used <span x-text="'(' + selectedProduct.unit + ')'"></span> <span class="text-red-600" aria-hidden="true">*</span></label>
@@ -1559,6 +1623,85 @@
       </div>
     </div>
 
+    <div x-data="clinicBulkReview()" @clinic-bulk-open.window="openReview($event.detail)">
+      <dialog x-ref="review" @cancel.prevent="closeReview()" @keydown.escape.stop aria-labelledby="clinic-bulk-title"
+        class="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-3xl overflow-y-auto rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-slate-900/60">
+        <form @submit.prevent="apply()" novalidate>
+          <header class="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4">
+            <div><h3 id="clinic-bulk-title" class="font-bold text-[#2f4b66]">Apply to multiple pets</h3><p class="mt-1 text-sm text-slate-600" x-text="context?.item.name || context?.item.item_name"></p></div>
+            <button type="button" @click="closeReview()" :disabled="loading || saving" class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 disabled:opacity-40">Close</button>
+          </header>
+          <div class="space-y-4 p-5">
+            <p x-show="loading" role="status" class="text-sm text-slate-600">Loading patient review…</p>
+            <p x-show="error" role="alert" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700" x-text="error"></p>
+            <div x-show="patients.length" class="flex flex-wrap items-center justify-between gap-3">
+              <button type="button" @click="selectAll()" :disabled="saving || !!pending || loading" class="text-sm font-semibold text-[#315b7e] underline disabled:opacity-40">Select all eligible</button>
+              <button type="button" @click="refresh()" :disabled="saving || !!pending || loading" class="text-xs font-semibold text-[#315b7e] underline disabled:opacity-40">Refresh review</button>
+            </div>
+            <p x-show="treatment && preview" class="text-sm text-slate-600" x-text="'Administration date ' + preview?.administered_date + ' · Available stock ' + preview?.available_quantity + ' ' + (preview?.unit || '')"></p>
+            <fieldset :disabled="saving || !!pending || loading" class="space-y-2">
+              <legend class="sr-only">Choose patients and review each entry</legend>
+              <template x-for="patient in patients" :key="patient.id">
+                <section class="space-y-2 rounded-xl border border-slate-200 p-3">
+                  <label class="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#2f4b66]">
+                    <input type="checkbox" x-model="patient.selected" class="accent-[#315b7e]">
+                    <span x-text="(patient.name || 'Patient') + ' · ' + patient.reference"></span>
+                  </label>
+                  <p class="text-xs text-slate-600" x-show="patient.weight != null || patient.pricing?.pet_weight_kg != null" x-text="'Weight ' + (patient.weight ?? patient.pricing?.pet_weight_kg) + ' kg'"></p>
+                  <p class="text-xs font-semibold text-slate-700" x-show="price(patient) !== null && price(patient) !== ''" x-text="money(price(patient))"></p>
+                  <template x-if="patient.selected && patient.pricing?.requires_final_price">
+                    <label class="block text-xs font-semibold text-slate-600">Final price (₱)
+                      <input type="text" inputmode="decimal" data-money-input x-model="patient.finalPrice" class="mt-1 block w-full max-w-xs rounded-lg border border-slate-300 px-2 py-1.5">
+                    </label>
+                  </template>
+                  <template x-if="patient.selected && (treatment || shots)">
+                    <label class="block text-xs font-semibold text-slate-600"><span x-text="treatment ? 'Quantity used' : 'Shots'"></span>
+                      <input type="number" min="1" step="1" x-model="patient.quantity" class="mt-1 block w-full max-w-xs rounded-lg border border-slate-300 px-2 py-1.5">
+                    </label>
+                  </template>
+                  <template x-if="patient.selected && treatment">
+                    <div class="grid gap-2 sm:grid-cols-2">
+                      <label class="text-xs font-semibold text-slate-600">Dose
+                        <input type="text" inputmode="decimal" x-model="patient.dose" class="mt-1 block w-full rounded-lg border border-slate-300 px-2 py-1.5">
+                      </label>
+                      <label class="text-xs font-semibold text-slate-600">Dose unit
+                        <select x-model="patient.doseUnit" class="mt-1 block w-full rounded-lg border border-slate-300 px-2 py-1.5">
+                          <option value="">Select a unit</option>
+                          <template x-for="unit in doseUnits" :key="unit.value"><option :value="unit.value" x-text="unit.label"></option></template>
+                        </select>
+                      </label>
+                      <label x-show="patient.doseUnit === 'other'" class="text-xs font-semibold text-slate-600">Specify dose unit
+                        <input type="text" maxlength="30" x-model="patient.customUnit" class="mt-1 block w-full rounded-lg border border-slate-300 px-2 py-1.5">
+                      </label>
+                      <label class="text-xs font-semibold text-slate-600">Route
+                        <select x-model="patient.route" class="mt-1 block w-full rounded-lg border border-slate-300 px-2 py-1.5">
+                          <option value="">Select a route</option>
+                          <template x-for="route in routes" :key="route"><option :value="route" x-text="route"></option></template>
+                        </select>
+                      </label>
+                      <label class="text-xs font-semibold text-slate-600">Administration site
+                        <input type="text" maxlength="100" x-model="patient.site" class="mt-1 block w-full rounded-lg border border-slate-300 px-2 py-1.5">
+                      </label>
+                      <label x-show="context?.item.category === 'vaccine'" class="text-xs font-semibold text-slate-600">Next due date
+                        <input type="date" :min="preview?.administered_date" x-model="patient.nextDue" class="mt-1 block w-full rounded-lg border border-slate-300 px-2 py-1.5">
+                      </label>
+                    </div>
+                  </template>
+                  <p x-show="patient.error || patient.pricing?.error || patient.selected" class="text-xs" :class="rowIssue(patient) || patient.serverError ? 'text-amber-800' : 'text-emerald-700'" x-text="patient.serverError || rowIssue(patient) || 'Ready'"></p>
+                </section>
+              </template>
+            </fieldset>
+            <p x-show="treatment && preview && requiredStock > Number(preview?.available_quantity)" role="alert" class="text-sm text-amber-800">The selected patients need more stock than is available.</p>
+          </div>
+          <footer class="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4">
+            <span class="text-sm font-semibold text-slate-600" x-text="selectedRows.length + ' selected · ' + money(total)"></span>
+            <button type="submit" :disabled="!canApply" class="rounded-xl bg-[#315b7e] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+              x-text="saving ? 'Applying…' : pending ? 'Retry Request' : 'Apply to ' + selectedRows.length + (selectedRows.length === 1 ? ' pet' : ' pets')"></button>
+          </footer>
+        </form>
+      </dialog>
+    </div>
+
     <!-- Shared clinic confirm dialog and toast (replaces browser alert/confirm) -->
     <div x-data>
       <div x-cloak x-show="$store.clinicFeedback.dialog.open" style="display:none" x-transition
@@ -1618,14 +1761,15 @@
     <script src="/scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="/scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="/scripts/components/recorded-product-pricing.js?v=20261029"></script>
-    <script src="/scripts/components/payment-invoice.js?v=clinic-invoice-20261015&payments=20261018-shared&presentation=20261024&mobile-format=20261110&invoice-products=20261029&references=20261031&urls=20261103&short-notes=20261110"></script>
+    <script src="/scripts/components/payment-invoice.js?v=clinic-invoice-20261015&payments=20261018-shared&presentation=20261024&mobile-format=20261110&invoice-products=20261029&references=20261031&urls=20261103&short-notes=20261110&owner-session=20261111"></script>
 
 
     <script src="/scripts/components/clinic-feedback.js?undo-admission=20261110-v1&v=services-20261017"></script>
     <script src="/scripts/components/clinic-attachments.js?v=20261015"></script>
     <script src="/scripts/components/clinic-record-presentation.js?v=20261029&short-notes=20261110"></script>
-    <script src="/scripts/components/admin-clinic.js?undo-admission=20261110-v1&monitoring-validation=20261110-v1&confinement-discharge=20261110&treatment-validation=20261108&clinical-history=20261029&clinical-validation=20261027-v1&services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261107-v1&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&gateway=20261023-combined&clinic-roles=20261024&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261110&references=20261031&pet-sessions=20261031-v1&pet-birthdate=20261103-v1&urls=20261103&queue-copy=20261103-admin-v1&pet-profile=20261110-v1&body-condition=20261110-v2&clinic-activity=20261110&short-notes=500-20261110"></script>
-    <script src="/scripts/components/admin-clinic-case-workspace.js?v=20261015-imaging-v2&case-flow=20261013-v5"></script>
+    <script src="/scripts/components/admin-clinic.js?undo-admission=20261110-v1&monitoring-validation=20261110-v1&confinement-discharge=20261110&treatment-validation=20261108&clinical-history=20261029&clinical-validation=20261027-v1&services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261107-v1&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&gateway=20261023-combined&clinic-roles=20261024&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261110&references=20261031&pet-sessions=20261031-v1&pet-birthdate=20261103-v1&urls=20261103&queue-copy=20261103-admin-v1&pet-profile=20261110-v1&body-condition=20261110-v2&clinic-activity=20261110&short-notes=500-20261110&owner-session=20261111"></script>
+    <script src="/scripts/components/admin-clinic-case-workspace.js?v=20261015-imaging-v2&case-flow=20261013-v5&owner-session=20261111"></script>
+    <script src="/scripts/components/admin-clinic-bulk-review.js?v=20261111"></script>
     <script src="/scripts/components/admin-clinic-confinement.js?undo-admission=20261110-v1&monitoring-validation=20261110-v1&confinement-discharge=20261110&clinical-history=20261029&v=20261015-confinement-weight-v1&pet-weight=pet-weight-size-20261107-v1&short-notes=20261110"></script>
     <script src="/scripts/components/admin-vaccinations.js?treatment-validation=20261108&clinical-history=20261029&clinical-validation=20261027-v1&v=20261014-billing-v1&roles=20261010-4&clinic-products=20261010&treatments=working-visit-20261014&icons=20261018&admin-perf=20261019&product-dropdown=20261029-v3&short-notes=20261110"></script>
     <script src="/scripts/components/inventory-money-input.js?v=20261013-clinic-services"></script>

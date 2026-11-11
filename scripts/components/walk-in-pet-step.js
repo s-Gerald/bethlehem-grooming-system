@@ -1,6 +1,7 @@
+import { CLINIC_MAX_PATIENTS, CLINIC_PATIENT_LIMIT_MESSAGE } from "../services/clinic-visit-service.js?owner-session=20261111";
 import { createColorCombobox } from "./color-combobox.js?pet-care=20261027-v1";
 import { renderWalkInServicesStep } from "./walk-in-services-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261107-v1&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&pet-care=20261027-v1&intake-reliability=20261029&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108&pet-profile=20261110-v1&body-condition=20261110-v2&name-policy=20261110&short-notes=500-20261110&size-availability=20261110";
-import { renderWalkInClinicComplaintStep } from "./walk-in-clinic-complaint-step.js?pet-weight=pet-weight-size-20261107-v1&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&registration=fcfs-20261027-v1&pet-care=20261027-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108&body-condition=20261110-v2&name-policy=20261110&short-notes=500-20261110";
+import { renderWalkInClinicComplaintStep, restoreWalkInClinicStep } from "./walk-in-clinic-complaint-step.js?pet-weight=pet-weight-size-20261107-v1&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&registration=fcfs-20261027-v1&pet-care=20261027-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108&body-condition=20261110-v2&name-policy=20261110&short-notes=500-20261110&owner-session=20261111";
 import { createBreedCombobox } from "./breed-combobox.js?v=walk-in-owner-mode-20260924&pet-fields=20261030-v1";
 import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261030-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
@@ -21,7 +22,8 @@ import {
   showWeightValidationInField,
 } from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
 
-const MAX_PETS_PER_BOOKING = getOwnerAppointmentType() === "clinic" ? 1 : 10;
+const IS_CLINIC = getOwnerAppointmentType() === "clinic";
+const MAX_PETS_PER_BOOKING = IS_CLINIC ? CLINIC_MAX_PATIENTS : 10;
 const WALK_IN_PET_STORAGE_KEY = "walkInPetStep";
 
 const elements = {
@@ -32,6 +34,7 @@ const elements = {
   petStepError: document.getElementById("petStepError"),
   addPetSection: document.getElementById("addPetSection"),
   addPetForm: document.getElementById("addPetForm"),
+  savePetBtn: document.getElementById("savePetBtn"),
   petType: document.getElementById("petType"),
   petName: document.getElementById("petName"),
   breed: document.getElementById("breed"),
@@ -199,6 +202,7 @@ function restorePetStepDraft() {
   const values = draft?.newPetForm || {};
 
   state.pets = Array.isArray(draft?.pets) ? draft.pets : [];
+  if (IS_CLINIC) state.pets = state.pets.slice(0, CLINIC_MAX_PATIENTS);
   petTypeCombobox.setValue(values.petType || "");
   elements.petName.value = values.petName || "";
   breedCombobox.setValue(values.petType ? values.breed || "" : "");
@@ -265,7 +269,7 @@ function validatePetForm(values) {
   }
 
   if (state.pets.length >= MAX_PETS_PER_BOOKING) {
-    errors.limit = `Only ${MAX_PETS_PER_BOOKING} pets are allowed per walk-in schedule.`;
+    errors.limit = IS_CLINIC ? CLINIC_PATIENT_LIMIT_MESSAGE : `Only ${MAX_PETS_PER_BOOKING} pets are allowed per walk-in schedule.`;
   }
 
   return errors;
@@ -344,6 +348,7 @@ function renderExistingPets() {
     const conflict = pet.sessionAvailability?.[getOwnerAppointmentType()];
     const unavailable = savedPetUnavailable(pet);
     const selected = state.pets.some((selectedPet) => selectedPet.petId === pet.petId);
+    const disabled = selected || unavailable || (IS_CLINIC && state.pets.length >= CLINIC_MAX_PATIENTS);
     return `
       <article class="rounded-2xl border border-slate-200 bg-[#f8fbfd] p-4">
         <div class="flex items-start justify-between gap-3">
@@ -355,8 +360,8 @@ function renderExistingPets() {
           <button
             type="button"
             data-select-existing-pet="${index}"
-            ${selected || unavailable ? "disabled" : ""}
-            class="rounded-xl px-3 py-2 text-xs font-semibold transition ${selected || unavailable ? "cursor-not-allowed bg-slate-200 text-slate-500" : "bg-[#315b7e] text-white hover:bg-[#274864]"}"
+            ${disabled ? "disabled" : ""}
+            class="rounded-xl px-3 py-2 text-xs font-semibold transition ${disabled ? "cursor-not-allowed bg-slate-200 text-slate-500" : "bg-[#315b7e] text-white hover:bg-[#274864]"}"
           >${unavailable ? (state.existingPetsLoading ? "Loading" : state.petAvailabilityFailed ? "Unavailable" : escapeHtml(conflict?.label || "Unavailable")) : selected ? "Selected" : "Select"}</button>
         </div>
         ${conflict?.replaceable ? `<p class="mt-3 text-xs text-amber-800">${conflict.replaceable ? `Pending ${getOwnerAppointmentType() === 'clinic' ? 'Grooming' : 'Clinic'} registration will be cancelled at check-in.` : `Resolve the active ${getOwnerAppointmentType() === 'clinic' ? 'Grooming' : 'Clinic'} visit before intake.`}</p>` : ''}
@@ -416,6 +421,12 @@ function renderSelectedPets() {
   elements.selectedPetCards.innerHTML = "";
   elements.selectedPetCount.textContent = `${state.pets.length} / ${MAX_PETS_PER_BOOKING} selected`;
 
+  if (IS_CLINIC) {
+    const atLimit = state.pets.length >= CLINIC_MAX_PATIENTS;
+    elements.petSelectionLimitText.textContent = atLimit ? CLINIC_PATIENT_LIMIT_MESSAGE : "";
+    elements.savePetBtn.disabled = atLimit;
+    renderExistingPets();
+  }
   const hasPets = state.pets.length > 0 && !invalidSavedSelection();
   elements.selectedPetsEmptyState.classList.toggle("hidden", hasPets);
   elements.nextBtn.disabled = !hasPets;
@@ -616,16 +627,12 @@ function handleNext() {
   const appointmentType = getOwnerAppointmentType();
 
   if (appointmentType === "clinic") {
-    if (state.pets.length > 1) {
-      showStepError("Clinic walk-in supports one pet per visit. Please remove extra pets.");
-      return;
-    }
     clearStepError();
     savePetStepDraft();
     // The complaint UI is rendered in this document. Keep a reloadable URL
     // instead of advertising an HTML file that does not exist.
     window.history.pushState(null, "", "/admin/walk-in/pets?step=clinic-complaint");
-    renderWalkInClinicComplaintStep({ pet: state.pets[0] });
+    renderWalkInClinicComplaintStep({ pets: state.pets });
     return;
   }
 
@@ -724,7 +731,7 @@ function autoSelectClinicPet() {
   const petId = Number(rawId);
   const pet = state.existingPets.find(p => p.petId === petId);
   if (savedPetUnavailable(pet)) return;
-  if (state.pets.some(p => p.petId === pet.petId)) return;
+  if (state.pets.length >= MAX_PETS_PER_BOOKING || state.pets.some(p => p.petId === pet.petId)) return;
 
   state.pets = [...state.pets, { ...pet }];
 }
@@ -736,8 +743,8 @@ async function initWalkInPetStep() {
 
   bindEvents();
   loadExistingOwnerPets();
-  elements.petSelectionLimitText.textContent = MAX_PETS_PER_BOOKING === 1
-    ? "One pet per clinic walk-in visit."
+  elements.petSelectionLimitText.textContent = IS_CLINIC
+    ? ""
     : "Maximum of 10 pets per walk-in visit.";
   elements.petSelectionTabs.classList.toggle("hidden", !isExistingCustomer());
   if (isExistingCustomer()) showExistingPetSection();
@@ -748,8 +755,8 @@ async function initWalkInPetStep() {
   restorePetStepDraft();
   autoSelectClinicPet();
   renderSelectedPets();
-  if (isExistingCustomer()) refreshExistingOwnerPets();
-
+  if (isExistingCustomer()) await refreshExistingOwnerPets();
+  if (IS_CLINIC && state.pets.length && !invalidSavedSelection()) restoreWalkInClinicStep(state.pets);
 }
 
 if (document.readyState === "loading") {

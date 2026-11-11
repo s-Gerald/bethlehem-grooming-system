@@ -319,9 +319,14 @@ class AdminBookingController extends Controller
         $collections = $includeRevenue ? Payment::realCollections()->whereDate('paid_at', $today->toDateString())
             ->where('payment_status', 'paid')
             ->selectRaw('COALESCE(SUM(total_amount), 0) as total, COUNT(*) as payments')->first() : null;
+        $clinic = $includeRevenue && Schema::hasColumn('clinic_appointments', 'payment_method')
+            ? app(\App\Services\ClinicCollections::class)->settlements()
+                ->where('paid_at', '>=', $today->toDateTimeString())->where('paid_at', '<', $today->copy()->addDay()->toDateTimeString())
+                ->selectRaw('COALESCE(SUM(amount), 0) as total, COUNT(*) as payments')->first()
+            : null;
         return [
-                ...($includeRevenue ? ['revenueToday' => (float) $collections->total,
-                    'revenuePaymentCount' => (int) $collections->payments] : []),
+                ...($includeRevenue ? ['revenueToday' => (float) $collections->total + (float) ($clinic?->total ?? 0),
+                    'revenuePaymentCount' => (int) $collections->payments + (int) ($clinic?->payments ?? 0)] : []),
                 'waitingNow' => app(\App\Services\OperationalCapacity::class)->waitingCount(),
         ];
     }

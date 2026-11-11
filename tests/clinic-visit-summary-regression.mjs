@@ -12,8 +12,10 @@ const get = id => {
   });
   return nodes.get(id);
 };
-const draft = { pet: { id: 7, petName: 'Mochi', petType: 'cat' },
-  chiefComplaint: 'Since yesterday', commonConcerns: ['Vomiting'] };
+const draft = { patients: [
+  { pet: { id: 7, petName: 'Mochi', petType: 'cat' }, chiefComplaint: 'Since yesterday', commonConcerns: ['Vomiting'] },
+  { pet: { id: 8, petName: 'Rigby', petType: 'dog' }, chiefComplaint: 'Left paw', commonConcerns: ['Limping / injury'] },
+] };
 const saved = new Map([['draft', JSON.stringify(draft)], ['pets', 'saved pets']]);
 let submitResponse, availabilityReads = 0;
 const submissions = [];
@@ -23,6 +25,7 @@ const context = vm.createContext({
   sessionStorage: { setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) },
   CLINIC_VISIT_CONFIRMATION_KEY: 'confirmation', CLINIC_VISIT_DRAFT_KEY: 'draft', CLINIC_VISIT_PETS_KEY: 'pets',
   requireCustomerSession: async () => true, readClinicVisitDraft: () => draft,
+  CLINIC_MAX_PATIENTS: 13, clinicRegistrationError: (error) => error.message,
   validateClinicVisitReason: () => '', formatClinicVisitReason: () => 'Vomiting\nSince yesterday',
   getClinicVisitSummaryMarkup,
   readReviewedServiceDay: () => '2026-11-03',
@@ -35,6 +38,7 @@ const source = fs.readFileSync(new URL('../scripts/components/clinic-visit-summa
 await vm.runInContext(source, context);
 assert.match(get('clinicVisitSummaryDetails').innerHTML, /Clinic Queue Registration/);
 assert.match(get('clinicVisitSummaryDetails').innerHTML, /Mochi/);
+assert.match(get('clinicVisitSummaryDetails').innerHTML, /Rigby/);
 const button = get('submitClinicVisitBtn');
 assert.equal(button.disabled, false);
 
@@ -63,12 +67,15 @@ submitResponse = () => new Promise(resolve => { finish = resolve; });
 const submitting = button.listeners.click();
 assert.equal(button.disabled, true);
 assert.equal(button.textContent, 'Submitting...');
-const appointment = { appointment_reference: 'CL-ONLINE-7', queue_number: null, status: 'waiting_to_arrive' };
-finish({ appointment });
+const session = { id: 2, patients: [{ appointment_reference: 'CL-ONLINE-7' }, { appointment_reference: 'CL-ONLINE-8' }] };
+finish({ session });
 await submitting;
 assert.equal(JSON.stringify(submissions.at(-1)), JSON.stringify({ service_day: '2026-11-03',
-  pet_id: 7, chief_complaint: draft.chiefComplaint, common_concerns: draft.commonConcerns }));
-assert.deepEqual(JSON.parse(saved.get('confirmation')), appointment);
+  patients: [
+    { pet_id: 7, chief_complaint: 'Since yesterday', common_concerns: ['Vomiting'] },
+    { pet_id: 8, chief_complaint: 'Left paw', common_concerns: ['Limping / injury'] },
+  ] }));
+assert.deepEqual(JSON.parse(saved.get('confirmation')), session);
 assert.equal(saved.has('draft'), false);
 assert.equal(saved.has('pets'), false);
 assert.equal(context.window.location.href, '/account/registration/clinic/confirmed');

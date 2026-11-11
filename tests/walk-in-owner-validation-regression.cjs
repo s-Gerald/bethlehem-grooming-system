@@ -38,27 +38,25 @@ for (const type of ['grooming', 'clinic']) {
 }
 {
   const { context, stored, window } = setup('clinic');
-  window.history = { pushState() {} };
-  context.renderWalkInClinicConsentStep = () => {};
-  stored.set('walkInClinicComplaint', JSON.stringify({ chiefComplaint: 'Cough', commonConcerns: [], pet: { petName: 'Mochi' }, termsAgreed: true }));
+  const row = { pet: { id: 1, petName: 'Mochi' }, chiefComplaint: 'Cough', commonConcerns: ['Other'] };
+  stored.set('walkInClinicComplaint', JSON.stringify({ patients: [row], termsAgreed: true }));
   vm.runInContext(read('scripts/components/walk-in-clinic-complaint-step.js').replace(/^import .*;$/gm, '').replace(/^export /gm, ''), context);
-  vm.runInContext("state = { pet: { petName: 'Mochi' }, fields: { validate: () => true, concerns: () => [], details: { value: 'Cough' } } };", context);
-  context.handleSubmit({ preventDefault() {} });
+  context.savePatients([row]);
   assert.equal(JSON.parse(stored.get('walkInClinicComplaint')).termsAgreed, true, 'Continuing after an owner correction preserves agreement for the same visit.');
-  vm.runInContext("state.fields.details.value = 'Limping';", context);
-  context.handleSubmit({ preventDefault() {} });
+  context.savePatients([{ ...row, chiefComplaint: 'Limping' }]);
   assert.notEqual(JSON.parse(stored.get('walkInClinicComplaint')).termsAgreed, true, 'Changes to the visit require another review.');
 }
 async function checkClinicConsent() {
   const { owner, stored, window, context } = setup('clinic');
   let submissions = 0;
   Object.assign(context, {
+    CLINIC_MAX_PATIENTS: 13, validateClinicVisitReason: () => "",
     tooLong: require('../scripts/utils/short-notes.js').tooLong,
     API: { submitClinicWalkIn: async () => { submissions++; throw { errors: { lname: ['Enter a valid last name.'] } }; } },
     getPetWeightSubmissionValidationMessage: () => '', getPetWeightSubmission: () => ({}),
   });
   vm.runInContext(read('scripts/components/walk-in-clinic-consent-step.js').replace(/^import .*;$/gm, '').replace(/^export /gm, ''), context);
-  vm.runInContext("elements = { checkbox: { checked: true }, submitBtn: {}, statusMsg: {} }; state.pet = { petName: 'Mochi' };", context);
+  vm.runInContext("elements = { checkbox: { checked: true }, submitBtn: {}, statusMsg: {} }; state.patients = [{ pet: { petName: 'Mochi' }, commonConcerns: ['Other'], chiefComplaint: 'Cough' }];", context);
   const event = { preventDefault() {} };
   stored.set('walkInOwnerStep', JSON.stringify({ ...owner, firstName: undefined }));
   await context.handleSubmit(event);

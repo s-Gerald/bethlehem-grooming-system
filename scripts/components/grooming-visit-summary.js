@@ -93,6 +93,17 @@ export function groomingVisitPresentation(booking, statusLabel) {
 }
 
 function clinicVisitPresentation(visit) {
+  if (visit.patients?.length > 1) {
+    return {
+      title: "Clinic Queue Registration Summary",
+      html: `<div class="grooming-summary-identity"><h3>${visit.patients.length} pets</h3><p>${escapeHtml(formatBookingDate(visit.service_day))}</p></div>`
+        + visit.patients.map((patient) => confirmationSection(patient.pet?.pet_name || "Patient", confirmationFields([
+          ["Registration reference", patient.reference],
+          ["Status", formatConfirmationLabel(patient.status)],
+          ...(patient.queue_number != null ? [["Queue number", patient.queue_number]] : []),
+        ]) + clinicReasonConfirmation(patient))).join(""),
+    };
+  }
   const pet = visit.pet || {};
   const status = visit.status === "waiting_to_arrive" ? "Waiting to Arrive" : formatConfirmationLabel(visit.status) || "Not recorded";
   return {

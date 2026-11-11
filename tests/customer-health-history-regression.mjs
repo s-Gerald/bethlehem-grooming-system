@@ -8,7 +8,7 @@ const page = fs.readFileSync(new URL("../pages/client/grooming-history.html", im
 const script = page.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
   .replace(/^\s*import .*?;\s*/gm, "");
 const clinic = {
-  appointment_reference: "CL-20261015-001", appointment_date: "2026-10-15", status: "completed",
+  id: 11, appointment_reference: "CL-20261015-001", appointment_date: "2026-10-15", status: "completed",
   pet: { pet_id: 1, pet_name: "Mochi", species: "cat" }, chief_complaint: "Reduced appetite",
   diagnosis: "Gastritis", treatment_given: "Fluids administered", follow_up_date: "2026-10-20",
   prescriptions: [{ medicine: "Omeprazole", dose: "1 capsule", frequency: "Once daily", instructions: "Before meals" }],
@@ -46,12 +46,23 @@ async function run({ failClinic = false, failGrooming = false, empty = false } =
   let clinicFails = failClinic;
   const calls = [];
   const context = vm.createContext({
-    Intl, Date, console, ...healthRecords,
+    Intl, Date, console, setTimeout: callback => setImmediate(callback), clearTimeout: clearImmediate, ...healthRecords,
     document: { getElementById: element, body: element("body"), addEventListener() {} },
     window: { matchMedia: () => ({ matches: false, addEventListener() {} }), requestAnimationFrame() {} },
     API: {
       async getBookingHistory() { if (failGrooming) throw Error("Offline"); return { history: empty ? [] : [booking] }; },
-      async getCustomerClinicHistory() { if (clinicFails) throw Error("Offline"); return { medical_records: empty ? [] : [clinic] }; },
+      async getCustomerClinicHistory({ search, date }) {
+        calls.push("/clinic/history?summary=1");
+        if (clinicFails) throw Error("Offline");
+        const matches = (!date || date === clinic.appointment_date) && (!search || [clinic.appointment_reference, clinic.pet.pet_name]
+          .some(value => value.toLowerCase().includes(search.toLowerCase())));
+        return { visits: empty || !matches ? [] : [{ ...clinic, patients: [clinic] }] };
+      },
+      async getCustomerClinicHistoryVisit(id) {
+        assert.equal(id, clinic.id);
+        calls.push('/clinic/history/' + id);
+        return { patients: [clinic] };
+      },
       async loadCustomerData(endpoint, load, render) { calls.push(endpoint); const data = await load(); render(data); },
     },
   });
@@ -98,7 +109,13 @@ for (const payment of [null, {status: 'unpaid'}, {...paidSummary, final_booking_
   assert.doesNotMatch(paidModal(payment, 1, 'cancelled'), />Payment<|Total paid|Visit total paid|Paid on/);
 }
 const clinicPaid = {...clinic, payment: {status: 'paid', total_paid: 3100, payment_method_label: 'Online Payment', paid_at: '2026-11-10T12:41:00+08:00', cash_received: 5000, provider_id: 'PRIVATE'}};
-const clinicDetails = vm.runInContext(`buildClinicHistoryDetails(${JSON.stringify({type: 'clinic', record: clinicPaid, pet: clinic.pet, date: clinic.appointment_date})})`, ui.context);
+const renderClinic = (patients, payment, grouped = false) => vm.runInContext(`buildClinicHistoryDetails(
+  ${JSON.stringify({ date: clinic.appointment_date })}, ${JSON.stringify({ patients, payment, grouped })})`, ui.context);
+const clinicDetails = renderClinic([clinicPaid]);
+const sessionDetails = renderClinic([clinicPaid, { ...clinicPaid, id: 12, pet: { pet_name: "Rigby" }, appointment_reference: "CL-RIGBY" }],
+  { ...clinicPaid.payment, total_paid: 6200 }, true);
+assert.match(sessionDetails, /Mochi[\s\S]*Rigby[\s\S]*₱6,200\.00/);
+assert.equal((sessionDetails.match(/₱6,200\.00/g) || []).length, 1);
 assert.match(clinicDetails, /Care provided[\s\S]*Payment[\s\S]*Total paid[\s\S]*₱3,100\.00[\s\S]*Online Payment[\s\S]*Nov 10, 2026[\s\S]*12:41 PM/);
 assert.doesNotMatch(clinicDetails, /5,000|PRIVATE|provider_id|cash_received/);
 assert.doesNotMatch(ui.element('historyList').innerHTML, /Total paid|Visit total paid|Paid on/);
@@ -109,7 +126,7 @@ const unverifiedCondition = renderGrooming({ body_condition: 'thin', body_condit
 assert.match(unverifiedCondition, /Body Condition[\s\S]*Thin/);
 assert.doesNotMatch(unverifiedCondition, /Unverified|Clinic-confirmed|text-red|text-amber/);
 assert.doesNotMatch(renderGrooming({}), /Body Condition/);
-const renderVisit = (record) => vm.runInContext(`buildClinicHistoryDetails(${JSON.stringify({ type: "clinic", pet: clinic.pet, reference: clinic.appointment_reference, date: clinic.appointment_date, record })})`, ui.context);
+const renderVisit = (record) => renderClinic([{ pet: clinic.pet, appointment_reference: clinic.appointment_reference, ...record }]);
 const fullRecord = {
   ...clinic, primary_veterinarian_name: "Dr. Ana Santos", diagnosis_source: "working_diagnosis",
   vitals: { weight_kg: "4.250", temperature_c: 38.5, heart_rate_bpm: 120 },
@@ -164,32 +181,42 @@ assert.equal(ui.calls.length, 2, "One request per service, independent of the nu
 assert.ok(list().indexOf("Grooming") < list().indexOf("Clinic"), "Events sort by date");
 assert.doesNotMatch(list(), /Gastritis|Fluids administered|Omeprazole|PRIVATE|INTERNAL|radiograph/);
 
+const flush = () => new Promise(resolve => setImmediate(resolve));
 ui.element("historyServiceFilter").value = "clinic";
 ui.element("historyServiceFilter").listeners.change();
 assert.equal(ui.element("historySummary").textContent, "1 record found");
 assert.doesNotMatch(list(), /Grooming|Bruno/);
 ui.element("historySearch").value = "CL-20261015";
 ui.element("historySearch").listeners.input();
+await flush();
 assert.match(list(), /Mochi/);
 ui.element("historyDateFilter").value = "2026-10-16";
 ui.element("historyDateFilter").listeners.change();
+await flush();
 assert.match(list(), /No history found/);
 ui.element("historyClearFilters").listeners.click();
+await flush();
 assert.equal(ui.element("historyServiceFilter").value, "all");
 assert.equal(ui.element("historySummary").textContent, "3 records found");
 ui.element("historySearch").value = "Bruno";
 ui.element("historySearch").listeners.input();
+await flush();
 assert.match(list(), /Bruno/);
 assert.doesNotMatch(list(), /Mochi/);
 
-const trigger = { dataset: { historyType: "clinic", historyKey: clinic.appointment_reference }, focus() { this.focused = true; } };
+ui.element("historySearch").value = "";
+ui.element("historySearch").listeners.input();
+await flush();
+const trigger = { dataset: { historyType: "clinic", historyKey: String(clinic.id) }, focus() { this.focused = true; } };
+const callsBeforeDetail = ui.calls.length;
 ui.element("historyList").listeners.click({ target: { closest: () => trigger } });
+await flush();
 assert.equal(ui.element("historyModalTitle").textContent, "Visit Summary");
 assert.match(ui.element("historyModalContent").innerHTML, /Gastritis|Omeprazole/);
 assert.doesNotMatch(ui.element("historyModalContent").innerHTML, /PRIVATE|INTERNAL|radiograph|Full grooming|Bath|Vaccinations/);
 vm.runInContext("closeHistoryModal()", ui.context);
 assert.equal(trigger.focused, true);
-assert.equal(ui.calls.length, 2, "Opening and closing the clinic modal adds no API requests");
+assert.deepEqual(ui.calls.slice(callsBeforeDetail), ['/clinic/history/11'], "Only the selected clinic session loads medical details");
 const groomingDetails = vm.runInContext(`buildHistoryModalContent(${JSON.stringify(booking)}, ${JSON.stringify(booking.pets[0])})`, ui.context);
 assert.match(groomingDetails, /Full grooming/);
 assert.doesNotMatch(groomingDetails, /800|500|Payment Method|Total|Reviewed adjustment|Gastritis|Bath/);
@@ -213,7 +240,7 @@ const laterPet = { ...preferredSession.pets[0], grooming_preference_label: "Semi
 const laterDetails = vm.runInContext(`buildHistoryModalContent(${JSON.stringify(preferredSession)}, ${JSON.stringify(laterPet)})`, ui.context);
 assert.match(laterDetails, />Semi-Kalbo<\/span>/);
 assert.doesNotMatch(laterDetails, /Summer Cut|semi_kalbo/);
-const escaped = vm.runInContext(`buildClinicHistoryDetails(${JSON.stringify({ ...{ type: "clinic", record: clinic }, pet: { pet_name: "<img onerror=alert(1)>" }, reference: "<visit>", date: "2026-10-15" })})`, ui.context);
+const escaped = renderClinic([{ ...clinic, pet: { pet_name: "<img onerror=alert(1)>" }, appointment_reference: "<visit>" }]);
 assert.match(escaped, /&lt;img/);
 assert.doesNotMatch(escaped, /<img/);
 

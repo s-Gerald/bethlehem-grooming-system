@@ -12,6 +12,29 @@ use Tests\TestCase;
 
 class TransactionHistorySearchTest extends TestCase
 {
+    public function test_group_payment_is_one_transaction_searchable_by_each_patient(): void
+    {
+        (require database_path('migrations/2026_11_11_000001_create_clinic_visit_groups.php'))->up();
+        DB::table('pets')->insert(['pet_id' => 2, 'pet_name' => 'Rigby']);
+        $group = \App\Models\ClinicVisitGroup::create([
+            'user_id' => 1, 'source' => 'pre_registered', 'service_day' => '2026-10-03',
+            'total_amount' => 750, 'payment_method' => 'cash', 'paid_at' => '2026-10-03 15:00:00',
+        ]);
+        foreach ([1 => 500, 2 => 250] as $id => $amount) {
+            DB::table('clinic_appointments')->insert([
+                'id' => $id, 'user_id' => 1, 'pet_id' => $id, 'clinic_visit_group_id' => $group->id,
+                'appointment_reference' => "CL-SESSION-{$id}", 'status' => 'completed', 'paid' => true,
+                'total_amount' => $amount, 'paid_at' => '2026-10-03 15:00:00',
+            ]);
+        }
+        foreach (['', 'Rigby', 'CL-SESSION-2', 'Gerald Senining'] as $search) {
+            $result = $this->search(['search' => $search, 'transaction_type' => 'clinic_payment']);
+            $this->assertSame(1, $result['total']);
+            $this->assertSame(750, $result['collection_total']);
+            $this->assertCount(2, $result['transactions'][0]['patients']);
+        }
+    }
+
     public function test_veterinary_transactions_only_return_clinic_payments_and_scoped_totals(): void
     {
         \Laravel\Sanctum\Sanctum::actingAs(new \App\Models\User([

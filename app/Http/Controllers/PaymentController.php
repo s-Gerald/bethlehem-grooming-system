@@ -7,6 +7,7 @@ use App\Models\Booking;
 use App\Models\BookingPet;
 use App\Models\BookingService;
 use App\Models\ClinicAppointment;
+use App\Models\ClinicVisitGroup;
 use App\Models\GatewayPayment;
 use App\Models\Payment;
 use App\Models\PosTransaction;
@@ -660,28 +661,29 @@ class PaymentController extends Controller
             });
         }
 
-        $clinicQuery = ClinicAppointment::query()->where('paid', true)->where('status', 'completed');
+        $hasClinicGroups = Schema::hasTable('clinic_visit_groups');
+        $clinicQuery = ClinicAppointment::query()->where('paid', true)->where('status', 'completed')
+            ->when($hasClinicGroups, fn ($query) => $query->whereNull('clinic_visit_group_id'));
         $this->applyPeriodFilter($clinicQuery, $period, $date, $week, $month, $year);
+        $clinicGroups = $hasClinicGroups ? ClinicVisitGroup::query()->whereNotNull('paid_at') : null;
+        if ($clinicGroups) {
+            $this->applyPeriodFilter($clinicGroups, $period, $date, $week, $month, $year);
+        }
         if ($search !== '') {
-            $nameTerms = preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY);
-            $clinicQuery->where(function ($query) use ($search, $nameTerms, $gatewaySearch) {
-                $query->whereRaw('LOWER(appointment_reference) LIKE ?', ["%{$search}%"])
-                    ->orWhereHas('pet', fn ($pet) => $pet->whereRaw('LOWER(pet_name) LIKE ?', ["%{$search}%"]));
+            $hasSnapshot = Schema::hasColumn('clinic_appointments', 'pet_profile_snapshot');
+            $matchPatient = fn ($query) => $this->matchClinicTransactionPatient($query, $search, $hasSnapshot);
+            $clinicQuery->where(function ($query) use ($matchPatient, $gatewaySearch) {
+                $query->where($matchPatient);
                 if ($gatewaySearch) $query->orWhereHas('gatewayPayment', $gatewaySearch);
-                foreach (['user' => ['first_name', 'last_name'], 'walkin' => ['fname', 'lname'],
-                    'pet.unregisteredCustomer' => ['first_name', 'last_name']] as $relation => $columns) {
-                    $query->orWhereHas($relation, function ($owner) use ($nameTerms, $columns) {
-                        foreach ($nameTerms as $term) {
-                            $owner->where(fn ($name) => $name->whereRaw("LOWER({$columns[0]}) LIKE ?", ["%{$term}%"])
-                                ->orWhereRaw("LOWER({$columns[1]}) LIKE ?", ["%{$term}%"]));
-                        }
-                    });
-                }
+            });
+            $clinicGroups?->where(function ($query) use ($matchPatient, $gatewaySearch) {
+                $query->whereHas('appointments', fn ($appointments) => $appointments->where($matchPatient));
+                if ($gatewaySearch) $query->orWhereHas('gatewayPayment', $gatewaySearch);
             });
         }
 
         if ($request->boolean('exclude_test') && Schema::hasTable('gateway_payments')) {
-            foreach ([$query, $posQuery, $clinicQuery] as $financialQuery) {
+            foreach (array_filter([$query, $posQuery, $clinicQuery, $clinicGroups]) as $financialQuery) {
                 if (Schema::hasColumn($financialQuery->getModel()->getTable(), 'gateway_payment_id')) {
                     $financialQuery->whereDoesntHave('gatewayPayment', fn ($gateway) => $gateway->where('livemode', false));
                 }
@@ -699,7 +701,13 @@ class PaymentController extends Controller
             ->when(! in_array($type, ['all', 'product_sale'], true), fn ($q) => $q->whereRaw('1 = 0'))->toBase();
         $clinicRows = $clinicQuery->selectRaw("id as transaction_id, 'clinic_payment' as transaction_type, paid_at, total_amount, ".$testFlag('clinic_appointments')." as is_test")
             ->when(! in_array($type, ['all', 'clinic_payment'], true), fn ($q) => $q->whereRaw('1 = 0'))->toBase();
-        $combined = DB::query()->fromSub($clinicOnly ? $clinicRows : $groomingRows->unionAll($posRows)->unionAll($clinicRows), 'financial_transactions');
+        $financialRows = $clinicOnly ? $clinicRows : $groomingRows->unionAll($posRows)->unionAll($clinicRows);
+        if ($clinicGroups && in_array($type, ['all', 'clinic_payment'], true)) {
+            $financialRows->unionAll($clinicGroups->selectRaw(
+                "id as transaction_id, 'clinic_group' as transaction_type, paid_at, total_amount, ".$testFlag('clinic_visit_groups')." as is_test",
+            )->toBase());
+        }
+        $combined = DB::query()->fromSub($financialRows, 'financial_transactions');
         $collectionTotal = (float) (clone $combined)->where('is_test', 0)->sum('total_amount');
         $testCollectionTotal = (float) (clone $combined)->where('is_test', 1)->sum('total_amount');
         $page = (clone $combined)->orderByDesc('paid_at')->orderBy('transaction_type')->orderByDesc('transaction_id')
@@ -718,9 +726,16 @@ class PaymentController extends Controller
             ->whereKey($rows->where('transaction_type', 'product_sale')->pluck('transaction_id'))->get()->keyBy('pos_id');
         $clinicPayments = ClinicAppointment::with(['user', 'walkin', 'pet.unregisteredCustomer', 'charges', 'paidBy', 'gatewayPayment'])
             ->whereKey($rows->where('transaction_type', 'clinic_payment')->pluck('transaction_id'))->get()->keyBy('id');
+        $groupPayments = $hasClinicGroups
+            ? ClinicVisitGroup::with(['gatewayPayment', 'paidBy',
+                'appointments' => fn ($query) => $query->where('paid', true)->orderBy('id'),
+                'appointments.user', 'appointments.walkin', 'appointments.pet.unregisteredCustomer', 'appointments.charges'])
+                ->whereKey($rows->where('transaction_type', 'clinic_group')->pluck('transaction_id'))->get()->keyBy('id')
+            : collect();
         $transactions = $rows->map(fn ($row) => match ($row->transaction_type) {
             'product_sale' => $this->formatProductSale($sales->get($row->transaction_id)),
             'clinic_payment' => $this->formatClinicPayment($clinicPayments->get($row->transaction_id)),
+            'clinic_group' => $this->formatClinicGroupPayment($groupPayments->get($row->transaction_id)),
             default => $this->formatTransaction($payments->get($row->transaction_id)),
         });
 
@@ -739,6 +754,25 @@ class PaymentController extends Controller
             'page' => $page->currentPage(),
             'last_page' => $page->lastPage(),
         ]);
+    }
+
+    private function matchClinicTransactionPatient($query, string $search, bool $hasSnapshot): void
+    {
+        $nameTerms = preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY);
+        $query->whereRaw('LOWER(appointment_reference) LIKE ?', ["%{$search}%"])
+            ->orWhereHas('pet', fn ($pet) => $pet->whereRaw('LOWER(pet_name) LIKE ?', ["%{$search}%"]));
+        if ($hasSnapshot) {
+            $query->orWhere(fn ($snapshot) => \App\Support\PetProfileSnapshot::whereIdentity($snapshot, $search, ['pet_name']));
+        }
+        foreach (['user' => ['first_name', 'last_name'], 'walkin' => ['fname', 'lname'],
+            'pet.unregisteredCustomer' => ['first_name', 'last_name']] as $relation => $columns) {
+            $query->orWhereHas($relation, function ($owner) use ($nameTerms, $columns) {
+                foreach ($nameTerms as $term) {
+                    $owner->where(fn ($name) => $name->whereRaw("LOWER({$columns[0]}) LIKE ?", ["%{$term}%"])
+                        ->orWhereRaw("LOWER({$columns[1]}) LIKE ?", ["%{$term}%"]));
+                }
+            });
+        }
     }
 
     private function applyPeriodFilter($query, string $period, string $date, string $week, string $month, string $year, string $column = 'paid_at'): void
@@ -874,6 +908,36 @@ class PaymentController extends Controller
                 'unit_price' => $charge->unit_price,
                 'amount' => $charge->amount,
             ])->values(),
+        ];
+    }
+
+    private function formatClinicGroupPayment(ClinicVisitGroup $group): array
+    {
+        $first = $group->appointments->first();
+        $base = $this->formatClinicPayment($first->setRelation('paidBy', $group->paidBy)->setRelation('gatewayPayment', $group->gatewayPayment));
+        $patients = $group->appointments->map(fn (ClinicAppointment $patient) => [
+            'id' => $patient->id,
+            'reference' => $patient->appointment_reference,
+            'pet_name' => \App\Support\PetProfileSnapshot::pet($patient->pet_profile_snapshot, $patient->pet_id)?->pet_name
+                ?? $patient->pet?->pet_name,
+            'subtotal' => $patient->total_amount,
+            'charges' => $patient->charges,
+        ])->values();
+
+        return [
+            ...$base,
+            'key' => 'clinic-session-'.$group->id,
+            'clinicVisitGroupId' => $group->id,
+            'patients' => $patients,
+            'petName' => $patients->pluck('pet_name')->filter()->implode(', '),
+            'finalPrice' => (float) $group->total_amount,
+            'amountPaid' => $group->cash_received === null ? null : (float) $group->cash_received,
+            'changeGiven' => $group->cash_received === null ? null : round((float) $group->cash_received - (float) $group->total_amount, 2),
+            'paymentMethod' => $group->payment_method,
+            'processedBy' => $group->paid_by_user_id,
+            'paidAt' => $group->paid_at->format('Y-m-d H:i:s'),
+            'dateKey' => $group->paid_at->toDateString(),
+            'charges' => [],
         ];
     }
 

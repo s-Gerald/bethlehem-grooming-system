@@ -25,6 +25,7 @@ class ClinicAppointment extends Model
 
     protected $fillable = [
         'appointment_reference',
+        'clinic_visit_group_id',
         'appointment_type',
         'case_type',
         'status',
@@ -98,6 +99,11 @@ class ClinicAppointment extends Model
         return $this->belongsTo(Walkin::class, 'walkin_id', 'id');
     }
 
+    public function visitGroup()
+    {
+        return $this->belongsTo(ClinicVisitGroup::class, 'clinic_visit_group_id');
+    }
+
     public function paidBy()
     {
         return $this->belongsTo(User::class, 'paid_by_user_id', 'user_id');
@@ -154,7 +160,7 @@ class ClinicAppointment extends Model
             && $this->confinement()->whereNull('discharged_at')->exists();
     }
 
-    public function canCustomerCancel(): bool
+    public function canCustomerCancel(?bool $savedClinicalActivity = null): bool
     {
         if ($this->appointment_type !== 'pre_registered' || $this->status !== 'waiting_to_arrive'
             || $this->walkin_id !== null || $this->checked_in_at !== null || $this->queue_number !== null
@@ -163,6 +169,10 @@ class ClinicAppointment extends Model
             || $this->cash_received !== null || $this->paid_by_user_id !== null || $this->payment_method !== null
             || (float) $this->total_amount > 0) {
             return false;
+        }
+
+        if ($savedClinicalActivity !== null) {
+            return ! $savedClinicalActivity;
         }
 
         if (\Illuminate\Support\Facades\Schema::hasTable('gateway_payments')
@@ -177,8 +187,12 @@ class ClinicAppointment extends Model
 
     public function clinicalContentEditableFor(User $actor): bool
     {
-        if (\Illuminate\Support\Facades\Schema::hasTable('gateway_payments')
-            && GatewayPayment::forPayable($this, 'clinic')->unresolved()->exists()) return false;
+        if (GatewayPayment::clinicPaymentPending($this)) return false;
+        return $this->clinicalContentEditableAtStage($actor);
+    }
+
+    public function clinicalContentEditableAtStage(User $actor): bool
+    {
         return in_array($this->status, self::CLINICAL_CONTENT_EDITABLE_STATUSES, true)
             || ($actor->role === 'admin' && $this->status === 'for_payment');
     }
@@ -205,8 +219,12 @@ class ClinicAppointment extends Model
             'consultation_finished_at' => now(),
         ]);
         \App\Support\PetBodyCondition::synchronize($this, $this->vitals()->first()?->body_condition_score);
-        Notification::createForClinic($this, Notification::TYPE_CLINIC_PAYMENT_DUE,
-            "Clinic visit {$this->appointment_reference} is ready for payment.");
+        if ($this->clinic_visit_group_id) {
+            app(\App\Services\ClinicPaymentSettlementService::class)->notifyWhenGroupIsReady($this->clinic_visit_group_id);
+        } else {
+            Notification::createForClinic($this, Notification::TYPE_CLINIC_PAYMENT_DUE,
+                "Clinic visit {$this->appointment_reference} is ready for payment.");
+        }
     }
 
     public function assertCompletionVitals(): void

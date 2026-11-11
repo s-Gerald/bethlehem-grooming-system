@@ -204,10 +204,12 @@ class InventoryStockMovementService
             }
             $remaining = (float) $quantity;
             $allocations = [];
+            $pickedBatch = null;
             foreach ($eligible as $batch) {
                 if ($remaining <= 0) break;
                 $picked = min($remaining, (float) $batch['available_quantity']);
                 if ($picked <= 0) continue;
+                if (! empty($entry['capture_batch'])) $pickedBatch ??= $batch;
                 $allocations[] = ['receipt_id' => $batch['transaction_id'], 'quantity' => $picked];
                 $remaining = round($remaining - $picked, 2);
             }
@@ -218,6 +220,8 @@ class InventoryStockMovementService
                 && (! $this->batchBalances->tracksExpiry($item) || in_array($entry['reason'], ['damaged', 'adjustment'], true));
             abort_if($remaining > 0.00001 && (! $allowUntracked || $remaining > $untracked + 0.00001), 422, 'Insufficient eligible receipt stock.');
             $this->batchBalances->consume($balance, $allocations);
+            $batchNumber = $pickedBatch['batch_number'] ?? $entry['batch_number'] ?? null;
+            $expiryDate = $pickedBatch['expiry_date'] ?? $entry['expiry_date'] ?? null;
 
             $item->decrement('quantity_on_hand', $entry['quantity']);
             $after = $this->batchBalances->quantities($item, $balance, (float) $reserved);
@@ -231,8 +235,8 @@ class InventoryStockMovementService
                 'unit_cost_at_time' => $entry['unit_cost_at_time'] ?? null,
                 'selling_price_at_time' => $entry['selling_price'] ?? $item->selling_price,
                 'reason' => $entry['reason'],
-                'batch_number' => $entry['batch_number'] ?? null,
-                'expiry_date' => $entry['expiry_date'] ?? null,
+                'batch_number' => $batchNumber,
+                'expiry_date' => $expiryDate,
                 'notes' => $entry['notes'] ?? null,
                 'reference_type' => $entry['reference_type'] ?? 'manual',
                 'reference_id' => $entry['reference_id'] ?? null,
@@ -249,6 +253,7 @@ class InventoryStockMovementService
                 'unexpired_quantity' => $balance['unexpired_quantity'],
                 ...$after,
                 'receipt_allocations' => $allocations,
+                ...(! empty($entry['capture_batch']) ? ['batch_number' => $batchNumber, 'expiry_date' => $expiryDate] : []),
                 'transaction_id' => $transaction->transaction_id,
             ];
         }

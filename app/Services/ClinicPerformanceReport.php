@@ -2,24 +2,23 @@
 
 namespace App\Services;
 
-use App\Models\ClinicAppointment;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 class ClinicPerformanceReport
 {
-    public function __construct(private readonly ReportPeriod $period) {}
+    public function __construct(private readonly ReportPeriod $period, private readonly ClinicCollections $collections) {}
 
     public function build(array $filters): array
     {
         [$start, $end] = $this->period->range($filters);
         $until = $end->addDay();
         $grouping = $this->period->grouping($start, $end);
-        $payments = $this->eligibleCases();
+        $payments = $this->collections->settlements(requireFinishedVisit: true);
         $this->period->between($payments, 'paid_at', $start, $until);
-        $money = (clone $payments)->selectRaw('COALESCE(SUM(amount), 0) as total, COUNT(DISTINCT id) as cases')->first();
-        $visits = $this->eligibleCases();
+        $money = (clone $payments)->selectRaw('COALESCE(SUM(amount), 0) as total, COUNT(*) as cases')->first();
+        $visits = $this->collections->visits();
         $this->period->between($visits, 'consultation_finished_at', $start, $until);
         $completed = (clone $visits)->count();
 
@@ -33,28 +32,6 @@ class ClinicPerformanceReport
             'services' => $this->services($visits),
             'outcomes' => $this->outcomes($start, $until, $completed),
         ];
-    }
-
-    private function eligibleCases(): Builder
-    {
-        // A case stores its one settled payment. Never sum gateway attempts, charges,
-        // or services here: each can contain multiple records for the same visit.
-        $cases = DB::table('clinic_appointments as c')
-            ->leftJoin('gateway_payments as g', 'g.id', '=', 'c.gateway_payment_id')
-            ->where('c.status', 'completed')->where('c.paid', true)
-            ->whereNotNull('c.consultation_finished_at')
-            ->where(function ($q) {
-                $q->where(fn ($cash) => $cash->whereNull('c.gateway_payment_id')->where('c.payment_method', 'cash')
-                    ->whereNotNull('c.paid_at')->where('c.total_amount', '>=', 0))
-                    ->orWhere(fn ($online) => $online->where('g.provider', 'paymongo')->where('g.context', 'clinic')
-                        ->where('g.payable_type', (new ClinicAppointment)->getMorphClass())->whereColumn('g.payable_id', 'c.id')
-                        ->where('g.status', 'paid')->where('g.livemode', true)->where('g.currency', 'PHP')
-                        ->whereNull('g.reconciliation_reason')->whereNotNull('g.paid_at')->where('g.amount', '>', 0));
-            })
-            ->select('c.id', 'c.consultation_finished_at')
-            ->selectRaw('CASE WHEN c.gateway_payment_id IS NULL THEN c.paid_at ELSE g.paid_at END as paid_at')
-            ->selectRaw('CASE WHEN c.gateway_payment_id IS NULL THEN c.total_amount ELSE g.amount END as amount');
-        return DB::query()->fromSub($cases, 'eligible_cases');
     }
 
     private function byDay(Builder $query, string $column, string $aggregate)

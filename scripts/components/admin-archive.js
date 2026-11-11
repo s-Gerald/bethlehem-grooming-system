@@ -9,6 +9,7 @@ function adminArchive() {
     clinicArchivedList: [],
     totalCount: 0,
     clinicTotalCount: 0,
+    clinicPage: 1, clinicLastPage: 1,
     searchQuery: "",
     sortOrder: "newest",
     selectedYear: currentYear,
@@ -32,6 +33,7 @@ function adminArchive() {
     _consentRequest: 0,
     clinicDetailsModalOpen: false,
     detailsClinicRecord: null,
+    detailsClinicSession: null, clinicPatientLoading: false, _clinicPatientRequest: 0,
     clinicCare: null,
     clinicCareLoading: false,
     clinicCareError: "",
@@ -94,7 +96,7 @@ function adminArchive() {
       await this.loadArchive({ force: false });
     },
 
-    async loadArchive({ force = false } = {}) {
+    async loadArchive({ force = false, page = 1 } = {}) {
       if (!this._archiveIdentityLoaded && typeof API.getStaffIdentity === 'function') {
         this.loading = true;
         this.errorMessage = '';
@@ -111,17 +113,21 @@ function adminArchive() {
       }
       const type = this.archiveType, search = this.searchQuery.trim();
       const key = JSON.stringify([type, search]), request = ++this._historyRequest;
+      const params = new URLSearchParams(search ? {search} : {});
+      if (type === "clinic" && page > 1) params.set("page", page);
       const endpoint = (type === 'clinic' ? '/admin/clinic-appointments/archived' : '/admin/bookings/archived')
-        + (search ? '?' + new URLSearchParams({search}) : '');
+        + (params.size ? '?' + params : '');
       this.historyLoaded = this.historyLoaded && this._historyKey === key;
       this.loading = true;
       this.errorMessage = "";
       try {
         await API.loadAdminData(endpoint, () => type === 'clinic'
-          ? API.getArchivedClinicAppointments({search}, {force}) : API.getArchivedBookings({search}, {force}), data => {
+          ? API.getArchivedClinicAppointments({search, page}, {force}) : API.getArchivedBookings({search}, {force}), data => {
           if (request !== this._historyRequest || type !== this.archiveType || search !== this.searchQuery.trim()) return;
           if (type === 'clinic') {
-            this.clinicArchivedList = data.archived || [];
+            this.clinicArchivedList = page === 1 ? data.archived || [] : [...this.clinicArchivedList, ...(data.archived || [])];
+            this.clinicPage = data.current_page || 1;
+            this.clinicLastPage = data.last_page || 1;
             this.clinicTotalCount = data.total ?? this.clinicArchivedList.length;
           } else {
             this.archivedList = data.archived || [];
@@ -489,6 +495,7 @@ function adminArchive() {
     viewClinicRecord(record, trigger = document.activeElement) {
       this._clinicTrigger = trigger;
       this.detailsClinicRecord = record;
+      this.detailsClinicSession = record.session ?? null;
       this.clinicCare = null;
       this.clinicCareError = "";
       this.clinicAttachmentError = "";
@@ -503,9 +510,28 @@ function adminArchive() {
       this.loadClinicCare();
     },
 
+    async viewClinicPatient(patient) {
+      if (this.detailsClinicRecord?.id === patient.id) return;
+      const request = ++this._clinicPatientRequest;
+      ++this._clinicRequest;
+      this.clinicPatientLoading = true;
+      this.clinicCareError = "";
+      try {
+        const response = await API.getClinicCase(patient.id);
+        if (!this.clinicDetailsModalOpen || request !== this._clinicPatientRequest) return;
+        this.detailsClinicRecord = response.case;
+        this.clinicCare = null;
+        this.loadClinicCare();
+      } catch (error) {
+        if (request === this._clinicPatientRequest) this.clinicCareError = error.message || "Could not load this patient.";
+      } finally {
+        if (request === this._clinicPatientRequest) this.clinicPatientLoading = false;
+      }
+    },
+
     async loadClinicCare() {
       const record = this.detailsClinicRecord, request = ++this._clinicRequest;
-      if (record.treatment_count === 0 && record.service_count === 0 && !record.confinement) {
+      if (!record?.pet?.id || (record.treatment_count === 0 && record.service_count === 0 && !record.confinement)) {
         this.clinicCare = {treatments: [], services: [], confinement: null};
         this.clinicCareLoading = false;
         return;
@@ -530,6 +556,9 @@ function adminArchive() {
     closeClinicRecord() {
       if (!this.clinicDetailsModalOpen) return;
       ++this._clinicRequest;
+      ++this._clinicPatientRequest;
+      this.clinicPatientLoading = false;
+      this.detailsClinicSession = null;
       this.clinicDetailsModalOpen = false;
       this.detailsClinicRecord = null;
       this.clinicCare = null;

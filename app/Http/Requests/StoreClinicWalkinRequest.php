@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\ClinicVisitGroup;
 use App\Rules\ValidBreedCoat;
 use App\Rules\ValidPetColor;
 use App\Rules\ValidPetBirthdate;
@@ -11,6 +12,7 @@ use App\Rules\ValidPetWeight;
 use App\Support\ClinicConcerns;
 use App\Support\AccountEmail;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 use Illuminate\Validation\Rule;
 
 class StoreClinicWalkinRequest extends FormRequest
@@ -57,12 +59,23 @@ class StoreClinicWalkinRequest extends FormRequest
             'unregistered_customer_id' => ['nullable', 'integer', 'exists:unregistered_customers,id'],
             'confirm_similar_name' => ['sometimes', 'boolean'],
 
-            // Pet — single pet for clinic walk-in
-            'pet_id' => ['nullable', 'integer', 'exists:pets,pet_id'],
+            ...($this->exists('patients') ? [
+                'patients' => ['required', 'array', 'list', 'min:1', 'max:'.ClinicVisitGroup::MAX_PATIENTS],
+            ] : $this->patientRules($this->all(), legacy: true)),
+
+            'clinic_quick_entry' => ['sometimes', 'boolean'],
+            'terms_agreed' => ['required', 'boolean', 'accepted'],
+        ];
+    }
+
+    private function patientRules(array $patient, bool $legacy = false): array
+    {
+        return [
+            'pet_id' => ['nullable', 'integer', ...($legacy ? ['exists:pets,pet_id'] : [])],
             'pet_name' => ['required', 'string', 'max:100'],
             'species' => ['required', 'string', 'max:100'],
             'breed' => [
-                Rule::requiredIf($this->boolean('clinic_quick_entry') && ! $this->filled('pet_id')),
+                Rule::requiredIf($this->boolean('clinic_quick_entry') && empty($patient['pet_id'])),
                 'nullable',
                 'string',
                 'max:100',
@@ -78,15 +91,54 @@ class StoreClinicWalkinRequest extends FormRequest
             'color' => ['nullable', 'string', new ValidPetColor(allowExistingPetSelection: true)],
             'medical_conditions' => ['nullable', 'string', 'max:500'],
 
-            // Clinic
-            'common_concerns' => ['required', 'array', 'min:1', 'max:11'],
-            'common_concerns.*' => ['required', 'string', 'distinct', Rule::in(ClinicConcerns::OPTIONS)],
-            'chief_complaint' => ['nullable', 'string', 'max:500'],
-            'clinic_quick_entry' => ['sometimes', 'boolean'],
-
-            // Consent
-            'terms_agreed' => ['required', 'boolean', 'accepted'],
+            ...ClinicConcerns::rules(),
         ];
+    }
+
+    public function after(): array
+    {
+        return [function (Validator $validator): void {
+            if (! $this->exists('patients') || $validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            $seen = [];
+            foreach ($this->input('patients') as $index => $patient) {
+                if (! is_array($patient)) {
+                    $validator->errors()->add("patients.{$index}", 'Enter valid patient information.');
+                    continue;
+                }
+                $row = validator($patient, $this->patientRules($patient), $this->messages());
+                if ($row->fails()) {
+                    foreach ($row->errors()->messages() as $field => $messages) {
+                        foreach ($messages as $message) {
+                            $validator->errors()->add("patients.{$index}.{$field}", $message);
+                        }
+                    }
+                    continue;
+                }
+
+                $id = $row->validated()['pet_id'] ?? null;
+                if ($id !== null && isset($seen[$id])) {
+                    $validator->errors()->add("patients.{$index}.pet_id", 'Select each pet only once.');
+                }
+                if ($id !== null) {
+                    $seen[$id] = true;
+                }
+            }
+        }];
+    }
+
+    public function patients(): array
+    {
+        if (! $this->exists('patients')) {
+            return [$this->validated()];
+        }
+
+        return array_map(
+            fn (array $patient) => array_intersect_key($patient, $this->patientRules($patient)),
+            $this->validated('patients'),
+        );
     }
 
     public function messages(): array

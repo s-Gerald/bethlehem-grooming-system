@@ -3,6 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\ClinicAppointment;
+use App\Models\ClinicCharge;
+use App\Models\ClinicVisitGroup;
+use App\Models\GatewayPayment;
 use App\Models\InventoryItem;
 use App\Models\Pet;
 use App\Models\User;
@@ -10,6 +13,8 @@ use App\Models\VaccinationRecord;
 use App\Support\ClinicClinicalRules;
 use App\Services\InventoryBatchBalanceService;
 use App\Services\ClinicBillingService;
+use App\Services\ClinicGroupClinicalPatients;
+use App\Services\ClinicTreatmentFinalizer;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
@@ -129,6 +134,107 @@ class AdminVaccinationController extends Controller
                 'vaccination' => $this->formatRecord($this->loadResponseRelations($record)),
             ], 201);
         });
+    }
+
+    public function bulkPreview(Request $request, int $id, int $itemId, ClinicGroupClinicalPatients $scope, ClinicTreatmentFinalizer $treatments)
+    {
+        $group = $scope->group($id, $request->user());
+        $item = $this->bulkItem($itemId);
+        $availability = $this->batchBalances->treatmentAvailability($item, $this->batchBalances->forItem($itemId));
+        return response()->json([
+            'administered_date' => now()->toDateString(),
+            'available_quantity' => $availability['available_quantity'],
+            'unit' => $item->unit,
+            'patients' => $scope->preview($group, $request->user())->map(function (ClinicAppointment $case) use ($item, $treatments) {
+                $price = null;
+                $error = null;
+                try {
+                    $price = $treatments->price($item, $case);
+                } catch (ValidationException $exception) {
+                    $error = collect($exception->errors())->flatten()->first();
+                }
+                return [
+                    'id' => $case->id, 'name' => $case->pet->pet_name, 'reference' => $case->appointment_reference,
+                    'weight' => $case->vitals?->weight_kg,
+                    'price' => $price['price'] ?? null, 'priced_weight' => $price['pet_weight_kg'] ?? null, 'error' => $error,
+                ];
+            }),
+        ]);
+    }
+
+    public function bulkStore(Request $request, int $id, ClinicGroupClinicalPatients $scope, ClinicTreatmentFinalizer $treatments)
+    {
+        $data = $request->validate([
+            'inventory_item_id' => ['required', 'integer'],
+            'patients' => ['required', 'array', 'list', 'min:1', 'max:'.ClinicVisitGroup::MAX_PATIENTS],
+            'patients.*' => ['array:id,request_key,inventory_quantity,dose_amount,dose_unit,dose_unit_other,route,administration_site,next_due_date,expected_price,expected_weight_kg,notes'],
+            'patients.*.id' => ['required', 'integer', 'distinct'],
+            'patients.*.request_key' => ['required', 'uuid', 'distinct'],
+            'patients.*.expected_price' => ['required', 'numeric', 'decimal:0,2', 'min:0', 'max:999999.99'],
+        ]);
+
+        $records = DB::transaction(function () use ($request, $id, $scope, $treatments, $data) {
+            $actor = $request->user();
+            $group = $scope->group($id, $actor, lock: true);
+            $cases = $scope->locked($group, array_column($data['patients'], 'id'));
+            // The row validator reuses single-patient field rules after this batch ownership check.
+            $inputs = collect($request->input('patients'))->keyBy('id');
+            $existing = VaccinationRecord::whereIn('request_key', $inputs->pluck('request_key'))->get()->keyBy('request_key');
+            if ($existing->count() !== $cases->count()) GatewayPayment::assertClinicUnlocked($cases->first());
+            $item = $this->bulkItem($data['inventory_item_id'], lock: true, activeOnly: $existing->count() !== $cases->count());
+            $existingCharges = $item->category === 'medicine'
+                ? ClinicCharge::whereIn('request_key', $inputs->pluck('request_key'))->pluck('request_key')->flip() : collect();
+
+            $records = $cases->map(function (ClinicAppointment $case) use ($actor, $scope, $item, $existing, $inputs, $existingCharges) {
+                $row = $inputs->get($case->id);
+                try {
+                    if ($record = $existing->get($row['request_key'])) {
+                        if ((int) $record->clinic_appointment_id === $case->id && (int) $record->inventory_item_id === $item->item_id
+                            && $record->published_at && ! $record->voided_at) {
+                            return $record;
+                        }
+                        throw ValidationException::withMessages(['request_key' => 'This treatment request has already been used.']);
+                    }
+                    if ($existingCharges->has($row['request_key'])) {
+                        throw ValidationException::withMessages(['request_key' => 'This medicine request has already been used.']);
+                    }
+                    if (! $scope->editable($case, $actor)) {
+                        throw ValidationException::withMessages(['status' => 'Treatments cannot be changed at this case stage.']);
+                    }
+                    unset($row['id']);
+                    $expectedPrice = $row['expected_price'];
+                    if ($item->category === 'vaccine') {
+                        unset($row['expected_price'], $row['expected_weight_kg']);
+                    }
+                    $patientRequest = Request::create('/', 'POST', [
+                        ...$row, 'inventory_item_id' => $item->item_id, 'treatment_type' => $item->category, 'complete_entry' => true,
+                    ]);
+                    $validated = $this->validateClinicalData($patientRequest, $case->pet_id, itemChecked: true);
+                    return new VaccinationRecord([
+                        ...$validated, 'expected_price' => $expectedPrice,
+                        'clinic_appointment_id' => $case->id, 'pet_id' => $case->pet_id,
+                        'vaccine_name' => $item->item_name, 'strength_concentration' => $item->strength_concentration,
+                        'recorded_by_user_id' => $actor->user_id,
+                    ]);
+                } catch (ValidationException $error) {
+                    $scope->fail($case, $error);
+                }
+            });
+            $treatments->publishBatch($item, $records->filter(fn ($record) => ! $record->exists), $cases, $actor, $scope);
+
+            return $records->values()->map(fn (VaccinationRecord $record) => [
+                'id' => $record->id, 'appointment_id' => $record->clinic_appointment_id,
+            ]);
+        }, 3);
+
+        return response()->json(['data' => $records]);
+    }
+
+    private function bulkItem(int $itemId, bool $lock = false, bool $activeOnly = true): InventoryItem
+    {
+        return InventoryItem::query()->when($activeOnly, fn ($query) => $query->where('is_active', true))
+            ->whereIn('category', ['vaccine', 'medicine'])
+            ->with('weightPrices')->when($lock, fn ($query) => $query->lockForUpdate())->findOrFail($itemId);
     }
 
     public function show(int $petId, int $vaccinationId)
@@ -343,6 +449,7 @@ class AdminVaccinationController extends Controller
         Request $request,
         int $petId,
         ?VaccinationRecord $record = null,
+        bool $itemChecked = false,
     ): array {
         $updating = $record !== null;
         $optional = $updating ? ['sometimes', 'nullable'] : ['nullable'];
@@ -377,8 +484,8 @@ class AdminVaccinationController extends Controller
             'inventory_item_id' => [
                 ...($usesInventory ? $required : $optional),
                 'integer',
-                Rule::exists('inventory_items', 'item_id')
-                    ->where(fn ($query) => $query->where('category', $type)->where('is_active', 1)),
+                ...($itemChecked ? [] : [Rule::exists('inventory_items', 'item_id')
+                    ->where(fn ($query) => $query->where('category', $type)->where('is_active', 1))]),
             ],
             'notes' => [...$optional, 'string', 'max:500'],
             ...$this->serverManagedRules(),

@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Models\ClinicAppointment;
 use App\Models\ClinicCaseService;
 use App\Models\ClinicService;
+use App\Models\GatewayPayment;
 use App\Models\User;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -77,19 +79,90 @@ class ClinicCaseServiceRecorder
                     'applied_price' => $pricing['price'], 'service_snapshot' => $pricing['snapshot'],
                 ]);
             }
-            $entry->save();
-            if ($entry->status === 'performed') {
-                $charge = $appointment->charges()->make([
-                    'kind' => 'service', 'clinic_service_id' => $service->id,
-                    'description' => $entry->service_snapshot['name'] ?? $service->name,
-                    'quantity' => $entry->quantity, 'unit_price' => $entry->applied_price,
-                    'amount' => app(ClinicBillingService::class)->lineAmount($entry->quantity, $entry->applied_price),
-                ]);
-                $charge->forceFill(['clinic_case_service_id' => $entry->id])->save();
-                app(ClinicBillingService::class)->updateTotal($appointment);
-            }
-            return $entry->load('charge');
+            return $this->persist($appointment, $entry, $service->name);
         });
+    }
+
+    public function bulk(int $anchor, array $data, User $actor, ClinicGroupClinicalPatients $scope): Collection
+    {
+        return DB::transaction(function () use ($anchor, $data, $actor, $scope) {
+            $group = $scope->group($anchor, $actor, lock: true);
+            $patients = $scope->locked($group, array_column($data['patients'], 'id'));
+            $requests = collect($data['patients'])->keyBy('id');
+            $retries = ClinicCaseService::with('charge')->whereIn('request_key', $requests->pluck('request_key'))->get()->keyBy('request_key');
+            if ($retries->count() !== $patients->count()) GatewayPayment::assertClinicUnlocked($patients->first());
+            $service = ClinicService::with('category')->lockForUpdate()->findOrFail($data['clinic_service_id']);
+            $resolver = app(ClinicServicePriceResolver::class);
+            $billing = app(ClinicBillingService::class);
+            $prepared = $patients->map(function (ClinicAppointment $patient) use ($actor, $scope, $service, $requests, $retries, $resolver, $billing) {
+                $input = $requests->get($patient->id);
+                try {
+                    $entry = $retries->get($input['request_key']);
+                    if ($entry) {
+                        if ((int) $entry->clinic_appointment_id === $patient->id
+                            && (int) $entry->clinic_service_id === $service->id && $entry->status === 'performed') {
+                            return [$entry, null];
+                        }
+                        throw ValidationException::withMessages(['request_key' => 'This service request has already been used.']);
+                    }
+                    if (! $scope->editable($patient, $actor)) {
+                        throw ValidationException::withMessages(['status' => 'Clinical services cannot be changed at this case stage.']);
+                    }
+                    if (! $service->is_active || $service->category?->name === ClinicConfinementService::CATEGORY) {
+                        throw ValidationException::withMessages(['clinic_service_id' => 'Choose an active service outside Confinement.']);
+                    }
+                    $shot = $service->billing_unit === 'shot';
+                    validator($input, ['quantity' => $shot ? 'required|integer|min:1|max:99999999' : 'prohibited'])->validate();
+                    $quantity = $shot ? $input['quantity'] : 1;
+                    $pricing = $resolver->resolve($service, $patient, $input['applied_price'] ?? null);
+                    if ((float) $pricing['price'] !== (float) $input['expected_price']) {
+                        throw ValidationException::withMessages(['price' => 'The service price changed. Review the price again.']);
+                    }
+                    $total = round((float) $patient->charges_sum_amount + (float) $billing->lineAmount($quantity, $pricing['price']), 2);
+                    if ($total > 99999999.99) {
+                        throw ValidationException::withMessages(['charges' => 'The case charges exceed the supported total.']);
+                    }
+                    $entry = $patient->caseServices()->make([
+                        'clinic_service_id' => $service->id, 'request_key' => $input['request_key'],
+                        'quantity' => $quantity,
+                    ])->forceFill([
+                        'status' => 'performed',
+                        'recorded_by_user_id' => $actor->user_id, 'performed_by_user_id' => $actor->user_id,
+                        'performed_at' => now(), 'applied_price' => $pricing['price'], 'service_snapshot' => $pricing['snapshot'],
+                    ]);
+
+                    return [$entry, $total];
+                } catch (ValidationException $error) {
+                    $scope->fail($patient, $error);
+                }
+            });
+
+            return $prepared->map(fn ($row, $id) => $row[0]->exists
+                ? $row[0] : $this->persist($patients->get($id), $row[0], $service->name, $row[1]))->values();
+        }, 3);
+    }
+
+    private function persist(ClinicAppointment $appointment, ClinicCaseService $entry, string $serviceName, ?float $total = null): ClinicCaseService
+    {
+        $entry->save();
+        if ($entry->status === 'performed') {
+            $billing = app(ClinicBillingService::class);
+            $charge = $appointment->charges()->make([
+                'kind' => 'service', 'clinic_service_id' => $entry->clinic_service_id,
+                'description' => $entry->service_snapshot['name'] ?? $serviceName,
+                'quantity' => $entry->quantity, 'unit_price' => $entry->applied_price,
+                'amount' => $billing->lineAmount($entry->quantity, $entry->applied_price),
+            ]);
+            $charge->forceFill(['clinic_case_service_id' => $entry->id])->save();
+            if ($total === null) {
+                $billing->updateTotal($appointment);
+            } else {
+                $appointment->update(['total_amount' => $total]);
+            }
+            return $entry->setRelation('charge', $charge);
+        }
+
+        return $entry->load('charge');
     }
 
     public function remove(int $appointmentId, int $caseServiceId, User $actor): void

@@ -3,12 +3,20 @@ import { limitMessage, tooLong } from "../utils/short-notes.js?v=500-20261110";
 export const CLINIC_VISIT_DRAFT_KEY = "clinicVisitDraft";
 export const CLINIC_VISIT_PETS_KEY = "clinicVisitPets";
 export const CLINIC_VISIT_CONFIRMATION_KEY = "clinicVisitConfirmation";
+export const CLINIC_MAX_PATIENTS = 13;
+export const CLINIC_PATIENT_LIMIT_MESSAGE = `You can register up to ${CLINIC_MAX_PATIENTS} pets for one clinic visit.`;
 
 export function readClinicVisitDraft() {
   try {
     const value = sessionStorage.getItem(CLINIC_VISIT_DRAFT_KEY);
-    const draft = value ? JSON.parse(value) : {};
-    for (const key of ["appointmentDate", "windowId", "windowLabel", "startTime", "endTime", "scheduleText"]) delete draft[key];
+    const draft = value ? JSON.parse(value) ?? {} : {};
+    if (!Array.isArray(draft.patients)) {
+      draft.patients = draft.pet?.id ? [{
+        pet: draft.pet, commonConcerns: draft.commonConcerns, chiefComplaint: draft.chiefComplaint,
+      }] : [];
+    }
+    draft.patients = draft.patients.slice(0, CLINIC_MAX_PATIENTS).filter((row) => row?.pet?.id);
+    for (const key of ["pet", "commonConcerns", "chiefComplaint", "appointmentDate", "windowId", "windowLabel", "startTime", "endTime", "scheduleText"]) delete draft[key];
     return draft;
   } catch (error) {
     console.error("Failed to read the clinic visit draft:", error);
@@ -53,6 +61,13 @@ export function validateClinicVisitReason(concerns, details = "") {
 export function formatClinicVisitReason(concerns, details = "") {
   const description = String(details ?? "").trim();
   return `${concerns.join(", ")}${description ? `\n${description}` : ""}`;
+}
+
+export function clinicRegistrationError(error, patients) {
+  const field = Object.keys(error.errors ?? {}).find((key) => /^patients\.\d+\./.test(key));
+  if (!field) return error.message;
+  const patient = patients[Number(field.split(".")[1])];
+  return [patient?.pet?.petName, error.errors[field]?.[0]].filter(Boolean).join(" — ") || error.message;
 }
 
 export function formatClinicVisitDate(dateKey) {

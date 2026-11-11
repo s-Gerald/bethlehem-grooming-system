@@ -127,6 +127,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     Route::get('/pets/{petId}/medical-records', [PetMedicalRecordController::class, 'index']);
     Route::get('/pets/{petId}/vaccinations', [PetVaccinationController::class, 'index']);
     Route::get('/clinic/history', [PetMedicalRecordController::class, 'history']);
+    Route::get('/clinic/history/{id}', [PetMedicalRecordController::class, 'historyVisit'])->whereNumber('id');
     Route::post('/pets', [PetController::class, 'store']);
     Route::put('/pets/{id}', [PetController::class, 'update']);
     Route::post('/pets/{id}/archive', [PetController::class, 'archive']);
@@ -296,6 +297,8 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::get('/admin/clinic-service-options', [ClinicServiceController::class, 'caseOptions'])->middleware('clinic:clinical');
         Route::get('/admin/clinic-cases/{id}/service-pricing/{clinicServiceId}', [ClinicCaseServiceController::class, 'pricing'])->middleware('clinic:clinical');
         Route::post('/admin/clinic-cases/{id}/services', [ClinicCaseServiceController::class, 'store'])->middleware('clinic:clinical');
+        Route::get('/admin/clinic-cases/{id}/bulk-services/{clinicServiceId}', [ClinicCaseServiceController::class, 'bulkPricing'])->middleware('clinic:clinical');
+        Route::post('/admin/clinic-cases/{id}/bulk-services', [ClinicCaseServiceController::class, 'bulkStore'])->middleware('clinic:clinical');
         Route::delete('/admin/clinic-cases/{id}/services/{caseServiceId}', [ClinicCaseServiceController::class, 'destroy'])->middleware('clinic:clinical');
         Route::get('/admin/clinic-cases/{id}/charges', [ClinicBillingController::class, 'index'])->middleware('clinic:billing_view');
         Route::patch('/admin/clinic-cases/{id}/charges/{chargeId}', [ClinicBillingController::class, 'update'])->middleware('clinic:billing_edit');
@@ -318,6 +321,8 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::get('/admin/clinic-medicine-options', [AdminClinicController::class, 'medicineOptions']);
 
         Route::get('/admin/vaccination-options', [AdminVaccinationController::class, 'options']);
+        Route::get('/admin/clinic-cases/{id}/bulk-treatments/{itemId}', [AdminVaccinationController::class, 'bulkPreview'])->middleware('clinic:clinical');
+        Route::post('/admin/clinic-cases/{id}/bulk-treatments', [AdminVaccinationController::class, 'bulkStore'])->middleware('clinic:clinical');
         Route::get('/admin/pets/{petId}/vaccinations', [AdminVaccinationController::class, 'index']);
         Route::post('/admin/pets/{petId}/vaccinations', [AdminVaccinationController::class, 'store'])->middleware('clinic:clinical');
         Route::get('/admin/pets/{petId}/vaccinations/{vaccinationId}', [AdminVaccinationController::class, 'show']);

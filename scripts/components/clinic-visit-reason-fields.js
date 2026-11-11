@@ -84,3 +84,62 @@ export function mountClinicVisitReasonFields(container, petName, initialConcerns
     },
   };
 }
+
+export function mountClinicPatientReasons(container, patients, save) {
+  let active = patients.findIndex(({ commonConcerns, chiefComplaint }) => validateClinicVisitReason(commonConcerns, chiefComplaint));
+  if (active < 0 && patients.length === 1) active = 0;
+  let fields;
+
+  function capture() {
+    if (!fields || active < 0) return;
+    patients[active] = {
+      ...patients[active], commonConcerns: fields.concerns(), chiefComplaint: fields.details.value.trim(),
+    };
+    save(patients);
+  }
+
+  function render() {
+    container.innerHTML = patients.map(({ pet, commonConcerns, chiefComplaint }, index) => {
+      const editing = active === index;
+      const valid = !validateClinicVisitReason(commonConcerns, chiefComplaint);
+      return `<section class="mb-3 rounded-2xl border border-slate-200 bg-white p-4">
+        ${patients.length > 1 ? `<button type="button" data-reason-patient="${index}" aria-expanded="${editing}"
+          class="flex w-full flex-wrap items-center justify-between gap-2 text-left text-sm text-[#315b7e]">
+          <span class="font-semibold">${escapeHtml(pet.petName)}</span>
+          <span>${editing ? "Close reason" : valid ? "Reason added · Edit reason" : "Reason required · Add reason"}</span>
+        </button>` : ""}
+        ${editing ? '<div class="mt-4" data-active-reason></div>' : ""}
+      </section>`;
+    }).join("");
+    const editor = container.querySelector("[data-active-reason]");
+    fields = editor ? mountClinicVisitReasonFields(
+      editor, patients[active].pet.petName, patients[active].commonConcerns, patients[active].chiefComplaint,
+    ) : null;
+    editor?.addEventListener("input", capture);
+    editor?.addEventListener("click", (event) => {
+      if (event.target.closest("[data-clinic-concern]")) capture();
+    });
+    container.querySelectorAll("[data-reason-patient]").forEach((button) => button.addEventListener("click", () => {
+      capture();
+      const index = Number(button.dataset.reasonPatient);
+      active = index === active ? -1 : index;
+      render();
+      container.querySelector(`[data-reason-patient="${index}"]`)?.focus();
+    }));
+  }
+
+  render();
+  return {
+    validate() {
+      capture();
+      const invalid = patients.findIndex(({ commonConcerns, chiefComplaint }) => validateClinicVisitReason(commonConcerns, chiefComplaint));
+      if (invalid === -1) return true;
+      if (invalid !== active) {
+        active = invalid;
+        render();
+      }
+      fields.validate();
+      return false;
+    },
+  };
+}

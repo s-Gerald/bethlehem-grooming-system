@@ -356,6 +356,10 @@ class NotificationController extends Controller
     ): array {
         $reference = $appointment?->appointment_reference;
         $owner = $this->clinicOwnerName($appointment);
+        if ($appointment?->clinic_visit_group_id) {
+            return $this->content($walkIn ? 'New clinic walk-in' : 'New Clinic Online Queue Registration',
+                $fallback, null, [$reference, $owner]);
+        }
         $pet = trim((string) $appointment?->pet?->pet_name);
         $schedule = $this->clinicSchedule($appointment);
         $message = $reference
@@ -377,6 +381,9 @@ class NotificationController extends Controller
     {
         $reference = $appointment?->appointment_reference;
         $owner = $this->clinicOwnerName($appointment);
+        if ($appointment?->clinic_visit_group_id) {
+            return $this->content('Clinic visit ready for payment', $fallback, null, [$reference, $owner]);
+        }
         $pet = trim((string) $appointment?->pet?->pet_name);
         $message = $reference
             ? 'Clinic visit '.$reference
@@ -398,6 +405,9 @@ class NotificationController extends Controller
     ): array {
         $reference = $appointment?->appointment_reference;
         $owner = $this->clinicOwnerName($appointment);
+        if ($appointment?->clinic_visit_group_id) {
+            return $this->content('Payment received', $fallback, null, [$owner, $reference]);
+        }
         $message = $reference
             ? 'Payment received'.($owner ? " from {$owner}" : '')
                 ." for clinic visit {$reference}."

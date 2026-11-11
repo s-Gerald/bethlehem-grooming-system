@@ -48,8 +48,9 @@ class PetServiceSessionPolicy
         foreach ($conflicts as $record) {
             if (!$physicalIntake || !$this->replaceable($record, $service)) {
                 $label = $service === 'grooming' ? 'Clinic' : 'Grooming';
+                $name = $service === 'clinic' && $record->pet?->pet_name ? $record->pet->pet_name : 'This pet';
                 throw new HttpResponseException(response()->json(['success' => false, 'code' => 'pet_service_conflict',
-                    'message' => "This pet already has a pending or active {$label} visit. Resolve that visit before intake.",
+                    'message' => "{$name} already has a pending or active {$label} visit. Resolve that visit before intake.",
                     'pet_id' => $record->pet_id], 409));
             }
         }
@@ -59,9 +60,10 @@ class PetServiceSessionPolicy
     public function assertNoSameService(array $petIds, string $service): void
     {
         $existing = $this->conflicts($petIds, $service === 'grooming' ? 'clinic' : 'grooming')->first();
+        $name = $service === 'clinic' && $existing?->pet?->pet_name ? $existing->pet->pet_name : 'This pet';
         if ($existing) throw new HttpResponseException(response()->json([
             'success' => false, 'code' => 'same_service_pet_conflict', 'pet_id' => $existing->pet_id,
-            'message' => 'This pet already has a pending or active '.ucfirst($service).' visit. Use the existing visit for check-in.',
+            'message' => "{$name} already has a pending or active ".ucfirst($service).' visit. Use the existing visit for check-in.',
         ], 409));
     }
 

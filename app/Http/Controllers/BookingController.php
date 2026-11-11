@@ -567,20 +567,40 @@ class BookingController extends Controller
             'bookings' => $active->map(fn ($booking) => $format($booking))->values(),
             'history' => $history->map(fn ($booking) => $format($booking, true))->values(),
             'history_total' => $historyTotal,
-            'clinic_visits' => Schema::hasTable('clinic_appointments') ? \App\Models\ClinicAppointment::query()
-                ->where('user_id', $userId)->where('status', 'waiting_to_arrive')->whereNull('checked_in_at')
-                ->select(['id', 'pet_id', 'appointment_reference', 'status', 'appointment_type', 'appointment_date', 'queue_number', 'created_at', 'checked_in_at'])
-                ->with('pet:pet_id,pet_name')->orderBy('created_at')->orderBy('id')
-                ->get()->map(fn ($visit) => [
-                    'id' => $visit->id, 'reference' => $visit->appointment_reference,
-                    'status' => $visit->status, 'appointment_type' => $visit->appointment_type,
-                    'service_day' => $visit->appointment_date?->toDateString(),
-                    'queue_number' => $visit->queue_number,
-                    'created_at' => $visit->created_at?->toIso8601String(),
-                    'checked_in_at' => $visit->checked_in_at?->toIso8601String(),
-                    'pet_name' => $visit->pet?->pet_name,
-                ])->values() : [],
+            'clinic_visits' => $this->upcomingClinicRegistrations($userId),
         ]);
+    }
+
+    private function upcomingClinicRegistrations(int $userId): array
+    {
+        if (! Schema::hasTable('clinic_appointments')) {
+            return [];
+        }
+        $hasGroups = Schema::hasTable('clinic_visit_groups');
+        $visits = \App\Models\ClinicAppointment::query()
+            ->where('user_id', $userId)->where('status', 'waiting_to_arrive')->whereNull('checked_in_at')
+            ->select(['id', 'pet_id', 'appointment_reference', 'status', 'appointment_type', 'appointment_date', 'queue_number', 'created_at', 'checked_in_at'])
+            ->when($hasGroups, fn ($query) => $query->addSelect('clinic_visit_group_id'))
+            ->with('pet:pet_id,pet_name')->orderBy('created_at')->orderBy('id')->get();
+        $groupIds = $visits->pluck('clinic_visit_group_id')->filter()->unique();
+        $groupPatients = $groupIds->isEmpty() ? collect() : \App\Models\ClinicAppointment::query()
+            ->where('user_id', $userId)->whereIn('clinic_visit_group_id', $groupIds)
+            ->with('pet:pet_id,pet_name')->orderBy('id')->get()->groupBy('clinic_visit_group_id');
+        $format = fn ($visit) => [
+            'id' => $visit->id, 'reference' => $visit->appointment_reference,
+            'status' => $visit->status, 'appointment_type' => $visit->appointment_type,
+            'service_day' => $visit->appointment_date?->toDateString(),
+            'queue_number' => $visit->queue_number,
+            'created_at' => $visit->created_at?->toIso8601String(),
+            'checked_in_at' => $visit->checked_in_at?->toIso8601String(),
+            'pet_name' => $visit->pet?->pet_name,
+        ];
+
+        return $visits->unique(fn ($visit) => $visit->clinic_visit_group_id ? 'group-'.$visit->clinic_visit_group_id : 'visit-'.$visit->id)
+            ->map(fn ($visit) => $format($visit) + [
+                'clinic_visit_group_id' => $visit->clinic_visit_group_id,
+                'patients' => $groupPatients->get($visit->clinic_visit_group_id, collect([$visit]))->map($format)->values(),
+            ])->values()->all();
     }
 
     // Real-time client dashboard snapshot of today's grooming queue and capacity.

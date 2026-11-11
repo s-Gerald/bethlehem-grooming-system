@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\ClinicAppointment;
+use App\Models\ClinicVisitGroup;
 use App\Models\GatewayPayment;
 use App\Models\PosTransaction;
 use App\Models\User;
+use App\Services\ClinicPaymentSettlementService;
 use App\Services\GroomingPaymentReadinessService;
 use App\Services\OnlinePaymentService;
 use App\Services\PayMongoService;
@@ -17,10 +19,37 @@ use Illuminate\Validation\ValidationException;
 
 class OnlinePaymentController extends Controller
 {
-    public function createClinic(Request $request, int $id)
+    public function createClinic(Request $request, int $id, ClinicPaymentSettlementService $settlement)
     {
         app(PayMongoService::class)->assertConfigured();
-        $attempt = DB::transaction(function () use ($request, $id) {
+        $groupId = ClinicAppointment::findOrFail($id)->clinic_visit_group_id;
+        $attempt = DB::transaction(function () use ($request, $id, $groupId, $settlement) {
+            if ($groupId) {
+                $group = ClinicVisitGroup::query()->lockForUpdate()->findOrFail($groupId);
+                if ($group->gateway_payment_id) {
+                    return $group->gatewayPayment;
+                }
+                $active = GatewayPayment::forPayable($group, 'clinic')->unresolved()->first();
+                if ($active) {
+                    return $active;
+                }
+                abort_if($group->paid_at, 409, 'This payment has already been completed.');
+                $patients = $settlement->eligible($settlement->patients($group, lock: true));
+                $settlement->assertReady($patients);
+                $total = $patients->sum(fn ($patient) => $settlement->subtotal($patient));
+                $charges = $patients->flatMap(fn ($patient) => $patient->charges);
+                $anchor = $patients->first();
+                $formatted = app(AdminClinicController::class)->formatAppointment($anchor, listOnly: true);
+                return $this->newAttempt($group, 'clinic', 'final', $request, [
+                    'total' => $settlement->currency($total),
+                    'line_items' => $this->clinicCheckoutLines($charges, $total),
+                    'charges' => $anchor->charges->toArray(),
+                    'owner' => $formatted['owner'],
+                    'appointment_id' => $anchor->id,
+                    'patients' => $settlement->breakdown($group, $patients)['patients']->toArray(),
+                ]);
+            }
+
             $case = ClinicAppointment::whereKey($id)->lockForUpdate()->firstOrFail();
             $active = GatewayPayment::forPayable($case, 'clinic')->unresolved()->first();
             if ($active) return $active;
@@ -28,18 +57,7 @@ class OnlinePaymentController extends Controller
             abort_unless($case->status === 'for_payment' && ! $case->archived_at && ! $case->hasActiveConfinement(), 422, 'This case is not awaiting payment.');
             $charges = $case->charges()->orderBy('id')->lockForUpdate()->get();
             $total = $charges->sum(fn ($charge) => app(GroomingPaymentReadinessService::class)->moneyToCents($charge->amount));
-            if ($total <= 0 || $total > 9999999999) throw ValidationException::withMessages(['payment' => 'Online payment requires a positive total within the supported limit.']);
-            $lines = $charges->filter(fn ($charge) => (float) $charge->amount > 0)->map(function ($charge) {
-                $money = app(GroomingPaymentReadinessService::class);
-                $amount = $money->moneyToCents($charge->amount);
-                $unitPrice = $money->moneyToCents($charge->unit_price);
-                $quantity = (float) $charge->quantity;
-                // PayMongo accepts whole quantities; fractional or rounded lines use the finalized amount.
-                $whole = $quantity > 0 && floor($quantity) === $quantity && $unitPrice * (int) $quantity === $amount;
-                return ['name' => $charge->description, 'amount' => $whole ? $unitPrice : $amount,
-                    'quantity' => $whole ? (int) $quantity : 1, 'currency' => 'PHP'];
-            })->values()->all();
-            abort_unless(collect($lines)->sum(fn ($line) => $line['amount'] * $line['quantity']) === $total, 422, 'Review the finalized clinic charges.');
+            $lines = $this->clinicCheckoutLines($charges, $total);
             $case->update(['total_amount' => $total / 100]);
             return $this->newAttempt($case, 'clinic', 'final', $request, [
                 'total' => number_format($total / 100, 2, '.', ''), 'line_items' => $lines, 'charges' => $charges->toArray(),
@@ -48,10 +66,29 @@ class OnlinePaymentController extends Controller
         return $this->createdResponse($attempt);
     }
 
+    private function clinicCheckoutLines(\Illuminate\Support\Collection $charges, int $total): array
+    {
+        if ($total <= 0 || $total > 9999999999) {
+            throw ValidationException::withMessages(['payment' => 'Online payment requires a positive total within the supported limit.']);
+        }
+        $money = app(GroomingPaymentReadinessService::class);
+        $lines = $charges->filter(fn ($charge) => (float) $charge->amount > 0)->map(function ($charge) use ($money) {
+                $amount = $money->moneyToCents($charge->amount);
+                $unitPrice = $money->moneyToCents($charge->unit_price);
+                $quantity = (float) $charge->quantity;
+                // PayMongo accepts whole quantities; fractional or rounded lines use the finalized amount.
+                $whole = $quantity > 0 && floor($quantity) === $quantity && $unitPrice * (int) $quantity === $amount;
+                return ['name' => $charge->description, 'amount' => $whole ? $unitPrice : $amount,
+                    'quantity' => $whole ? (int) $quantity : 1, 'currency' => 'PHP'];
+            })->values()->all();
+        abort_unless(collect($lines)->sum(fn ($line) => $line['amount'] * $line['quantity']) === $total, 422, 'Review the finalized clinic charges.');
+        return $lines;
+    }
+
     public function clinicStatus(Request $request, int $id)
     {
         $case = ClinicAppointment::findOrFail($id);
-        $attempt = GatewayPayment::forPayable($case, 'clinic')->where('provider', 'paymongo')
+        $attempt = GatewayPayment::forPayable($case->visitGroup ?? $case, 'clinic')->where('provider', 'paymongo')
             ->when($request->filled('gateway_payment'), fn ($q) => $q->whereKey($request->integer('gateway_payment')))->latest('id')->first();
         if (! $attempt) return response()->json(['success' => true, 'online_payment' => null]);
         app(OnlinePaymentService::class)->refreshStatus($attempt);
@@ -61,7 +98,7 @@ class OnlinePaymentController extends Controller
     public function cancelClinic(int $id)
     {
         $case = ClinicAppointment::findOrFail($id);
-        $attempt = GatewayPayment::forPayable($case, 'clinic')->where('provider', 'paymongo')->latest('id')->firstOrFail();
+        $attempt = GatewayPayment::forPayable($case->visitGroup ?? $case, 'clinic')->where('provider', 'paymongo')->latest('id')->firstOrFail();
         app(OnlinePaymentService::class)->cancel($attempt);
         return response()->json($this->response($attempt));
     }
@@ -164,12 +201,16 @@ class OnlinePaymentController extends Controller
                 ->where('gateway_payment_id', $attempt->id)->first()?->receiptSnapshot();
         }
         if ($attempt->context === 'clinic') {
-            $case = ClinicAppointment::with(['charges', 'paidBy'])->findOrFail($attempt->payable_id);
+            $case = ClinicAppointment::with(['charges', 'paidBy'])->findOrFail($attempt->snapshot['appointment_id'] ?? $attempt->payable_id);
             $response['appointment'] = [
                 ...app(AdminClinicController::class)->formatAppointment($case),
                 'provider_payment_id' => $attempt->confirmedPaymentId(),
                 'is_test' => ! $attempt->livemode, 'charges' => in_array($attempt->status, ['pending', 'paid'], true) ? $attempt->snapshot['charges'] : $case->charges->toArray(), 'payment_method_label' => $attempt->methodLabel(),
             ];
+            if ($case->clinic_visit_group_id) {
+                $settlement = app(ClinicPaymentSettlementService::class);
+                $response['session'] = $settlement->breakdown($case->visitGroup, $settlement->patients($case->visitGroup));
+            }
         }
         return $response;
     }

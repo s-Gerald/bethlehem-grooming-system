@@ -283,7 +283,7 @@ var API = (() => {
         : ["customers", "clinic-records", "clinic-active", "clinic-confined", "grooming", "dashboard"];
     } else if (/^\/admin\/(clinic-cases|clinic-appointments)(?:\/|$)/.test(path) || path === "/admin/clinic-walk-in") {
       groups = ["clinic-active", "dashboard", "history-clinic"];
-      if (/\/(pay|finish|finish-consultation|services|treatments|vaccinations)(?:\/|$)/.test(path)) groups.push('inventory');
+      if (/\/(pay|finish|finish-consultation|services|treatments|bulk-treatments|vaccinations)(?:\/|$)/.test(path)) groups.push('inventory');
       if (/\/(check-in|cancel|finish|finish-consultation|pay)$/.test(path) || path === "/admin/clinic-walk-in") groups.push("notifications");
       if (/\/confinement(?:\/|$)/.test(path)) groups.push("clinic-confined");
       if (path === "/admin/clinic-walk-in" || path === "/admin/clinic-cases") groups.push("customers", "clinic-records");
@@ -2713,8 +2713,13 @@ var API = (() => {
     return request("GET", `/pets/${petId}/vaccinations`, null, getCustomerToken());
   }
 
-  async function getCustomerClinicHistory() {
-    return request("GET", "/clinic/history", null, getCustomerToken());
+  function getCustomerClinicHistory(params = {}) {
+    const query = new URLSearchParams(params);
+    return request("GET", "/clinic/history" + (query.size ? `?${query}` : ""), null, getCustomerToken());
+  }
+
+  function getCustomerClinicHistoryVisit(id) {
+    return request("GET", `/clinic/history/${id}`, null, getCustomerToken());
   }
 
   async function addPet(payload) {
@@ -3062,10 +3067,11 @@ var API = (() => {
     return request("GET", `/admin/bookings/${bookingId}/signed-consent`, null, getAdminToken());
   }
 
-  async function getArchivedClinicAppointments({ search = "", date = "" } = {}, { force = false } = {}) {
+  async function getArchivedClinicAppointments({ search = "", date = "", page = 1 } = {}, { force = false } = {}) {
     const params = new URLSearchParams();
     if (search) params.set("search", phoneSearch(search));
     if (date) params.set("date", date);
+    if (page > 1) params.set("page", page);
     const query = params.toString() ? `?${params.toString()}` : "";
     return request("GET", `/admin/clinic-appointments/archived${query}`, null, getAdminToken(), {force});
   }
@@ -3563,6 +3569,14 @@ var API = (() => {
     return request("POST", `/admin/clinic-cases/${id}/services`, payload, getAdminToken());
   }
 
+  function clinicBulkPreview(caseId, kind, itemId) {
+    return request("GET", `/admin/clinic-cases/${caseId}/bulk-${kind}/${itemId}`, null, getAdminToken(), { force: true });
+  }
+
+  function clinicBulkApply(caseId, kind, payload) {
+    return request("POST", `/admin/clinic-cases/${caseId}/bulk-${kind}`, payload, getAdminToken());
+  }
+
   function clinicDeleteCaseService(id, serviceId) {
     return request("DELETE", `/admin/clinic-cases/${id}/services/${serviceId}`, null, getAdminToken());
   }
@@ -3828,6 +3842,7 @@ var API = (() => {
     getPetMedicalRecords,
     getPetVaccinations,
     getCustomerClinicHistory,
+    getCustomerClinicHistoryVisit,
     addPet,
     updatePet,
     adminUpdatePet,
@@ -3966,6 +3981,8 @@ var API = (() => {
     clinicCaseServiceOptions,
     clinicCaseServicePricing,
     clinicCreateCaseService,
+    clinicBulkPreview,
+    clinicBulkApply,
     clinicDeleteCaseService,
     getClinicCaseCharges,
     getClinicConfinedCases,

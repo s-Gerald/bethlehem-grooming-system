@@ -22,22 +22,23 @@ function harness(file, bindings = {}) {
   return { context, elements, storage, ready };
 }
 async function main() {
-  const clinicDraft = { pet: { id: 101, petName: 'Mochi' }, commonConcerns: ['Vomiting'], chiefComplaint: 'Started yesterday' };
+  const legacyDraft = { pet: { id: 101, petName: 'Mochi' }, commonConcerns: ['Vomiting'], chiefComplaint: 'Started yesterday' };
+  const clinicDraft = { patients: [legacyDraft] };
   let clinicPayload;
-  const bindings = { CLINIC_VISIT_DRAFT_KEY: 'clinicVisitDraft', CLINIC_VISIT_PETS_KEY: 'clinicVisitPets', CLINIC_VISIT_CONFIRMATION_KEY: 'clinicVisitConfirmation',
+  const bindings = { CLINIC_MAX_PATIENTS: 13, clinicRegistrationError: error => error.message, CLINIC_VISIT_DRAFT_KEY: 'clinicVisitDraft', CLINIC_VISIT_PETS_KEY: 'clinicVisitPets', CLINIC_VISIT_CONFIRMATION_KEY: 'clinicVisitConfirmation',
     requireCustomerSession: () => true, readClinicVisitDraft: () => clinicDraft,
     validateClinicVisitReason: () => '', formatClinicVisitReason: () => 'Vomiting', getClinicVisitSummaryMarkup: () => '<p>Mochi</p>',
-    API: { submitClinicPreRegistration: async payload => { clinicPayload = payload; return { appointment: { appointment_reference: 'CL-1', queue_number: null, created_at: '2026-10-26T09:00:00+08:00' } }; } },
+    API: { submitClinicPreRegistration: async payload => { clinicPayload = payload; return { session: { patients: [{ appointment_reference: 'CL-1', queue_number: null, created_at: '2026-10-26T09:00:00+08:00' }] } }; } },
   };
   const clinic = harness('clinic-visit-summary.js', bindings);
   await clinic.ready;
   await clinic.elements.get('submitClinicVisitBtn').listeners.click();
-  assert.equal(clinicPayload.pet_id, 101);
+  assert.equal(clinicPayload.patients[0].pet_id, 101);
   assert.equal(clinicPayload.service_day, '2026-10-26');
   assert.equal(clinicPayload.appointment_date, undefined);
   assert.equal(clinicPayload.window_id, undefined);
   assert.equal(clinic.context.window.location.href, '/account/registration/clinic/confirmed');
-  assert.equal(JSON.parse(clinic.storage.get('clinicVisitConfirmation')).queue_number, null);
+  assert.equal(JSON.parse(clinic.storage.get('clinicVisitConfirmation')).patients[0].queue_number, null);
   const failed = harness('clinic-visit-summary.js', { ...bindings, API: { submitClinicPreRegistration: async () => { throw { message: 'Try again' }; } } });
   await failed.ready;
   await failed.elements.get('submitClinicVisitBtn').listeners.click();
@@ -53,7 +54,7 @@ async function main() {
     API: { submitClinicPreRegistration: async payload => {
       if (++clinicAttempts === 1) { assert.equal(payload.service_day, '2026-10-26'); throw { code: 'service_day_changed', message: 'Review the new date.' }; }
       assert.equal(payload.service_day, '2026-10-27');
-      return { appointment: { appointment_date: '2026-10-27' } };
+      return { session: { service_day: '2026-10-27', patients: [{ appointment_reference: 'CL-1' }] } };
     } },
   });
   rollover.storage.set('clinicVisitDraft', JSON.stringify(clinicDraft));
@@ -61,17 +62,17 @@ async function main() {
   await rollover.elements.get('submitClinicVisitBtn').listeners.click();
   assert.equal(clinicAttempts, 1, 'A date change never triggers automatic resubmission');
   assert.equal(rollover.context.window.location.href, '');
-  assert.equal(JSON.parse(rollover.storage.get('clinicVisitDraft')).chiefComplaint, 'Started yesterday');
+  assert.equal(JSON.parse(rollover.storage.get('clinicVisitDraft')).patients[0].chiefComplaint, 'Started yesterday');
   assert.equal(rollover.elements.get('submitClinicVisitBtn').disabled, false);
   await rollover.elements.get('submitClinicVisitBtn').listeners.click();
   assert.equal(clinicAttempts, 2, 'The customer must explicitly submit after reviewing the updated day');
 
   global.sessionStorage = clinic.context.sessionStorage;
   const service = await import('../scripts/services/clinic-visit-service.js');
-  clinic.storage.set('clinicVisitDraft', JSON.stringify({ ...clinicDraft, appointmentDate: '2026-10-01', windowId: 1, windowLabel: 'Old time' }));
+  clinic.storage.set('clinicVisitDraft', JSON.stringify({ ...legacyDraft, appointmentDate: '2026-10-01', windowId: 1, windowLabel: 'Old time' }));
   const restored = service.readClinicVisitDraft();
-  assert.equal(restored.pet.id, 101);
-  assert.deepEqual(restored.commonConcerns, ['Vomiting']);
+  assert.equal(restored.patients[0].pet.id, 101);
+  assert.deepEqual(restored.patients[0].commonConcerns, ['Vomiting']);
   for (const key of ['appointmentDate', 'windowId', 'windowLabel']) assert.equal(restored[key], undefined);
 
   const weightTools = await import('../scripts/components/pet-weight-size.js');

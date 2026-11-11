@@ -1,15 +1,16 @@
 import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&urls=20261103";
-import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?registration=fcfs-20261027-v1&pet-care=20261027-v1&short-notes=20261110";
+import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?owner-session=20261111";
 import { readReviewedServiceDay, registrationDayNotice } from "../services/registration-service-day.js?v=rolling-20261027-v1&registration-rollover=20261027-v3";
 import {
   CLINIC_VISIT_CONFIRMATION_KEY,
   CLINIC_VISIT_DRAFT_KEY,
   CLINIC_VISIT_PETS_KEY,
-  formatClinicVisitReason,
+  CLINIC_MAX_PATIENTS,
+  clinicRegistrationError,
   readClinicVisitDraft,
   requireCustomerSession,
   validateClinicVisitReason,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103&short-notes=500-20261110";
+} from "../services/clinic-visit-service.js?owner-session=20261111";
 
 const elements = {
   details: document.getElementById("clinicVisitSummaryDetails"),
@@ -32,14 +33,14 @@ async function submitClinicVisit(draft) {
   try {
     const response = await API.submitClinicPreRegistration({
       service_day: serviceDay,
-      pet_id: Number(draft.pet.id),
-      chief_complaint: draft.chiefComplaint,
-      common_concerns: draft.commonConcerns,
+      patients: draft.patients.map(({ pet, chiefComplaint, commonConcerns }) => ({
+        pet_id: Number(pet.id), chief_complaint: chiefComplaint, common_concerns: commonConcerns,
+      })),
     });
 
     sessionStorage.setItem(
       CLINIC_VISIT_CONFIRMATION_KEY,
-      JSON.stringify(response.appointment),
+      JSON.stringify(response.session),
     );
     sessionStorage.removeItem(CLINIC_VISIT_DRAFT_KEY);
     sessionStorage.removeItem(CLINIC_VISIT_PETS_KEY);
@@ -52,7 +53,7 @@ async function submitClinicVisit(draft) {
       elements.status.className = "hidden";
       await refreshAvailability();
     } else {
-      showError(error.message || "Clinic queue registration could not be submitted. Please try again.");
+      showError(clinicRegistrationError(error, draft.patients) || "Clinic queue registration could not be submitted. Please try again.");
     }
   }
 }
@@ -70,21 +71,27 @@ async function init() {
 
   const draft = readClinicVisitDraft();
 
-  if (!draft.pet?.id) {
+  if (!draft.patients?.length || draft.patients.length > CLINIC_MAX_PATIENTS) {
     window.location.replace("/account/registration/clinic/pets?flow=clinic");
     return;
   }
 
-  if (validateClinicVisitReason(draft.commonConcerns, draft.chiefComplaint)) {
+  if (draft.patients.some(({ commonConcerns, chiefComplaint }) => validateClinicVisitReason(commonConcerns, chiefComplaint))) {
     window.location.replace("/account/registration/clinic/reason");
     return;
   }
 
-  elements.details.innerHTML = getClinicVisitSummaryMarkup({
-    visitType: "Clinic Queue Registration",
-    pet: draft.pet,
-    reason: formatClinicVisitReason(draft.commonConcerns, draft.chiefComplaint),
-  });
+  elements.details.innerHTML = `<p class="mb-1 text-sm text-slate-600">Clinic Queue Registration · ${draft.patients.length} ${draft.patients.length === 1 ? "pet" : "pets"}</p>
+    <p id="clinicReviewOwner" class="mb-4 text-sm font-semibold text-[#2f4b66]" hidden></p>`
+    + draft.patients.map(({ pet, commonConcerns, chiefComplaint }) => getClinicVisitSummaryMarkup({
+      pet, concerns: commonConcerns, details: chiefComplaint,
+    })).join("");
+  API.getMe?.().then(({ user }) => {
+    const owner = document.getElementById("clinicReviewOwner");
+    const name = [user?.first_name, user?.last_name].filter(Boolean).join(" ");
+    owner.textContent = name;
+    owner.hidden = !name;
+  }).catch(() => {});
   await refreshAvailability();
   elements.submit.addEventListener("click", () => submitClinicVisit(draft));
 }

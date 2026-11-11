@@ -132,6 +132,8 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             $table->timestamps();
         });
 
+        (require database_path('migrations/2026_11_11_000001_create_clinic_visit_groups.php'))->up();
+
         Schema::create('clinic_records', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('clinic_appointment_id');
@@ -234,6 +236,8 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             $table->boolean('paid')->default(false);
             $table->unsignedTinyInteger('reschedule_count')->default(0);
             $table->unsignedTinyInteger('cancel_count')->default(0);
+            $table->string('cancellation_reason')->nullable();
+            $table->dateTime('cancelled_at')->nullable();
             $table->text('special_notes')->nullable();
             $table->dateTime('dropped_off_at')->nullable();
             $table->dateTime('grooming_started_at')->nullable();
@@ -302,6 +306,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         Schema::dropIfExists('clinic_records');
         (require base_path('database/migrations/2026_10_10_000001_create_clinic_charges_table.php'))->down();
         Schema::dropIfExists('clinic_appointments');
+        Schema::dropIfExists('clinic_visit_groups');
         Schema::dropIfExists('walkins');
         Schema::dropIfExists('pets');
         Schema::dropIfExists('unregistered_customers');
@@ -410,6 +415,67 @@ class ClinicAdministrationAuthorizationTest extends TestCase
     public static function receptionistRoles(): array
     {
         return [['clinic_receptionist'], ['grooming_receptionist']];
+    }
+
+    public function test_group_cash_payment_requires_all_remaining_patients_and_settles_once(): void
+    {
+        $this->authenticateAs('admin');
+        $group = \App\Models\ClinicVisitGroup::create(['source' => 'walk_in', 'service_day' => now()->toDateString()]);
+        $this->insertClinicAppointment('for_payment', 1);
+        $this->insertClinicAppointment('in_consultation', 2);
+        $this->insertClinicAppointment('cancelled', 3);
+        DB::table('clinic_appointments')->update(['clinic_visit_group_id' => $group->id]);
+        foreach ([1 => 175.25, 2 => 324.75, 3 => 600] as $id => $amount) {
+            DB::table('clinic_charges')->insert([
+                'clinic_appointment_id' => $id, 'kind' => 'existing', 'description' => 'Consultation',
+                'quantity' => 1, 'unit_price' => $amount, 'amount' => $amount,
+            ]);
+        }
+        $payload = ['total_amount' => 500, 'payment_method' => 'cash', 'amount_paid' => 600];
+        $this->postJson('/api/admin/clinic-appointments/1/pay', $payload)->assertUnprocessable();
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'for_payment', 'paid' => false]);
+        DB::table('clinic_appointments')->where('id', 2)->update(['status' => 'for_payment']);
+        Schema::create('clinic_confinements', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('clinic_appointment_id');
+            $table->timestamp('discharged_at')->nullable();
+        });
+        DB::table('clinic_confinements')->insert(['clinic_appointment_id' => 2]);
+        $this->postJson('/api/admin/clinic-appointments/1/pay', $payload)->assertUnprocessable()->assertJsonValidationErrors('payment');
+        Schema::drop('clinic_confinements');
+        $this->postJson('/api/admin/clinic-appointments/1/pay', $payload)->assertOk()->assertJsonPath('session.total_amount', '500.00');
+        $this->postJson('/api/admin/clinic-appointments/2/pay', $payload)->assertOk();
+        $this->assertDatabaseHas('clinic_visit_groups', ['id' => $group->id, 'total_amount' => 500, 'cash_received' => 600]);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'completed', 'total_amount' => 175.25]);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 2, 'status' => 'completed', 'total_amount' => 324.75]);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 3, 'status' => 'cancelled', 'paid' => false]);
+        $this->assertDatabaseCount('notifications', 1);
+    }
+
+    public function test_admin_case_and_history_lists_group_only_persisted_sessions(): void
+    {
+        $this->authenticateAs('admin');
+        $group = \App\Models\ClinicVisitGroup::create(['source' => 'walk_in', 'service_day' => now()->toDateString()]);
+        $this->insertClinicAppointment('in_consultation', 1, 'CL-FIRST-PATIENT');
+        $this->insertClinicAppointment('for_payment', 2, 'CL-SECOND-PATIENT');
+        $this->insertClinicAppointment('completed', 3, 'CL-LEGACY');
+        DB::table('clinic_appointments')->whereIn('id', [1, 2])->update(['clinic_visit_group_id' => $group->id]);
+
+        $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(1, 'sessions')
+            ->assertJsonPath('sessions.0.state', 'active-cases')
+            ->assertJsonCount(2, 'sessions.0.patients')->assertJsonPath('sessions.0.ready_count', 1);
+        $settlement = app(\App\Services\ClinicPaymentSettlementService::class);
+        DB::transaction(fn () => $settlement->notifyWhenGroupIsReady($group->id));
+        $this->assertDatabaseCount('notifications', 0);
+        DB::table('clinic_appointments')->where('id', 1)->update(['status' => 'for_payment']);
+        for ($retry = 0; $retry < 2; $retry++) DB::transaction(fn () => $settlement->notifyWhenGroupIsReady($group->id));
+        $this->assertDatabaseCount('notifications', 1);
+        $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonPath('sessions.0.state', 'for-payment');
+        $this->postJson('/api/admin/clinic-appointments/2/pay', ['payment_method' => 'cash', 'total_amount' => 0, 'amount_paid' => 0])->assertOk();
+        $this->getJson('/api/admin/clinic-appointments/archived')->assertOk()->assertJsonCount(2, 'archived');
+        $this->getJson('/api/admin/clinic-appointments/archived?search=CL-FIRST-PATIENT')
+            ->assertOk()->assertJsonCount(1, 'archived')->assertJsonCount(2, 'archived.0.session.patients')
+            ->assertJsonPath('archived.0.session.patients.1.appointment_reference', 'CL-SECOND-PATIENT');
     }
 
     #[DataProvider('receptionistRoles')]
@@ -1982,6 +2048,83 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         ]);
     }
 
+    public function test_walk_in_owner_session_assigns_thirteen_consecutive_patient_queue_numbers(): void
+    {
+        $this->authenticateAs('admin', 10);
+        $patients = array_map(fn ($i) => [
+            'pet_name' => "Patient {$i}", 'species' => 'cat',
+            'common_concerns' => ['Routine check-up'], 'chief_complaint' => "Reason {$i}",
+        ], range(1, 14));
+        $payload = [
+            'fname' => 'Jane', 'lname' => 'Reyes', 'phone' => '09171234567',
+            'terms_agreed' => true, 'patients' => $patients,
+        ];
+        $this->postJson('/api/admin/clinic-walk-in', $payload)->assertUnprocessable()->assertJsonValidationErrors('patients');
+        array_pop($payload['patients']);
+        $invalid = $payload;
+        $invalid['patients'][12]['chief_complaint'] = str_repeat('x', 501);
+        $this->postJson('/api/admin/clinic-walk-in', $invalid)->assertUnprocessable()->assertJsonValidationErrors('patients.12.chief_complaint');
+        $invalid = $payload;
+        $invalid['patients'][12]['pet_id'] = 999;
+        $this->postJson('/api/admin/clinic-walk-in', $invalid)->assertUnprocessable()->assertJsonValidationErrors('patients.12.pet_id');
+        $this->assertDatabaseCount('pets', 0);
+        $this->assertDatabaseCount('walkins', 0);
+
+        $this->postJson('/api/admin/clinic-walk-in', $payload)->assertCreated()->assertJsonCount(13, 'session.patients');
+        $appointments = DB::table('clinic_appointments')->orderBy('id')->get();
+        $this->assertEquals(range(1, 13), $appointments->pluck('queue_number')->all());
+        $this->assertCount(13, $appointments->pluck('appointment_reference')->unique());
+        $this->assertCount(1, $appointments->pluck('clinic_visit_group_id')->unique());
+        $this->assertDatabaseCount('walkins', 1);
+        $this->assertDatabaseCount('notifications', 1);
+    }
+
+    public function test_online_owner_session_creates_thirteen_independent_patients_and_cancels_as_one(): void
+    {
+        $this->authenticateAs('customer', 10);
+        $patients = [];
+        foreach (range(101, 114) as $id) {
+            DB::table('pets')->insert([
+                'pet_id' => $id, 'user_id' => 10, 'pet_name' => "Patient {$id}", 'species' => 'cat',
+            ]);
+            $patients[] = [
+                'pet_id' => $id, 'common_concerns' => ['Routine check-up'], 'chief_complaint' => "Reason {$id}",
+            ];
+        }
+        $payload = ['service_day' => now('Asia/Manila')->toDateString(), 'patients' => $patients];
+
+        $this->postJson('/api/clinic/pre-register', $payload)->assertUnprocessable()->assertJsonValidationErrors('patients');
+        array_pop($payload['patients']);
+        $duplicate = $payload;
+        $duplicate['patients'][12]['pet_id'] = 101;
+        $this->postJson('/api/clinic/pre-register', $duplicate)->assertUnprocessable()->assertJsonValidationErrors('patients.12.pet_id');
+        $missingReason = $payload;
+        unset($missingReason['patients'][12]['common_concerns']);
+        $this->postJson('/api/clinic/pre-register', $missingReason)->assertUnprocessable()->assertJsonValidationErrors('patients.12.common_concerns');
+        DB::table('pets')->where('pet_id', 113)->update(['is_archived' => true]);
+        $this->postJson('/api/clinic/pre-register', $payload)->assertUnprocessable()->assertJsonValidationErrors('patients.12.pet_id');
+        DB::table('pets')->where('pet_id', 113)->update(['is_archived' => false]);
+        $this->assertDatabaseCount('clinic_appointments', 0);
+
+        $visit = $this->postJson('/api/clinic/pre-register', $payload)->assertCreated()->assertJsonCount(13, 'session.patients');
+        $appointments = DB::table('clinic_appointments')->orderBy('id')->get();
+        $this->assertCount(13, $appointments->pluck('appointment_reference')->unique());
+        $this->assertSame([$visit->json('session.id')], $appointments->pluck('clinic_visit_group_id')->unique()->values()->all());
+        foreach ($appointments as $index => $appointment) {
+            $id = 101 + $index;
+            $this->assertEquals($id, $appointment->pet_id);
+            $this->assertSame("Routine check-up\nReason {$id}", $appointment->chief_complaint);
+            $this->assertNull($appointment->queue_number);
+        }
+        $this->assertDatabaseCount('notifications', 1);
+        $this->getJson('/api/booking/history?history_limit=0')->assertOk()
+            ->assertJsonCount(1, 'clinic_visits')->assertJsonCount(13, 'clinic_visits.0.patients');
+        $this->getJson('/api/clinic/registrations/'.$appointments->last()->id)->assertOk()
+            ->assertJsonPath('visit.pet.pet_name', 'Patient 113')->assertJsonCount(13, 'visit.patients');
+        $this->postJson('/api/clinic/registrations/'.$appointments->last()->id.'/cancel')->assertOk();
+        $this->assertSame(13, DB::table('clinic_appointments')->where('status', 'cancelled')->count());
+    }
+
     #[DataProvider('phoneEnforcementModes')]
     public function test_customer_can_pre_register_an_owned_pet_without_reentering_owner_information(bool $phoneEnforced): void
     {
@@ -2342,8 +2485,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->authenticateAs('customer', 10);
         Schema::table('bookings', function (Blueprint $table) {
             $table->string('booking_type')->default('online');
-            $table->timestamp('cancelled_at')->nullable(); $table->unsignedInteger('cancelled_by')->nullable();
-            $table->string('cancellation_reason')->nullable();
+            $table->unsignedInteger('cancelled_by')->nullable();
         });
         Schema::table('booking_pets', function (Blueprint $table) {
             $table->timestamp('cancelled_at')->nullable(); $table->unsignedInteger('cancelled_by')->nullable();
@@ -3298,6 +3440,10 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ['GET', 'api/admin/clinic-service-options', 'role:admin,staff'],
             ['GET', 'api/admin/clinic-cases/{id}/service-pricing/{clinicServiceId}', 'role:admin,staff'],
             ['POST', 'api/admin/clinic-cases/{id}/services', 'role:admin,staff'],
+            ['GET', 'api/admin/clinic-cases/{id}/bulk-services/{clinicServiceId}', 'role:admin,staff'],
+            ['POST', 'api/admin/clinic-cases/{id}/bulk-services', 'role:admin,staff'],
+            ['GET', 'api/admin/clinic-cases/{id}/bulk-treatments/{itemId}', 'role:admin,staff'],
+            ['POST', 'api/admin/clinic-cases/{id}/bulk-treatments', 'role:admin,staff'],
             ['DELETE', 'api/admin/clinic-cases/{id}/services/{caseServiceId}', 'role:admin,staff'],
             ['GET', 'api/admin/clinic-cases/{id}/charges', 'role:admin,staff'],
             ['PATCH', 'api/admin/clinic-cases/{id}/charges/{chargeId}', 'role:admin,staff'],

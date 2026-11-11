@@ -684,6 +684,7 @@ function adminClinicPage() {
     recordsPage: 1,
     hasMoreRecords: false,
     activeCases: [],
+    activeSessions: [],
     arrivals: [],
     activeCasesLoading: true,
     activeCasesLoaded: false,
@@ -819,6 +820,7 @@ function adminClinicPage() {
         }, response => {
           if (request !== this._activeCaseRequest) return;
           this.activeCases = response.cases || [];
+          this.activeSessions = response.sessions || [];
           this.arrivals = response.arrivals || [];
           this.clinicToday = response.today || '';
           this.confinedCount = response.confined_count || 0;
@@ -835,11 +837,30 @@ function adminClinicPage() {
       return this.tab === 'for-payment' ? this.activeCases.filter(item => item.status === 'for_payment') : this.currentActiveCases;
     },
     get currentActiveCases() { return this.activeCases.filter(item => ['checked_in', 'in_consultation'].includes(item.status) && !(item.confinement && !item.confinement.discharged_at)); },
-    get activeCount() { return this.currentActiveCases.length; },
+    get visibleSessions() { return this.activeSessions.filter(session => session.state === this.tab); },
+    get activeCount() { return this.currentActiveCases.filter(item => !item.clinic_visit_group_id).length + this.activeSessions.filter(session => session.state === 'active-cases').length; },
     get waitingCases() { return this.arrivals.filter(item => item.status === 'waiting_to_arrive'); },
-    get expectedCount() { return this.waitingCases.length; },
-    get caseRows() { return this.tab === 'expected' ? this.waitingCases : this.visibleActiveCases; },
-    get forPaymentCount() { return this.activeCases.filter(item => item.status === 'for_payment').length; },
+    get expectedCount() { return this.waitingCases.filter(item => !item.clinic_visit_group_id).length + this.activeSessions.filter(session => session.state === 'expected').length; },
+    get caseRows() { return (this.tab === 'expected' ? this.waitingCases : this.visibleActiveCases).filter(item => !item.clinic_visit_group_id); },
+    get forPaymentCount() { return this.activeCases.filter(item => item.status === 'for_payment' && !item.clinic_visit_group_id).length + this.activeSessions.filter(session => session.state === 'for-payment').length; },
+    sessionStatus(session) {
+      const counts = new Map();
+      for (const patient of session.patients) {
+        const status = patient.confined ? 'Confined' : this.caseStatus(patient);
+        counts.set(status, (counts.get(status) || 0) + 1);
+      }
+      return [...counts].map(([status, count]) => `${count} ${status}`).join(' · ');
+    },
+    reviewSessionPayment(session) {
+      if (session.state !== 'for-payment') return;
+      const anchor = session.patients.find(patient => patient.status === 'for_payment');
+      if (anchor) return this.reviewPayment(anchor);
+    },
+    viewSessionBilling(session) {
+      if (!this.permissions.billing_view) return;
+      const anchor = session.patients.find(patient => patient.status !== 'cancelled');
+      if (anchor) return this.reviewPayment(anchor, false, true);
+    },
     get defaultTab() { return this.permissions.clinical ? 'active-cases' : 'expected'; },
     get allowedTabs() { return ['expected', 'active-cases', ...(this.permissions.clinical ? ['confined'] : []), 'for-payment']; },
     async loadConfinedCases(page = 1) {
@@ -901,7 +922,7 @@ function adminClinicPage() {
     caseActionLabel(item) {
       if (this.canCheckInArrival(item)) return 'Check In';
       if (item.status === 'checked_in' && this.permissions.clinical) return 'Start Consultation';
-      if (item.status === 'for_payment' && this.permissions.payment) return 'Review & Collect Payment';
+      if (item.status === 'for_payment' && !item.clinic_visit_group_id && this.permissions.payment) return 'Review & Collect Payment';
       if (['checked_in', 'in_consultation', 'for_payment'].includes(item.status) && this.permissions.clinical) return 'Open Case';
       return '';
     },
@@ -909,7 +930,7 @@ function adminClinicPage() {
       if (this.caseBusyId !== null) return;
       if (this.canCheckInArrival(item)) return this.checkInCase(item);
       if (item.status === 'checked_in' && this.permissions.clinical) return this.startCase(item);
-      if (item.status === 'for_payment' && this.permissions.payment) return this.reviewPayment(item);
+      if (item.status === 'for_payment' && !item.clinic_visit_group_id && this.permissions.payment) return this.reviewPayment(item);
       if (['checked_in', 'in_consultation', 'for_payment'].includes(item.status) && this.permissions.clinical) this.openCase(item);
     },
     get permissions() { return this.$store.clinicAccess.permissions; },
@@ -935,31 +956,35 @@ function adminClinicPage() {
       this.arrivals = this.arrivals.filter(item => item.id !== appointment.id);
       this.activeCases = [...this.activeCases.filter(item => item.id !== appointment.id), appointment];
     },
-    async reviewPayment(item, checkOnline = true) {
-      if (!this.permissions.payment || item.status !== "for_payment" || this.payment.open) return;
+    async reviewPayment(item, checkOnline = true, viewOnly = false) {
+      if (this.payment.open || (viewOnly ? !this.permissions.billing_view : (!this.permissions.payment || item.status !== "for_payment"))) return;
       this.paymentReturnFocus = document.activeElement;
       this.paymentPageOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       this.receiptModal = null;
-      this.payment = { online: null, verifying: false, open: true, case: item, method: "cash", amountPaid: "", touched: false, saving: false, error: "", recorded: false };
-      this.$nextTick?.(() => document.getElementById('clinic-cash-received')?.focus());
-      if (checkOnline || item.list_only) {
+      this.payment = { online: null, verifying: false, open: true, viewOnly, case: item, session: item.session ?? null, method: "cash", amountPaid: "", touched: false, saving: false, error: "", recorded: false };
+      this.$nextTick?.(() => document.getElementById(viewOnly ? 'clinic-payment-title' : 'clinic-cash-received')?.focus());
+      if (checkOnline || item.list_only || (item.clinic_visit_group_id && !this.payment.session)) {
         this.payment.saving = true;
         try {
-          if (item.list_only) this.payment.case = (await API.getClinicCase(item.id)).case;
+          if (item.list_only && !viewOnly) this.payment.case = (await API.getClinicCase(item.id)).case;
+          if (this.payment.case?.clinic_visit_group_id && !this.payment.session) {
+            this.payment.session = (await API.getClinicCaseCharges(item.id)).session;
+          }
           if (checkOnline) await this.applyClinicOnlineStatus(await API.clinicOnlinePaymentStatus(item.id));
         }
         catch (error) { this.payment.error = error.message || 'Could not check payment.'; }
         finally { this.payment.saving = false; }
       }
     },
-    get paymentTotalDue() { return Number(this.payment.case?.total_amount); },
+    get paymentTotalDue() { return Number(this.payment.session?.total_amount ?? this.payment.case?.total_amount); },
     get paymentCashError() { return window.CashPayment.error(this.payment.amountPaid, this.paymentTotalDue); },
     get paymentMaximumAmount() { return Math.min(999999, window.CashPayment.maximumFor(this.paymentTotalDue)); },
     get paymentChange() { return window.CashPayment.change(this.payment.amountPaid, this.paymentTotalDue); },
     get canConfirmPayment() {
-      return this.permissions.payment && this.payment.open && !this.payment.recorded && !this.payment.saving
+      return this.permissions.payment && this.payment.open && !this.payment.viewOnly && !this.payment.recorded && !this.payment.saving
         && (!this.payment.case?.status || this.payment.case.status === 'for_payment')
+        && (!this.payment.case?.clinic_visit_group_id || this.payment.session?.can_pay)
         && !this.payment.online && Number.isFinite(this.paymentTotalDue) && this.paymentTotalDue >= 0
         && (this.payment.method === 'online' ? this.paymentTotalDue > 0 : !this.paymentCashError);
     },
@@ -1013,9 +1038,9 @@ function adminClinicPage() {
           return;
         }
         const response = await API.clinicRecordPayment(this.payment.case.id, {
-          total_amount: this.payment.case.total_amount, payment_method: 'cash', amount_paid: Number(this.payment.amountPaid),
+          total_amount: this.payment.session?.total_amount ?? this.payment.case.total_amount, payment_method: 'cash', amount_paid: Number(this.payment.amountPaid),
         });
-        this.completeClinicPayment(response.appointment);
+        this.completeClinicPayment(response.appointment, response.session);
       } catch (error) {
         if (this.payment.method === 'online') {
           try { await this.applyClinicOnlineStatus(await API.clinicOnlinePaymentStatus(this.payment.case.id)); }
@@ -1026,11 +1051,15 @@ function adminClinicPage() {
           await this.loadActiveCases({ force: true });
           const current = this.activeCases.find((item) => item.id === this.payment.case.id);
           if (current) this.payment.case = current;
+          if (this.payment.case?.clinic_visit_group_id) {
+            try { this.payment.session = (await API.getClinicCaseCharges(this.payment.case.id)).session; }
+            catch { this.payment.session = null; }
+          }
         }
       }
       finally { this.payment.saving = false; }
     },
-    completeClinicPayment(recorded) {
+    completeClinicPayment(recorded, session = null) {
       this._clinicPaymentWatch?.stop();
       window.OnlinePayment?.clear('clinic');
       this.receiptModal = {
@@ -1039,14 +1068,15 @@ function adminClinicPage() {
         caseReference: recorded.appointment_reference,
         ownerName: recorded.ownerName,
         contactNumber: recorded.contactNumber === '—' ? '' : recorded.contactNumber,
-        patientName: recorded.pet?.name || 'Patient',
+        patients: session?.patients.filter(patient => patient.status === "completed") || [],
+        patientName: session ? session.patients.filter(patient => patient.status === 'completed').map(patient => patient.pet_name).filter(Boolean).join(', ') : recorded.pet?.name || 'Patient',
         patientInfo: [recorded.pet?.species, recorded.pet?.breed, recorded.pet?.gender].filter(Boolean).join(' · '),
-        charges: recorded.charges || [],
-        finalPrice: Number(recorded.total_amount),
+        charges: session ? [] : recorded.charges || [],
+        finalPrice: Number(session?.total_amount ?? recorded.total_amount),
         paymentMethod: recorded.payment_method_label || (recorded.payment_method === 'cash' ? 'Cash' : recorded.payment_method),
-        amountPaid: recorded.cash_received,
-        change: recorded.change,
-        paidAt: recorded.paid_at,
+        amountPaid: session ? session.cash_received : recorded.cash_received,
+        change: session ? session.change : recorded.change,
+        paidAt: session?.paid_at ?? recorded.paid_at,
         processedBy: recorded.processed_by?.name || '—',
       };
       this.payment.recorded = true;
@@ -1054,7 +1084,8 @@ function adminClinicPage() {
         document.getElementById('clinic-payment-recorded-title')?.focus();
       });
       window.dispatchEvent(new CustomEvent('clinic-case-patch', {detail: {id: recorded.id, paid: recorded.paid, status: recorded.status}}));
-      this.activeCases = this.activeCases.filter(item => item.id !== recorded.id);
+      this.activeCases = this.activeCases.filter(item => item.id !== recorded.id && (!session || item.clinic_visit_group_id !== session.id));
+      if (session) this.activeSessions = this.activeSessions.filter(item => item.id !== session.id);
       if (this.profileVisit?.id === recorded.id) this.profileVisit = null;
       window.dispatchEvent(new CustomEvent("clinic-case-updated"));
     },
@@ -1063,11 +1094,12 @@ function adminClinicPage() {
     },
     async applyClinicOnlineStatus(response) {
       const attempt = response.online_payment;
+      if (response.session) this.payment.session = response.session;
       if (response.appointment) this.payment.case = {...this.payment.case, ...response.appointment};
       if (attempt?.status === 'paid') {
         this.payment.online = attempt;
         if (attempt.reconciliation_reason) { this.payment.error = 'Payment received. Contact an administrator to reconcile this case.'; return; }
-        this.completeClinicPayment({...this.payment.case, ...response.appointment});
+        this.completeClinicPayment({...this.payment.case, ...response.appointment}, response.session);
       } else if (attempt?.status === 'pending') {
         this.payment.online = attempt; this.payment.method = 'online';
         window.OnlinePayment.remember('clinic', attempt, this.payment.case.id);
@@ -1153,7 +1185,7 @@ function adminClinicPage() {
       if (this.caseBusyId !== null) return;
       this.caseBusyId = item.id;
       try {
-        if (item.list_only) item = (await API.getClinicCase(item.id)).case;
+        if (item.list_only || (item.clinic_visit_group_id && item.bulk_eligible_count == null)) item = (await API.getClinicCase(item.id)).case;
         window.dispatchEvent(new CustomEvent("clinic-open-modal", { detail: { appt: item, section: section || (item.case_type === "vaccination" ? "vaccinations" : "medical") } }));
       } catch (error) { this.$store.clinicFeedback.notify(error.message || 'Could not open this case.', 'error'); }
       finally { this.caseBusyId = null; }

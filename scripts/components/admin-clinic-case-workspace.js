@@ -13,7 +13,7 @@ function clinicCaseWorkspace() {
   return {
     workspaceAppointment: null, workspaceSection: '', workspaceCaseId: null,
     serviceRows: [], servicePage: 0, serviceLastPage: 1, servicesLoading: false, servicesError: '',
-    chargeRows: [], chargePage: 0, chargeLastPage: 1, billingLoading: false, billingError: '', billingTotal: null,
+    chargeRows: [], chargePage: 0, chargeLastPage: 1, billingLoading: false, billingError: '', billingTotal: null, billingSession: null,
     searchQuery: '', searchRows: [], searchPage: 0, searchLastPage: 1, searchLoading: false, searchError: '',
     selectedService: null, servicePricing: null, pricingLoading: false,
     serviceForm: null, serviceErrors: {}, serviceError: '', serviceSaving: false, serviceRemovingId: null, pendingPayload: null,
@@ -27,6 +27,7 @@ function clinicCaseWorkspace() {
     },
     get canRecordCasePayment() {
       return !!this.$store.clinicAccess.permissions.payment && this.workspaceAppointment?.status === 'for_payment'
+        && (!this.workspaceAppointment?.clinic_visit_group_id || this.billingSession?.can_pay)
         && !this.workspaceAppointment?.paid && !this.workspaceAppointment?.archived_at;
     },
     get treatmentCharges() { return this.chargeRows.filter(charge => ['medicine', 'vaccine'].includes(charge.kind)); },
@@ -75,7 +76,7 @@ function clinicCaseWorkspace() {
       if (this.workspaceCaseId !== appt.id) {
         ++this._generation; ++this._selectionRequest; ++this._searchRequest;
         this.workspaceCaseId = appt.id;
-        this.serviceRows = []; this.chargeRows = []; this.billingTotal = null;
+        this.serviceRows = []; this.chargeRows = []; this.billingTotal = null; this.billingSession = null;
         this.selectedService = null; this.servicePricing = null; this.serviceForm = null; this.pendingPayload = null;
         this.searchRows = []; this.searchQuery = ''; this.searchError = ''; this.serviceError = ''; this.serviceErrors = {};
         this.pricingLoading = false; this.searchLoading = false;
@@ -111,6 +112,7 @@ function clinicCaseWorkspace() {
         this.chargePage = response.charges.current_page; this.chargeLastPage = response.charges.last_page;
         this._billingScope = scope;
         this.billingTotal = response.total_amount;
+        this.billingSession = response.session || null;
         window.dispatchEvent(new CustomEvent('clinic-case-patch', {detail: {id, total_amount: response.total_amount}}));
       } catch (error) { if (generation === this._generation && request === this._billingRequest) this.billingError = error.message || 'Could not load billing.'; }
       finally { if (generation === this._generation && request === this._billingRequest) this.billingLoading = false; }
@@ -267,7 +269,7 @@ function clinicCaseWorkspace() {
       }
       if (!this.canRecordCasePayment) return;
       window.dispatchEvent(new CustomEvent('clinic-review-payment', {detail: {
-        ...this.workspaceAppointment, charges: [...this.chargeRows], total_amount: this.billingTotal,
+        ...this.workspaceAppointment, charges: [...this.chargeRows], total_amount: this.billingTotal, session: this.billingSession,
       }}));
     },
   };

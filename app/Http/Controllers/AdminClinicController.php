@@ -172,15 +172,52 @@ class AdminClinicController extends Controller
             ->map(fn (ClinicAppointment $case) => $this->formatAppointment($case, true))
             ->values();
 
-        return response()->json(['success' => true, 'arrivals' => $arrivals, 'cases' => $cases, 'today' => now()->toDateString(),
+        return response()->json(['success' => true, 'arrivals' => $arrivals, 'cases' => $cases,
+            'sessions' => $this->activeSessions($arrivals, $cases), 'today' => now()->toDateString(),
             'confined_count' => $this->hasConfinements ? ClinicAppointment::confined()->count() : 0,
             'activeClinicCount' => $this->activeClinicCount()]);
     }
 
-    public function showCase(int $id)
+    private function activeSessions($arrivals, $cases): array
+    {
+        if (! Schema::hasTable('clinic_visit_groups')) {
+            return [];
+        }
+
+        $ids = $arrivals->concat($cases)->pluck('clinic_visit_group_id')->filter()->unique();
+        if ($this->hasConfinements) {
+            $ids = $ids->merge(ClinicAppointment::confined()->whereNotNull('clinic_visit_group_id')
+                ->distinct()->pluck('clinic_visit_group_id'))->unique();
+        }
+
+        $patients = ClinicAppointment::with($this->appointmentRelations(true))
+            ->whereIn('clinic_visit_group_id', $ids)->orderBy('id')
+            ->when($this->hasConfinements, fn ($query) => $query->withExists([
+                'confinement as active_confinement' => fn ($episode) => $episode->whereNull('discharged_at'),
+            ]))->get()->groupBy('clinic_visit_group_id');
+
+        return $patients->map(function ($rows, $id) {
+            $remaining = $rows->where('status', '!=', 'cancelled');
+            $settlement = app(\App\Services\ClinicPaymentSettlementService::class);
+            $ready = $remaining->filter(fn ($patient) => $settlement->ready($patient))->count();
+            $state = $ready === $remaining->count() ? 'for-payment'
+                : ($remaining->every(fn ($patient) => $patient->status === 'waiting_to_arrive') ? 'expected' : 'active-cases');
+            $children = $rows->map(fn (ClinicAppointment $patient) => $this->formatAppointment($patient, true)
+                + ['confined' => (bool) $patient->active_confinement]);
+
+            return [
+                'id' => $id, 'owner_name' => $children->first()['ownerName'], 'state' => $state,
+                'ready_count' => $ready, 'eligible_count' => $remaining->count(), 'patients' => $children,
+            ];
+        })->values()->all();
+    }
+
+    public function showCase(Request $request, int $id, \App\Services\ClinicGroupClinicalPatients $scope)
     {
         $case = ClinicAppointment::with([...$this->appointmentRelations(), 'paidBy'])->findOrFail($id);
-        return response()->json(['case' => $this->formatAppointment($case)]);
+        $eligible = $case->clinic_visit_group_id && $request->user()->clinicPermissions()['clinical']
+            ? $scope->preview($case->visitGroup, $request->user())->count() : 0;
+        return response()->json(['case' => $this->formatAppointment($case) + ['bulk_eligible_count' => $eligible]]);
     }
 
     public function confinedCases(Request $request)
@@ -304,11 +341,16 @@ class AdminClinicController extends Controller
 
     public function archivedIndex(Request $request)
     {
+        $request->validate(['page' => 'nullable|integer|min:1']);
         $search = trim((string) $request->query('search', ''));
         $date = trim((string) $request->query('date', ''));
 
         $query = ClinicAppointment::with($this->appointmentRelations())
             ->whereIn('status', ClinicAppointment::TERMINAL_STATUSES);
+        $hasGroups = Schema::hasTable('clinic_visit_groups');
+        if ($hasGroups) {
+            $query->whereDoesntHave('visitGroup.appointments', fn ($patients) => $patients->blocking());
+        }
 
         if (Schema::hasTable('vaccination_records')) {
             $query->withCount(['vaccinationRecords as treatment_count' => fn ($query) => $query->published()->notVoided()]);
@@ -331,19 +373,21 @@ class AdminClinicController extends Controller
                     ->orWhereHas('record', fn ($query) => $query
                         ->where('chief_complaint', 'like', $like)
                         ->orWhere('working_diagnosis', 'like', $like))
-                    ->orWhereHas('user', function ($userQuery) use ($like) {
+                    ->orWhereHas('user', function ($userQuery) use ($like, $search) {
                         $userQuery
                             ->where('first_name', 'like', $like)
                             ->orWhere('last_name', 'like', $like)
                             ->orWhere('email', 'like', $like)
-                            ->orWhere('phone', 'like', $like);
+                            ->orWhere('phone', 'like', $like)
+                            ->orWhere(fn ($names) => $this->matchOwnerName($names, $search, 'first_name', 'last_name'));
                     })
-                    ->orWhereHas('walkin', function ($walkinQuery) use ($like) {
+                    ->orWhereHas('walkin', function ($walkinQuery) use ($like, $search) {
                         $walkinQuery
                             ->where('fname', 'like', $like)
                             ->orWhere('lname', 'like', $like)
                             ->orWhere('email', 'like', $like)
-                            ->orWhere('phone', 'like', $like);
+                            ->orWhere('phone', 'like', $like)
+                            ->orWhere(fn ($names) => $this->matchOwnerName($names, $search, 'fname', 'lname'));
                     })
                     ->orWhere(function ($petQuery) use ($search) {
                         PetProfileSnapshot::whereIdentity($petQuery, $search, ['pet_name', 'species', 'breed']);
@@ -351,22 +395,44 @@ class AdminClinicController extends Controller
             });
         }
 
-        $archived = $query
-            ->orderByDesc('appointment_date')
-            ->orderByDesc('updated_at')
-            ->get()
+        if ($hasGroups) {
+            $representatives = (clone $query)->select(DB::raw('MAX(clinic_appointments.id)'))
+                ->groupByRaw('clinic_visit_group_id, CASE WHEN clinic_visit_group_id IS NULL THEN clinic_appointments.id ELSE NULL END');
+            $query->whereIn('clinic_appointments.id', $representatives)->with('visitGroup');
+        }
+        $page = $query->orderByDesc('appointment_date')->orderByDesc('updated_at')->orderByDesc('id')->paginate(30);
+        $ids = $page->getCollection()->pluck('clinic_visit_group_id')->filter()->unique();
+        $patients = $ids->isEmpty() ? collect() : ClinicAppointment::with($this->appointmentRelations(true))
+            ->whereIn('clinic_visit_group_id', $ids)->orderBy('id')->get()->groupBy('clinic_visit_group_id');
+        $archived = $page->getCollection()
             ->map(fn (ClinicAppointment $appointment) => [
                 ...$this->formatAppointment($appointment),
                 'treatment_count' => $appointment->treatment_count ?? 0,
                 'service_count' => $appointment->service_count ?? 0,
+                'session' => $appointment->clinic_visit_group_id ? [
+                    'id' => $appointment->clinic_visit_group_id,
+                    'total_amount' => $appointment->visitGroup->total_amount,
+                    'paid_at' => $appointment->visitGroup->paid_at?->toIso8601String(),
+                    'patients' => $patients->get($appointment->clinic_visit_group_id)->map(fn ($patient) => $this->formatAppointment($patient, true))->values(),
+                ] : null,
             ])
             ->values();
 
         return response()->json([
             'success' => true,
             'archived' => $archived,
-            'total' => $archived->count(),
+            'total' => $page->total(),
+            'current_page' => $page->currentPage(),
+            'last_page' => $page->lastPage(),
         ]);
+    }
+
+    private function matchOwnerName($query, string $search, string $first, string $last): void
+    {
+        foreach (preg_split('/\s+/', mb_strtolower($search), -1, PREG_SPLIT_NO_EMPTY) as $term) {
+            $query->where(fn ($name) => $name->whereRaw("LOWER({$first}) LIKE ?", ["%{$term}%"])
+                ->orWhereRaw("LOWER({$last}) LIKE ?", ["%{$term}%"]));
+        }
     }
 
     // ── Status transitions ───────────────────────────────────────────────────
@@ -440,7 +506,7 @@ class AdminClinicController extends Controller
         ]);
     }
 
-    public function markPaid(Request $request, int $id)
+    public function markPaid(Request $request, int $id, \App\Services\ClinicPaymentSettlementService $settlement)
     {
         $request->validate([
             'total_amount' => ['required', 'numeric', 'min:0', 'max:99999999.99'],
@@ -448,18 +514,28 @@ class AdminClinicController extends Controller
             'amount_paid' => ['required_if:payment_method,cash', 'nullable', 'numeric', 'decimal:0,2', 'min:0', 'max:999999'],
         ]);
 
-        $appt = DB::transaction(function () use ($id, $request) {
-            $appointment = ClinicAppointment::query()
-                ->whereKey($id)
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            \App\Models\GatewayPayment::assertClinicUnlocked($appointment);
-            if ($appointment->status !== 'for_payment') {
-                return null;
+        $groupId = ClinicAppointment::findOrFail($id)->clinic_visit_group_id;
+        $result = DB::transaction(function () use ($id, $groupId, $request, $settlement) {
+            $group = $groupId ? \App\Models\ClinicVisitGroup::query()->lockForUpdate()->findOrFail($groupId) : null;
+            $patients = $group ? $settlement->patients($group, lock: true) : null;
+            $appointment = $patients ? $patients->firstWhere('id', $id) : ClinicAppointment::query()->lockForUpdate()->findOrFail($id);
+            if ($group?->paid_at && $group->payment_method === 'cash'
+                && (float) $group->cash_received === (float) $request->amount_paid
+                && (float) $group->total_amount === (float) $request->total_amount) {
+                return [$appointment, $settlement->breakdown($group, $patients)];
             }
 
-            $total = round((float) $appointment->charges()->sum('amount'), 2);
+            \App\Models\GatewayPayment::assertClinicUnlocked($appointment);
+            if ($group) {
+                $eligible = $settlement->eligible($patients);
+                $settlement->assertReady($eligible);
+                $total = $eligible->sum(fn ($patient) => $settlement->subtotal($patient)) / 100;
+            } elseif ($appointment->status !== 'for_payment') {
+                return null;
+            } else {
+                $total = round((float) $appointment->charges()->sum('amount'), 2);
+            }
+
             if (abs($total - (float) $request->total_amount) > 0.001) {
                 throw \Illuminate\Validation\ValidationException::withMessages([
                     'total_amount' => 'The charges have changed. Reload the payment breakdown before recording payment.',
@@ -479,19 +555,25 @@ class AdminClinicController extends Controller
                 }
             }
 
-            app(\App\Services\ClinicPaymentSettlementService::class)->settle(
+            if ($group) {
+                $settlement->settleGroup($group, $eligible, 'cash', $request->user()->user_id, (string) $request->amount_paid);
+                return [$appointment, $settlement->breakdown($group, $patients)];
+            }
+
+            $settlement->settle(
                 $appointment, number_format($total, 2, '.', ''), 'cash', $request->user()->user_id, (string) $request->amount_paid,
             );
 
-            return $appointment;
-        });
+            return [$appointment, null];
+        }, 3);
 
-        if (! $appt) {
+        if (! $result) {
             return response()->json(['success' => false, 'message' => 'Appointment is not For Payment.'], 422);
         }
 
-        $recorded = $this->formatAppointment($appt->fresh($this->appointmentRelations())->setRelation('paidBy', $request->user()));
-        return response()->json(['success' => true, 'appointment' => $recorded]);
+        [$appointment, $session] = $result;
+        $recorded = $this->formatAppointment($appointment->fresh([...$this->appointmentRelations(), 'paidBy']));
+        return response()->json(['success' => true, 'appointment' => $recorded, 'session' => $session]);
     }
 
     public function cancel(Request $request, int $id)
@@ -518,6 +600,9 @@ class AdminClinicController extends Controller
             }
 
             $appointment->update(['status' => 'cancelled']);
+            if ($appointment->clinic_visit_group_id) {
+                app(\App\Services\ClinicPaymentSettlementService::class)->notifyWhenGroupIsReady($appointment->clinic_visit_group_id);
+            }
             Notification::createForClinic(
                 $appointment,
                 Notification::TYPE_CLINIC_CANCELLED,
@@ -915,6 +1000,7 @@ class AdminClinicController extends Controller
 
         $data = [
             'id' => $a->id,
+            'clinic_visit_group_id' => $a->clinic_visit_group_id,
             'appointment_reference' => $a->appointment_reference,
             'appointment_type' => $a->appointment_type,
             'case_type' => $a->case_type ?? ($a->appointment_type === 'pre_registered' ? 'online_request' : 'consultation'),
@@ -1001,7 +1087,7 @@ class AdminClinicController extends Controller
         ];
         if ($listOnly) {
             $data = array_intersect_key($data, array_flip([
-                'id', 'appointment_reference', 'appointment_type', 'case_type', 'status', 'queue_number',
+                'id', 'clinic_visit_group_id', 'appointment_reference', 'appointment_type', 'case_type', 'status', 'queue_number',
                 'appointment_date', 'started_on', 'time_window', 'chief_complaint', 'total_amount', 'paid',
                 'ownerName', 'contactNumber', 'owner', 'pet', 'final_status_label',
             ]));

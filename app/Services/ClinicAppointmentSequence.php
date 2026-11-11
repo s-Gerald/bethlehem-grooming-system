@@ -16,6 +16,11 @@ class ClinicAppointmentSequence
      */
     public function reserve(string $appointmentDate, bool $includeQueue): array
     {
+        return $this->reserveBatch($appointmentDate, $includeQueue, 1)[0];
+    }
+
+    public function reserveBatch(string $appointmentDate, bool $includeQueue, int $count): array
+    {
         ClinicSetting::current(lockForUpdate: true);
 
         $date = Carbon::parse($appointmentDate);
@@ -28,19 +33,14 @@ class ClinicAppointmentSequence
             ? ((int) substr($lastReference, strlen($prefix))) + 1
             : 1;
 
-        return [
-            'appointment_reference' => $prefix.str_pad(
-                (string) $nextReferenceNumber,
-                3,
-                '0',
-                STR_PAD_LEFT,
-            ),
-            'queue_number' => $includeQueue
-                ? ((int) ClinicAppointment::query()
-                    ->whereDate('appointment_date', $appointmentDate)
-                    ->max('queue_number')) + 1
-                : null,
-        ];
+        $nextQueueNumber = $includeQueue
+            ? ((int) ClinicAppointment::query()->whereDate('appointment_date', $appointmentDate)->max('queue_number')) + 1
+            : null;
+
+        return array_map(fn (int $offset) => [
+            'appointment_reference' => $prefix.str_pad((string) ($nextReferenceNumber + $offset), 3, '0', STR_PAD_LEFT),
+            'queue_number' => $nextQueueNumber === null ? null : $nextQueueNumber + $offset,
+        ], range(0, $count - 1));
     }
 
     public function nextQueueNumber(string $appointmentDate): int

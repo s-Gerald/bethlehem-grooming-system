@@ -14,6 +14,33 @@ use Tests\TestCase;
 
 class SharedPayMongoTest extends TestCase
 {
+    public function test_one_group_checkout_locks_siblings_and_webhook_completes_every_patient_once(): void
+    {
+        Schema::create('walkins', fn (Blueprint $table) => $table->id());
+        (require database_path('migrations/2026_11_11_000001_create_clinic_visit_groups.php'))->up();
+        $group = \App\Models\ClinicVisitGroup::create(['source' => 'walk_in', 'service_day' => now()->toDateString()]);
+        DB::table('clinic_appointments')->where('id', 1)->update(['clinic_visit_group_id' => $group->id]);
+        DB::table('clinic_appointments')->insert([
+            'id' => 2, 'appointment_reference' => 'CLINIC-SIBLING', 'status' => 'for_payment', 'clinic_visit_group_id' => $group->id,
+        ]);
+        DB::table('clinic_charges')->insert([
+            'clinic_appointment_id' => 2, 'kind' => 'service', 'description' => 'Examination',
+            'quantity' => 1, 'unit_price' => 250, 'amount' => 250,
+        ]);
+
+        $this->postJson('/api/admin/clinic-appointments/1/online-payment', [])->assertOk()->assertJsonPath('online_payment.amount', '750.00');
+        $this->postJson('/api/admin/clinic-appointments/2/online-payment', [])->assertOk()->assertJsonPath('online_payment.id', 1);
+        $this->postJson('/api/admin/clinic-appointments/2/pay', ['payment_method' => 'cash', 'total_amount' => 750, 'amount_paid' => 750])
+            ->assertUnprocessable()->assertJsonValidationErrors('payment');
+        $this->assertDatabaseCount('gateway_payments', 1);
+        $event = $this->event(75000);
+        $this->webhook($event)->assertOk();
+        $this->webhook($event)->assertOk();
+        $this->assertDatabaseHas('clinic_visit_groups', ['id' => $group->id, 'total_amount' => 750, 'gateway_payment_id' => 1]);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'completed', 'total_amount' => 500]);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 2, 'status' => 'completed', 'total_amount' => 250]);
+    }
+
     public function test_a_paid_clinic_payment_or_event_identifier_cannot_settle_a_pos_checkout(): void
     {
         $this->clinicCheckout();
@@ -205,7 +232,7 @@ class SharedPayMongoTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (['pos_sale_sequences', 'gateway_stock_reservations', 'clinic_charges', 'clinic_appointments', 'pos_transaction_items', 'pos_transactions', 'gateway_payments', 'grooming_payment_products', 'inventory_transactions', 'inventory_items',
+        foreach (['pos_sale_sequences', 'gateway_stock_reservations', 'clinic_charges', 'clinic_appointments', 'clinic_visit_groups', 'pos_transaction_items', 'pos_transactions', 'gateway_payments', 'grooming_payment_products', 'inventory_transactions', 'inventory_items',
             'notifications', 'payments', 'booking_services', 'services', 'booking_pets', 'pets', 'bookings', 'users'] as $table) {
             Schema::dropIfExists($table);
         }
@@ -837,6 +864,7 @@ class SharedPayMongoTest extends TestCase
     {
         Schema::create('walkins', function (Blueprint $table) {
             $table->id(); $table->string('fname'); $table->string('lname');
+            $table->unsignedInteger('user_id')->nullable(); $table->unsignedBigInteger('unregistered_customer_id')->nullable();
         });
         Schema::create('unregistered_customers', function (Blueprint $table) {
             $table->id(); $table->string('first_name'); $table->string('last_name');
@@ -845,7 +873,10 @@ class SharedPayMongoTest extends TestCase
             $table->unsignedInteger('user_id')->nullable(); $table->unsignedInteger('pet_id')->nullable(); $table->unsignedBigInteger('walkin_id')->nullable();
         });
         Schema::table('pets', fn (Blueprint $table) => $table->unsignedInteger('unregistered_customer_id')->nullable());
-        Schema::table('bookings', fn (Blueprint $table) => $table->unsignedInteger('user_id')->nullable());
+        Schema::table('bookings', function (Blueprint $table) {
+            $table->unsignedInteger('user_id')->nullable();
+            $table->unsignedBigInteger('walkin_id')->nullable();
+        });
         if ($context === 'clinic') $this->clinicCheckout();
         elseif ($context === 'pos') $this->posCheckout()->assertOk();
         else $this->postJson('/api/admin/bookings/1/online-payment', [

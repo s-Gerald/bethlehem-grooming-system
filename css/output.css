@@ -1348,6 +1348,10 @@ video {
   max-height: 90vh;
 }
 
+.max-h-\[calc\(100dvh-2rem\)\] {
+  max-height: calc(100dvh - 2rem);
+}
+
 .max-h-\[calc\(100dvh-4rem\)\] {
   max-height: calc(100dvh - 4rem);
 }
@@ -1550,6 +1554,10 @@ video {
 
 .w-\[calc\(100\%-2\.5rem\)\] {
   width: calc(100% - 2.5rem);
+}
+
+.w-\[calc\(100\%-2rem\)\] {
+  width: calc(100% - 2rem);
 }
 
 .w-\[calc\(100\%_-_2rem\)\] {
@@ -2533,6 +2541,11 @@ video {
   background-color: rgb(238 247 255 / var(--tw-bg-opacity, 1));
 }
 
+.bg-\[\#f0f7fd\] {
+  --tw-bg-opacity: 1;
+  background-color: rgb(240 247 253 / var(--tw-bg-opacity, 1));
+}
+
 .bg-\[\#f4f8fc\] {
   --tw-bg-opacity: 1;
   background-color: rgb(244 248 252 / var(--tw-bg-opacity, 1));
@@ -3257,10 +3270,6 @@ video {
 
 .uppercase {
   text-transform: uppercase;
-}
-
-.lowercase {
-  text-transform: lowercase;
 }
 
 .capitalize {
@@ -4407,11 +4416,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
   outline-offset: 2px !important;
 }
 
-.focus-visible\:outline-none:focus-visible {
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-}
-
 .focus-visible\:outline:focus-visible {
   outline-style: solid;
 }
@@ -4616,29 +4620,13 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
     width: min(288px, calc(100vw - 40px));
   }
 
-  .max-\[1180px\]\:w-auto {
-    width: auto;
-  }
-
   .max-\[1180px\]\:w-full {
     width: 100%;
-  }
-
-  .max-\[1180px\]\:flex-1 {
-    flex: 1 1 0%;
   }
 
   .max-\[1180px\]\:-translate-x-\[110\%\] {
     --tw-translate-x: -110%;
     transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
-  }
-
-  .max-\[1180px\]\:flex-wrap {
-    flex-wrap: wrap;
-  }
-
-  .max-\[1180px\]\:pl-20 {
-    padding-left: 5rem;
   }
 
   .group\/portal.client-sidebar-open .max-\[1180px\]\:group-\[\.client-sidebar-open\]\/portal\:pointer-events-auto {
@@ -4666,20 +4654,8 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
 }
 
 @media (max-width: 639px) {
-  .max-\[639px\]\:order-3 {
-    order: 3;
-  }
-
   .max-\[639px\]\:mt-4 {
     margin-top: 1rem;
-  }
-
-  .max-\[639px\]\:flex-1 {
-    flex: 1 1 0%;
-  }
-
-  .max-\[639px\]\:basis-full {
-    flex-basis: 100%;
   }
 
   .max-\[639px\]\:gap-2\.5 {
@@ -4720,10 +4696,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
 
   .max-\[639px\]\:pb-\[100px\] {
     padding-bottom: 100px;
-  }
-
-  .max-\[639px\]\:pl-\[62px\] {
-    padding-left: 62px;
   }
 
   .max-\[639px\]\:text-2xl {

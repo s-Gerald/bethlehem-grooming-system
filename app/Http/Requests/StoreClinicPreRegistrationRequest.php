@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\ClinicVisitGroup;
 use App\Support\ClinicConcerns;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -15,6 +16,25 @@ class StoreClinicPreRegistrationRequest extends FormRequest
 
     public function rules(): array
     {
+        if ($this->exists('patients')) {
+            $rules = [
+                'service_day' => ['nullable', 'date_format:Y-m-d'],
+                'patients' => ['required', 'array', 'list', 'min:1', 'max:'.ClinicVisitGroup::MAX_PATIENTS],
+            ];
+            $patients = $this->input('patients');
+            if (is_array($patients) && array_is_list($patients) && count($patients) <= ClinicVisitGroup::MAX_PATIENTS) {
+                $rules['patients.*.pet_id'] = ['required', 'integer', 'distinct'];
+                foreach ($patients as $index => $patient) {
+                    $rules["patients.{$index}"] = ['required', 'array'];
+                    foreach (ClinicConcerns::rules() as $field => $fieldRules) {
+                        $rules["patients.{$index}.{$field}"] = $fieldRules;
+                    }
+                }
+            }
+
+            return $rules;
+        }
+
         return [
             'service_day' => ['nullable', 'date_format:Y-m-d'],
             'pet_id' => [
@@ -26,9 +46,7 @@ class StoreClinicPreRegistrationRequest extends FormRequest
                         ->where('is_archived', false),
                 ),
             ],
-            'common_concerns' => ['required', 'array', 'min:1', 'max:11'],
-            'common_concerns.*' => ['required', 'string', 'distinct', Rule::in(ClinicConcerns::OPTIONS)],
-            'chief_complaint' => ['nullable', 'string', 'max:500'],
+            ...ClinicConcerns::rules(),
         ];
     }
 

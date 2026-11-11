@@ -9,6 +9,7 @@ use App\Http\Requests\StoreClinicPreRegistrationRequest;
 use App\Http\Requests\StoreClinicWalkinRequest;
 use App\Models\ClinicAppointment;
 use App\Models\ClinicSetting;
+use App\Models\ClinicVisitGroup;
 use App\Models\Notification;
 use App\Models\Pet;
 use App\Models\UnregisteredCustomer;
@@ -23,6 +24,8 @@ use App\Services\CustomerPreRegistrationAccessService;
 use App\Support\ClinicConcerns;
 use App\Support\PetWeightSize;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -34,14 +37,25 @@ class ClinicWalkinController extends Controller
         $visit = ClinicAppointment::query()->whereKey($id)
             ->where('user_id', $request->user()->user_id)
             ->where('appointment_type', 'pre_registered')
-            ->with('pet:pet_id,pet_name,species,breed')
             ->first();
 
         if (! $visit) {
             return response()->json(['success' => false, 'message' => 'Visit not found.'], 404);
         }
 
-        return response()->json(['success' => true, 'visit' => [
+        $patients = $this->registrationPatients($visit)->load('pet:pet_id,pet_name,species,breed');
+
+        $visit = $patients->firstWhere('id', $id);
+        return response()->json(['success' => true, 'visit' => $this->registrationDetails($visit) + [
+            'clinic_visit_group_id' => $visit->clinic_visit_group_id,
+            'patients' => $patients->map(fn (ClinicAppointment $patient) => $this->registrationDetails($patient))->values(),
+            'can_cancel' => $this->canCancelRegistration($patients),
+        ]]);
+    }
+
+    private function registrationDetails(ClinicAppointment $visit): array
+    {
+        return [
             'id' => $visit->id, 'reference' => $visit->appointment_reference,
             'status' => $visit->status, 'service_day' => $visit->appointment_date?->toDateString(),
             'created_at' => $visit->created_at?->toIso8601String(),
@@ -52,8 +66,37 @@ class ClinicWalkinController extends Controller
             'pet' => in_array($visit->status, ClinicAppointment::TERMINAL_STATUSES, true)
                 ? PetProfileSnapshot::pet($visit->pet_profile_snapshot, $visit->pet_id)?->only(['pet_id', 'pet_name', 'species', 'breed'])
                 : $visit->pet,
-            'can_cancel' => $visit->canCustomerCancel(),
-        ]]);
+        ];
+    }
+
+    private function registrationPatients(ClinicAppointment $visit, bool $lock = false): \Illuminate\Database\Eloquent\Collection
+    {
+        if (! $visit->clinic_visit_group_id) {
+            return new \Illuminate\Database\Eloquent\Collection([
+                $lock ? ClinicAppointment::query()->lockForUpdate()->findOrFail($visit->id) : $visit,
+            ]);
+        }
+
+        $activity = ['record as has_record', 'vitals as has_vitals', 'charges as has_charges'];
+        if (\Illuminate\Support\Facades\Schema::hasTable('clinic_confinements')) {
+            $activity['confinement as has_confinement'] = fn ($episode) => $episode->whereNull('discharged_at');
+        }
+        return ClinicAppointment::query()->where('clinic_visit_group_id', $visit->clinic_visit_group_id)
+            ->where('user_id', $visit->user_id)->withExists($activity)
+            ->orderBy('id')->when($lock, fn ($query) => $query->lockForUpdate())->get();
+    }
+
+    private function canCancelRegistration(Collection $patients): bool
+    {
+        $remaining = $patients->where('status', '!=', 'cancelled');
+        $grouped = $patients->first()?->clinic_visit_group_id !== null;
+        if ($grouped && \App\Models\GatewayPayment::clinicPaymentPending($patients->first())) {
+            return false;
+        }
+
+        return $remaining->isNotEmpty() && $remaining->every(fn (ClinicAppointment $visit) => $visit->canCustomerCancel(
+            $grouped ? ($visit->has_record || $visit->has_vitals || $visit->has_charges || $visit->has_confinement) : null,
+        ));
     }
 
     public function cancelCustomerRegistration(Request $request, int $id)
@@ -64,14 +107,17 @@ class ClinicWalkinController extends Controller
             // Match intake/expiry lock order before rechecking persisted eligibility.
             ClinicSetting::current(lockForUpdate: true);
             $visit = ClinicAppointment::query()->whereKey($id)
-                ->where('user_id', $request->user()->user_id)->lockForUpdate()->firstOrFail();
+                ->where('user_id', $request->user()->user_id)->firstOrFail();
 
-            if (! $visit->canCustomerCancel()) {
+            $patients = $this->registrationPatients($visit, lock: true);
+            if (! $this->canCancelRegistration($patients)) {
                 return response()->json(['success' => false, 'code' => 'clinic_registration_not_cancellable',
                     'message' => 'This clinic registration can no longer be cancelled online. Refresh to see its current status.'], 409);
             }
 
-            $visit->update(['status' => 'cancelled']);
+            foreach ($patients->where('status', '!=', 'cancelled') as $patient) {
+                $patient->update(['status' => 'cancelled']);
+            }
             Notification::createForClinic($visit, Notification::TYPE_CLINIC_CANCELLED,
                 "Clinic registration {$visit->appointment_reference} was cancelled by the customer.");
 
@@ -122,10 +168,15 @@ class ClinicWalkinController extends Controller
 
             $access = $preRegistrationAccess->forUser((int) $user->user_id)['services']['clinic'];
             if (! $access['allowed']) {
+                $conflict = isset($data['patients']) ? ClinicAppointment::with('pet:pet_id,pet_name')->blocking()
+                    ->where('user_id', $user->user_id)->whereIn('pet_id', array_column($data['patients'], 'pet_id'))->first() : null;
+                $message = $conflict?->pet
+                    ? "{$conflict->pet->pet_name} already has an active clinic visit. Remove this pet or resolve the existing visit before continuing."
+                    : $access['message'];
                 return response()->json([
                     'success' => false,
                     'code' => 'ongoing_pre_registration',
-                    'message' => $access['message'],
+                    'message' => $message,
                     'ongoing' => $access['ongoing'],
                 ], 409);
             }
@@ -133,70 +184,47 @@ class ClinicWalkinController extends Controller
             $days = app(\App\Services\RegistrationServiceDay::class);
             $appointmentDate = $days->assertReviewedDay('clinic', $data['service_day'] ?? null);
 
-            $pet = Pet::whereKey($data['pet_id'])
-                ->where('user_id', $user->user_id)
-                ->where('is_archived', false)
-                ->firstOrFail();
+            $patients = $data['patients'] ?? [$data];
+            $pets = Pet::query()->whereIn('pet_id', array_column($patients, 'pet_id'))
+                ->where('user_id', $user->user_id)->where('is_archived', false)
+                ->orderBy('pet_id')->lockForUpdate()->get()->keyBy('pet_id');
+            foreach ($patients as $index => $patient) {
+                $pet = $pets->get($patient['pet_id']);
+                if (! $pet || $pet->is_deceased) {
+                    $field = isset($data['patients']) ? "patients.{$index}.pet_id" : 'pet_id';
+                    throw ValidationException::withMessages([$field => 'Select an active pet from your account.']);
+                }
+            }
 
-            app(\App\Services\PetServiceSessionPolicy::class)->enforce([$pet->pet_id], 'clinic');
+            $policy = app(\App\Services\PetServiceSessionPolicy::class);
+            $policy->assertNoSameService($pets->modelKeys(), 'clinic');
+            $policy->enforce($pets->modelKeys(), 'clinic');
 
-            $sequence = $clinicSequence->reserve($appointmentDate, false);
-            $reference = $sequence['appointment_reference'];
-
-            $appointment = ClinicAppointment::create([
-                'appointment_reference' => $reference,
-                'appointment_type' => 'pre_registered',
-                'pet_profile_snapshot' => PetProfileSnapshot::registration($pet),
-                'case_type' => 'online_request',
-                'status' => 'waiting_to_arrive',
-                'queue_number' => null,
-                'appointment_date' => $appointmentDate,
+            $group = ClinicVisitGroup::create([
+                'user_id' => $user->user_id,
+                'source' => 'pre_registered',
+                'service_day' => $appointmentDate,
+            ]);
+            $appointments = $this->createPatients($group, $patients, $pets, $clinicSequence, [
                 'registration_closes_at' => $days->closingDeadline('clinic', $appointmentDate),
                 'window_id' => null,
-                'user_id' => $user->user_id,
-                'walkin_id' => null,
-                'pet_id' => $pet->pet_id,
-                'chief_complaint' => ClinicConcerns::summary($data['common_concerns'], $data['chief_complaint'] ?? null),
-                'common_concerns' => $data['common_concerns'],
-                'total_amount' => 0,
-                'paid' => false,
-                'checked_in_at' => null,
             ]);
-
-            $ownerName = trim(($user->first_name ?? '').' '.($user->last_name ?? ''));
-            Notification::createForClinic(
-                $appointment,
-                Notification::TYPE_CLINIC_BOOKED,
-                "Clinic queue registration {$reference} was submitted by {$ownerName} for {$pet->pet_name}.",
-            );
+            $owner = [
+                'name' => trim(($user->first_name ?? '').' '.($user->last_name ?? '')),
+                'email' => $user->email,
+                'phone' => $user->phone,
+            ];
+            $session = $this->registrationSession($group, $appointments, $owner);
+            $first = $appointments->first();
+            $names = ClinicVisitGroup::patientNames($appointments->pluck('pet'));
+            Notification::createForClinic($first, Notification::TYPE_CLINIC_BOOKED,
+                "Clinic queue registration {$first->appointment_reference} was submitted by {$owner['name']} for {$names}.");
 
             return response()->json([
                 'success' => true,
                 'message' => 'Your queue registration has been received. Your queue number will be assigned when you check in at Bethlehem.',
-                'appointment' => [
-                    'appointment_id' => $appointment->id,
-                    'appointment_reference' => $appointment->appointment_reference,
-                    'appointment_type' => $appointment->appointment_type,
-                    'appointment_date' => $appointment->appointment_date->toDateString(),
-                    'time_window' => null,
-                    'queue_number' => null,
-                    'created_at' => $appointment->created_at->toIso8601String(),
-                    'checked_in_at' => null,
-                    'status' => $appointment->status,
-                    'chief_complaint' => $appointment->chief_complaint,
-                    'common_concerns' => $appointment->common_concerns,
-                    'owner' => [
-                        'name' => trim(($user->first_name ?? '').' '.($user->last_name ?? '')),
-                        'email' => $user->email,
-                        'phone' => $user->phone,
-                    ],
-                    'pet' => [
-                        'pet_id' => $pet->pet_id,
-                        'name' => $pet->pet_name,
-                        'species' => $pet->species,
-                        'breed' => $pet->breed,
-                    ],
-                ],
+                'session' => $session,
+                'appointment' => $session['patients'][0] + ['owner' => $owner],
             ], 201);
         });
     }
@@ -206,11 +234,52 @@ class ClinicWalkinController extends Controller
         ClinicAppointmentSequence $clinicSequence,
     ) {
         app(\App\Services\PreRegistrationExpiry::class)->expire();
-        return app(\App\Services\DailyPetQueue::class)->runForDate(now()->toDateString(), function () use ($request, $clinicSequence) {
-            app(\App\Services\OperationalCapacity::class)->assertCanAccept('clinic', 1);
+        $day = now('Asia/Manila')->toDateString();
+
+        return app(\App\Services\DailyPetQueue::class)->runForDate($day, function () use ($request, $clinicSequence, $day) {
             $data = $request->validated();
+            $patients = $request->patients();
+            app(\App\Services\OperationalCapacity::class)->assertCanAccept('clinic', count($patients));
 
             [$user, $unregisteredCustomer, $owner] = $this->resolveWalkInOwner($data);
+            $profiles = $this->walkInProfiles($user, $unregisteredCustomer, $patients);
+            $pets = collect();
+            foreach ($patients as $index => &$patient) {
+                try {
+                    $pet = $this->findOrCreatePet($user, $unregisteredCustomer, $patient, $profiles);
+                    if ($pets->has($pet->pet_id)) {
+                        throw ValidationException::withMessages(['pet_id' => 'Select each pet only once.']);
+                    }
+                    $pets->put($pet->pet_id, $pet);
+                    if ($user || $unregisteredCustomer) {
+                        $profiles->put($pet->pet_id, $pet);
+                    }
+                    $patient['pet_id'] = $pet->pet_id;
+                } catch (ValidationException $exception) {
+                    if (! isset($data['patients'])) {
+                        throw $exception;
+                    }
+                    $errors = [];
+                    foreach ($exception->errors() as $field => $messages) {
+                        $errors["patients.{$index}.{$field}"] = $messages;
+                    }
+                    throw ValidationException::withMessages($errors);
+                }
+            }
+            unset($patient);
+
+            $existing = ClinicAppointment::query()->whereIn('pet_id', $pets->keys())->blocking()
+                ->orderBy('id')->lockForUpdate()->first();
+            if ($existing) {
+                $name = $pets->get($existing->pet_id)->pet_name;
+                throw new HttpResponseException(response()->json([
+                    'success' => false,
+                    'code' => $existing->status === 'waiting_to_arrive' ? 'pre_registration_exists' : 'active_case_exists',
+                    'message' => "{$name} already has an ongoing clinic visit. Check the current case before registering another visit.",
+                ], 409));
+            }
+
+            app(\App\Services\PetServiceSessionPolicy::class)->enforce($pets->keys()->all(), 'clinic', true);
 
             $walkin = Walkin::create([
                 'fname' => $owner['fname'],
@@ -222,75 +291,96 @@ class ClinicWalkinController extends Controller
                 'user_id' => $user?->user_id,
                 ...($unregisteredCustomer ? ['unregistered_customer_id' => $unregisteredCustomer->id] : []),
                 'appointment_type' => 'clinic',
-                'chief_complaint' => ClinicConcerns::summary($data['common_concerns'], $data['chief_complaint'] ?? null),
             ]);
 
-            $pet = $this->findOrCreatePet($user, $unregisteredCustomer, $data);
-
-            $existing = ClinicAppointment::query()->where('pet_id', $pet->pet_id)->blocking()->lockForUpdate()->first();
-            if ($existing) {
-                throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
-                    'success' => false,
-                    'code' => $existing->status === 'waiting_to_arrive' ? 'pre_registration_exists' : 'active_case_exists',
-                    'message' => "{$pet->pet_name} already has an ongoing clinic visit. Check the current case before registering another visit.",
-                ], 409));
-            }
-
-            app(\App\Services\PetServiceSessionPolicy::class)->enforce([$pet->pet_id], 'clinic', true);
-
-            $sequence = $clinicSequence->reserve(now()->toDateString(), true);
-            $reference = $sequence['appointment_reference'];
-
-            $appointment = ClinicAppointment::create([
-                'appointment_reference' => $reference,
-                'appointment_type' => 'walk_in',
-                'pet_profile_snapshot' => PetProfileSnapshot::registration($pet, intake: true),
-                'case_type' => 'consultation',
-                'status' => 'checked_in',
-                'queue_number' => $sequence['queue_number'],
-                'appointment_date' => now()->toDateString(),
+            $group = ClinicVisitGroup::create([
                 'user_id' => $user?->user_id,
                 'walkin_id' => $walkin->id,
-                'pet_id' => $pet->pet_id,
-                'chief_complaint' => $walkin->chief_complaint,
-                'common_concerns' => $data['common_concerns'],
-                'total_amount' => 0,
-                'paid' => false,
-                'checked_in_at' => now(),
-                'consultation_started_at' => null,
+                'source' => 'walk_in',
+                'service_day' => $day,
             ]);
-
+            $appointments = $this->createPatients($group, $patients, $pets, $clinicSequence);
             $ownerName = trim("{$walkin->fname} {$walkin->lname}");
-            Notification::createForClinic(
-                $appointment,
-                Notification::TYPE_CLINIC_WALK_IN,
-                "Clinic walk-in {$reference} was registered for {$ownerName} and {$pet->pet_name}.",
-            );
+            $owner = ['name' => $ownerName, 'email' => $walkin->email, 'phone' => $walkin->phone];
+            $session = $this->registrationSession($group, $appointments, $owner);
+            $first = $appointments->first();
+            $names = ClinicVisitGroup::patientNames($appointments->pluck('pet'));
+            Notification::createForClinic($first, Notification::TYPE_CLINIC_WALK_IN,
+                "Clinic walk-in {$first->appointment_reference} was registered for {$ownerName} and {$names}.");
 
             return response()->json([
                 'success' => true,
-                'appointment_reference' => $reference,
-                'queue_number' => $appointment->queue_number,
-                'appointment_id' => $appointment->id,
-                'appointment_date' => $appointment->appointment_date->toDateString(),
-                'status' => $appointment->status,
-                'checked_in_at' => $appointment->checked_in_at->toIso8601String(),
-                'owner' => [
-                    'name' => trim("{$walkin->fname} {$walkin->lname}"),
-                    'email' => $walkin->email,
-                    'phone' => $walkin->phone,
-                ],
-                'pet' => [
-                    'pet_id' => $pet->pet_id,
-                    'name' => $pet->pet_name,
-                    'species' => $pet->species,
-                    'breed' => $pet->breed,
-                ],
-                'chief_complaint' => $walkin->chief_complaint,
-                'common_concerns' => $appointment->common_concerns,
+                'session' => $session,
+                'owner' => $owner,
                 'returning_customer' => $user !== null || $unregisteredCustomer !== null,
+                ...$session['patients'][0],
             ], 201);
         });
+    }
+
+    private function createPatients(
+        ClinicVisitGroup $group,
+        array $patients,
+        Collection $pets,
+        ClinicAppointmentSequence $sequence,
+        array $extra = [],
+    ): Collection {
+        $walkin = $group->source === 'walk_in';
+        $day = $group->service_day->toDateString();
+        $numbers = $sequence->reserveBatch($day, $walkin, count($patients));
+        $checkIn = $walkin ? now() : null;
+
+        return collect($patients)->map(function (array $patient, int $index) use ($group, $pets, $numbers, $walkin, $day, $checkIn, $extra) {
+            $pet = $pets->get($patient['pet_id']);
+            return $group->appointments()->create([
+                ...$extra,
+                ...$numbers[$index],
+                'appointment_type' => $group->source,
+                'pet_profile_snapshot' => PetProfileSnapshot::registration($pet, intake: $walkin),
+                'case_type' => $walkin ? 'consultation' : 'online_request',
+                'status' => $walkin ? 'checked_in' : 'waiting_to_arrive',
+                'appointment_date' => $day,
+                'user_id' => $group->user_id,
+                'walkin_id' => $group->walkin_id,
+                'pet_id' => $pet->pet_id,
+                'chief_complaint' => ClinicConcerns::summary($patient['common_concerns'], $patient['chief_complaint'] ?? null),
+                'common_concerns' => $patient['common_concerns'],
+                'total_amount' => 0,
+                'paid' => false,
+                'checked_in_at' => $checkIn,
+            ])->setRelation('pet', $pet);
+        });
+    }
+
+    private function registrationSession(ClinicVisitGroup $group, Collection $appointments, array $owner): array
+    {
+        return [
+            'id' => $group->id,
+            'service_day' => $group->service_day->toDateString(),
+            'owner' => $owner,
+            'patients' => $appointments->map(function (ClinicAppointment $appointment) {
+                $pet = $appointment->pet;
+                return [
+                    'appointment_id' => $appointment->id,
+                    'appointment_reference' => $appointment->appointment_reference,
+                    'appointment_type' => $appointment->appointment_type,
+                    'appointment_date' => $appointment->appointment_date->toDateString(),
+                    'time_window' => null,
+                    'queue_number' => $appointment->queue_number,
+                    'created_at' => $appointment->created_at?->toIso8601String(),
+                    'checked_in_at' => $appointment->checked_in_at?->toIso8601String(),
+                    'status' => $appointment->status,
+                    'chief_complaint' => $appointment->chief_complaint,
+                    'common_concerns' => $appointment->common_concerns,
+                    'pet' => [
+                        'pet_id' => $pet?->pet_id,
+                        'name' => $pet?->pet_name,
+                        'species' => $pet?->species,
+                        'breed' => $pet?->breed,
+                    ],
+                ];
+            })->values(),
+        ];
     }
 
     private function resolveWalkInOwner(array $data): array
@@ -355,43 +445,45 @@ class ClinicWalkinController extends Controller
         return [$user, $unregisteredCustomer, $owner];
     }
 
+    private function walkInProfiles(?User $user, ?UnregisteredCustomer $owner, array $patients): Collection
+    {
+        if (! $user && ! $owner) {
+            return collect();
+        }
+
+        $ids = array_column($patients, 'pet_id');
+        $names = collect($patients)->filter(fn ($patient) => empty($patient['pet_id']))
+            ->map(fn ($patient) => strtolower(Pet::normalizeName($patient['pet_name'])))->all();
+
+        return Pet::query()
+            ->when($user, fn ($query) => $query->where('user_id', $user->user_id),
+                fn ($query) => $query->where('unregistered_customer_id', $owner->id))
+            ->where('is_archived', false)
+            ->where(fn ($query) => $query->whereIn('pet_id', $ids)
+                ->orWhereIn(DB::raw('LOWER(pet_name)'), $names))
+            ->orderBy('pet_id')->lockForUpdate()->get()->keyBy('pet_id');
+    }
+
     private function findOrCreatePet(
         ?User $user,
         ?UnregisteredCustomer $unregisteredCustomer,
         array $data,
+        Collection $profiles,
     ): Pet {
         $data['pet_name'] = Pet::normalizeName($data['pet_name']);
-        $hasExistingOwner = $user !== null || $unregisteredCustomer !== null;
-        $ownerPetQuery = Pet::query()
-            ->when(
-                $user !== null,
-                fn ($query) => $query->where('user_id', $user->user_id),
-                fn ($query) => $query->where('unregistered_customer_id', $unregisteredCustomer?->id),
-            )
-            ->where('is_archived', false);
+        $id = $data['pet_id'] ?? null;
+        $existing = $id !== null
+            ? $profiles->get($id)
+            : $profiles->first(fn (Pet $pet) => strtolower($pet->pet_name) === strtolower($data['pet_name']));
 
-        if (! empty($data['pet_id'])) {
-            $existing = (clone $ownerPetQuery)
-                ->where('pet_id', $data['pet_id'])
-                ->first();
-
-            if (! $hasExistingOwner || ! $existing) {
-                throw ValidationException::withMessages([
-                    'pet_id' => ['The selected pet does not belong to this customer.'],
-                ]);
-            }
-
-            return $this->updateWalkInPetDetails($existing, $data);
+        if ($id !== null && ! $existing) {
+            throw ValidationException::withMessages(['pet_id' => 'The selected pet does not belong to this customer.']);
         }
-
-        if ($hasExistingOwner) {
-            $existing = (clone $ownerPetQuery)
-                ->whereRaw('LOWER(pet_name) = ?', [strtolower($data['pet_name'])])
-                ->first();
-
-            if ($existing) {
-                return $this->updateWalkInPetDetails($existing, $data);
-            }
+        if ($existing?->is_deceased) {
+            throw ValidationException::withMessages(['pet_id' => "{$existing->pet_name} is no longer an active pet."]);
+        }
+        if ($existing) {
+            return $this->updateWalkInPetDetails($existing, $data);
         }
 
         $data = PetWeightSize::withComputedSize($data);
