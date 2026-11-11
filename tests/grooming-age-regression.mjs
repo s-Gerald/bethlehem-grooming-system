@@ -8,6 +8,10 @@ import * as age from "../scripts/services/grooming-age.js";
 import * as petService from "../scripts/services/pet-service.js";
 import * as tabs from "../scripts/components/pet-selection-tabs.js";
 import * as weight from "../scripts/components/pet-weight-size.js";
+import * as clinicService from "../scripts/services/clinic-visit-service.js";
+import { applyGroomingCatalogue, petGroomingSizeError } from "../scripts/services/grooming-service.js";
+
+const catalogue = JSON.parse(fs.readFileSync(new URL('./grooming-catalogue-fixture.json', import.meta.url), 'utf8'));
 
 const NativeDate = Date;
 globalThis.Date = class extends NativeDate {
@@ -87,7 +91,8 @@ function petStep(clinic = false) {
     getStoredBookingPets: petService.getBookingPets, saveStoredBookingPets: petService.saveBookingPets,
     getGroomingSchedule: petService.getBookingSchedule, addStoredPet: petService.addPetToBooking,
     removeStoredPet: petService.removePetFromBooking,
-    CLINIC_VISIT_PETS_KEY: "clinicPets", sessionStorage, URLSearchParams, console,
+    ...clinicService, sessionStorage, URLSearchParams, console,
+    petGroomingSizeError, loadGroomingCatalogue: async () => applyGroomingCatalogue(catalogue.data),
     createColorCombobox: combobox, createFixedOptionCombobox: combobox, createBreedCombobox: combobox, createBreedCoatCombobox: combobox,
     formatBookingSchedule: () => "", formatPetSizeLabel: value => value, normalizePetSize: value => value,
     readClinicVisitDraft: () => ({}), updateClinicVisitDraft() {},
@@ -104,6 +109,7 @@ function petStep(clinic = false) {
 }
 
 const ui = petStep();
+await ui.context.refreshGroomingAvailability();
 ui.context.renderExistingPets();
 const cards = ui.get("existingPetList").children;
 assert.equal(cards.length, 3, "Every saved pet remains visible");
@@ -178,8 +184,24 @@ const clinic = petStep(true);
 clinic.context.renderExistingPets();
 assert.doesNotMatch(clinic.get("existingPetList").children[0].innerHTML, /Under 6|Not eligible|Age:/);
 clinic.button.listeners.click();
-assert.equal(petService.getBookingPets("clinicPets")[0].id, "young");
-assert.equal(clinic.context.validatePetForm({ ...values, birthdate: underage.birthdate }), "Only 1 pets are allowed per visit.");
-petService.saveBookingPets([], "clinicPets");
+assert.equal(petService.getBookingPets(clinicService.CLINIC_VISIT_PETS_KEY)[0].id, "young");
+assert.equal(clinic.context.validatePetForm({ ...values, birthdate: underage.birthdate }), "");
+clinic.context.addPetToBooking(exact);
+clinic.context.handleNext();
+assert.equal(clinic.context.window.location.href, "/account/registration/clinic/reason", "Multiple clinic patients may continue");
+const remaining = Array.from({ length: clinicService.CLINIC_MAX_PATIENTS - 2 }, (_, index) => ({ id: `clinic-${index}` }));
+remaining.forEach(pet => clinic.context.addPetToBooking(pet));
+clinic.context.renderSelectedPets();
+assert.equal(clinic.get("selectedPetCount").textContent, "13 / 13 selected");
+assert.equal(clinic.get("savePetBtn").disabled, true);
+assert.equal(clinic.get("petStepError").textContent, clinicService.CLINIC_PATIENT_LIMIT_MESSAGE);
+assert.equal(clinic.context.validatePetForm({ ...values, birthdate: underage.birthdate }), clinicService.CLINIC_PATIENT_LIMIT_MESSAGE);
+assert.throws(() => clinic.context.addPetToBooking({ id: "clinic-fourteenth" }), { name: "Error", message: /13 pets are allowed/ });
+assert.equal(petService.getBookingPets(clinicService.CLINIC_VISIT_PETS_KEY).length, 13, "The fourteenth pet cannot be selected");
+clinic.context.removePetFromBooking(remaining[0].id);
+clinic.context.renderSelectedPets();
+assert.equal(clinic.get("savePetBtn").disabled, false, "Removing a pet restores the clinic slot");
+assert.equal(clinic.context.validatePetForm({ ...values, birthdate: underage.birthdate }), "");
+petService.saveBookingPets([], clinicService.CLINIC_VISIT_PETS_KEY);
 assert.equal(clinic.context.validatePetForm({ ...values, birthdate: underage.birthdate }), "");
 console.log("Grooming age: calendar boundaries, card states, selection guards, Select All, stale drafts, optional birthdates, and clinic isolation passed.");

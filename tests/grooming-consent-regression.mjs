@@ -3,8 +3,16 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { initGroomingConsent } from '../scripts/components/grooming-consent.js';
 import { isEligibleForGrooming } from '../scripts/services/grooming-age.js';
+import { getBookingDraft, normalizePetSize } from '../scripts/services/booking-draft-service.js';
+import {
+  applyGroomingCatalogue, hasCompletedRequiredServiceSelection, normalizeStepThreeDraft,
+  petGroomingSizeError, selectedPricingSignature,
+} from '../scripts/services/grooming-service.js';
+import { tooLong } from '../scripts/utils/short-notes.js';
 
 const terms = JSON.parse(fs.readFileSync(new URL('../scripts/data/grooming-consent.json', import.meta.url)));
+const catalogue = JSON.parse(fs.readFileSync(new URL('./grooming-catalogue-fixture.json', import.meta.url), 'utf8'));
+const loadGroomingCatalogue = async () => applyGroomingCatalogue(catalogue.data);
 const values = new Map();
 globalThis.sessionStorage = {
   getItem: key => values.get(key) ?? null,
@@ -171,7 +179,7 @@ values.clear();
 
 function source(name) {
   return fs.readFileSync(new URL(`../scripts/components/${name}.js`, import.meta.url), 'utf8')
-    .replace(/^import .*;\r?\n/gm, '').replace(/^export /gm, '');
+    .replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
 }
 
 for (const walkIn of [false, true]) {
@@ -181,8 +189,13 @@ for (const walkIn of [false, true]) {
     const save = (key, value) => sessionStorage.setItem(key, JSON.stringify(value));
     save('bookingSchedule', { date: '2026-10-16', window_id: 1 });
     save('bookingPets', [{ id: 1, petName: 'Coco', petType: 'cat', size: 'Small', weight: 4 }]);
+    save('bookingStep3', { petSelections: [{ petId: 1, servicePackage: 'cat_full_grooming', alaCarteServices: [], haircutRequested: false }] });
+    await loadGroomingCatalogue();
+    const draft = getBookingDraft();
+    sessionStorage.setItem('groomingReviewedPricing', selectedPricingSignature(draft,
+      normalizeStepThreeDraft(JSON.parse(sessionStorage.getItem('bookingStep3')), draft)));
     save('walkInOwnerStep', { firstName: 'Ana', lastName: 'Cruz', middleInitial: 'L', phone: '09171234567' });
-    save('walkInReviewStep', { items: [{ pet: { petName: 'Coco', petType: 'cat', size: 'Small' }, selection: {}, pricing: { lineItems: [{ serviceId: 'partial_grooming' }] } }] });
+    save('walkInReviewStep', { items: [{ pet: { petName: 'Coco', petType: 'cat', size: 'Small' }, selection: {}, pricing: { lineItems: [{ serviceId: 'cat_full_grooming' }] } }] });
     let submitted, navigated, ready, submissions = 0;
     const api = {
       waitForSessionVerification: async () => true,
@@ -195,9 +208,9 @@ for (const walkIn of [false, true]) {
       readReviewedServiceDay: () => '2026-10-16', registrationDayNotice: () => false, document: doc, API: api, sessionStorage, console, Date,
       window: { location: { href: '' } }, crypto: globalThis.crypto,
       initGroomingConsent, getPetWeightSubmission: () => ({ weight: 4 }), getPetWeightSubmissionValidationMessage: () => '',
-      loadGroomingCatalogue: async () => {}, getBookingDraft: () => ({}), normalizeStepThreeDraft: () => [],
-      selectedPricingSignature: () => null, goToGroomingStep: step => { navigated = step; },
-      isEligibleForGrooming,
+      loadGroomingCatalogue, getBookingDraft, normalizeStepThreeDraft, selectedPricingSignature,
+      hasCompletedRequiredServiceSelection, petGroomingSizeError, normalizePetSize, tooLong,
+      goToGroomingStep: step => { navigated = step; }, isEligibleForGrooming,
     });
     if (walkIn) {
       vm.runInContext(fs.readFileSync(new URL('../scripts/utils/human-name.js', import.meta.url), 'utf8'), context);

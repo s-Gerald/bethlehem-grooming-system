@@ -10,11 +10,14 @@ import * as clinicService from "../scripts/services/clinic-visit-service.js";
 import * as ageTools from "../scripts/services/grooming-age.js";
 import * as selectionTools from "../scripts/components/pet-selection-tabs.js";
 import { normalizePetSize, formatPetSizeLabel } from "../scripts/services/booking-draft-service.js";
+import { applyGroomingCatalogue, petGroomingSizeError } from "../scripts/services/grooming-service.js";
+
+const catalogue = JSON.parse(fs.readFileSync(new URL('./grooming-catalogue-fixture.json', import.meta.url), 'utf8'));
 
 function node() {
   const listeners = new Map(), classes = new Set();
   return {
-    value: "", textContent: "", dataset: {}, children: [],
+    value: "", textContent: "", disabled: false, dataset: {}, children: [],
     classList: {
       add(...names) { names.forEach(name => classes.add(name)); },
       remove(...names) { names.forEach(name => classes.delete(name)); },
@@ -40,7 +43,7 @@ function storage() {
   return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
 }
 
-function mount(clinic) {
+async function mount(clinic) {
   const nodes = new Map();
   const get = id => {
     if (!nodes.has(id)) nodes.set(id, Object.assign(node(), { id, ownerDocument: { getElementById: key => get(key) } }));
@@ -60,6 +63,7 @@ function mount(clinic) {
   let writes = 0, save = async payload => ({ pet: { pet_id: 1, ...payload } });
   const context = vm.createContext({
     ...weightTools, ...clinicService, ...ageTools, ...selectionTools,
+    petGroomingSizeError, loadGroomingCatalogue: async () => applyGroomingCatalogue(catalogue.data),
     normalizePetSize, formatPetSizeLabel, createPetSaveConfirmation, createPetBirthdateField, renderBodyConditionChip,
     normalizeApiPet: petService.normalizeApiPet,
     GROOMING_MAX_PETS: petService.MAX_PETS_PER_BOOKING,
@@ -78,12 +82,13 @@ function mount(clinic) {
     .replace(/^import[\s\S]*?;\r?\n/gm, "").replace(/^export /gm, "");
   vm.runInContext(source, context);
   context.bindEvents();
+  if (!clinic) await context.refreshGroomingAvailability();
   const selected = () => petService.getBookingPets(clinic ? clinicService.CLINIC_VISIT_PETS_KEY : undefined);
   return { get, selected, submit: () => form.dispatch("submit"), writes: () => writes, setSave(fn) { save = fn; } };
 }
 
 for (const clinic of [false, true]) {
-  const ui = mount(clinic), button = ui.get("savePetBtn"), warning = ui.get("petSaveWarning");
+  const ui = await mount(clinic), button = ui.get("savePetBtn"), warning = ui.get("petSaveWarning");
   const originalButton = button;
   assert.equal(button.textContent, "Save & Select Pet");
   assert.equal(warning.hidden, true);
@@ -104,6 +109,7 @@ for (const clinic of [false, true]) {
   await ui.submit();
   assert.equal(warning.hidden, false);
   assert.equal(button.textContent, "Confirm");
+  assert.equal(button.disabled, false, "Acknowledgment does not disable saving below the selection limit");
   assert.equal(ui.writes(), 0);
   assert.equal(ui.selected().length, 0);
   ui.get("birthdate").value = '9999-12-31';
@@ -140,7 +146,8 @@ for (const clinic of [false, true]) {
   await pending;
   assert.equal(ui.selected().length, 1);
   assert.equal(petService.getSavedPets().length, 1);
-  assert.equal(ui.get("selectedPetCount").textContent, clinic ? "1 / 1 selected" : "1 / 10 selected");
+  assert.equal(ui.get("selectedPetCount").textContent, clinic ? `1 / ${clinicService.CLINIC_MAX_PATIENTS} selected` : "1 / 10 selected");
+  assert.equal(button.disabled, false, "Saving one pet leaves room to save another");
   assert.equal(ui.get("nextBtn").disabled, false);
   assert.equal(button, originalButton);
   assert.equal(button.textContent, "Save & Select Pet");
