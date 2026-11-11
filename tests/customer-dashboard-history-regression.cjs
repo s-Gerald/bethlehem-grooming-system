@@ -474,6 +474,13 @@ async function testVisitSummaryFollowsVisitState() {
   const uniform = dashboard.element("groomingTracker").innerHTML;
   assert.match(uniform, /Queue #2/); assert.match(uniform, /Queue #3/);
   assert.doesNotMatch(uniform, /Waiting to start grooming|All 2 pets|>Checked In<\/p>/);
+  booking.pets[1].grooming_status = "in_progress";
+  booking.pets[1].grooming_started_at = "9:30 AM";
+  await dashboard.refresh();
+  const mixed = dashboard.element("groomingTracker").innerHTML;
+  const [waiting, started] = [...mixed.matchAll(/<div data-tracker-pet[^>]*>([\s\S]*?)<\/div>/g)].map(match => match[1]);
+  assert.match(waiting, /Coco[\s\S]*Queue #2[\s\S]*Waiting to start grooming/);
+  assert.match(started, /Luna[\s\S]*Queue #3[\s\S]*Grooming in Progress[\s\S]*Started at 9:30 AM/);
   booking.booking_type = "walk_in";
   await dashboard.refresh();
   assert.match(dashboard.element("groomingTracker").innerHTML, /data-visit-summary="701"/);

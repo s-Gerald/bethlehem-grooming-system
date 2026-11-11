@@ -70,7 +70,7 @@ for (const [tab, list, label, tone] of [
   const record = ui.operationalBookings[0];
   assert.equal(record.id, booking.id);
   assert.equal(record.queueNumber, 3);
-  assert.equal(ui.formatPetQueueNumber(record.pets[0]), '#P12');
+  assert.equal(ui.formatPetQueueNumber(record.pets[0]), '#12');
   assert.equal(ui.groomingPetCount(record), '1 pet');
   assert.equal(ui.groomingStatusLabel(record), label);
   assert.equal(ui.groomingCardTone(record), tone);
@@ -124,7 +124,10 @@ for (const status of ['for-payment', 'to-be-picked-up', 'archived', 'cancelled']
 }
 assert.equal(ui.petGroomingStateLabel(cancelled), 'Cancelled');
 assert.equal(ui.getWaitingGroomingPets({ ...pair, pets: [pet, cancelled] }).length, 1);
-assert.equal(ui.hasUnfinishedQueuedPets({ ...pair, pets: [finished, cancelled] }), false);
+assert.equal(ui.getWaitingGroomingPets({ ...pair, pets: [finished, cancelled] }).length, 0);
+assert.equal(ui.formatPetQueueNumber({ petQueueNumber: '008' }), '#8');
+assert.equal(ui.formatPetQueueNumber({ petQueueNumber: 0 }), 'Not assigned');
+assert.equal(ui.formatPetQueueNumber({ petQueueNumber: null }), 'Not assigned');
 ui.confirmCancelPet(pair, sibling);
 assert.equal(ui.actionConfirmModal.title, 'Cancel Mark');
 assert.equal(ui.actionConfirmModal.message, '', 'Cancellation adds no helper paragraph');
@@ -245,7 +248,7 @@ async function startGroomingConfirmation() {
   await start.init();
   refreshes = 0;
   const zeus = { ...pet, petName: 'Zeus', groomingPreference: 'summer_cut', groomingPreferenceLabel: 'Summer Cut' };
-  const ginger = { ...sibling, groomingPreference: null };
+  const ginger = { ...sibling, petQueueNumber: 13, groomingPreference: null };
   const walkin = { ...pair, bookingType: 'Walk-In', pets: [zeus, ginger] };
   const before = JSON.stringify(walkin);
   start.queuedList = [walkin];
@@ -261,7 +264,9 @@ async function startGroomingConfirmation() {
   assert.equal(e.calls.length, 0, 'Cancel sends no request');
 
   start.confirmStartGroomingPet(walkin, ginger);
-  assert.equal(start.actionConfirmModal.message, 'Start grooming for Mark?');
+  assert.equal(start.actionConfirmModal.title, 'Queue Order Warning');
+  assert.equal(start.actionConfirmModal.variant, 'warning');
+  assert.equal(start.actionConfirmModal.message, '#12 Zeus is still waiting. Start #13 Mark first?');
   const held = deferred();
   let submitted;
   e.respond((endpoint, options) => { submitted = JSON.parse(options.body); return held.promise; });
@@ -278,7 +283,7 @@ async function startGroomingConfirmation() {
   await pending;
   assert.equal(refreshes, 1, 'Successful start keeps the single existing refresh');
   assert.equal(start.actionConfirmModal.open, false);
-  assert.equal(JSON.stringify(walkin), before, 'Starting a pet never mutates either loaded assessment');
+  assert.equal(JSON.stringify(walkin), before, 'Starting out of order preserves both pets and their tickets');
 
   const prereg = { ...walkin, bookingType: 'Pre-Register' };
   start.confirmStartGroomingPet(prereg, zeus);
@@ -289,12 +294,38 @@ async function startGroomingConfirmation() {
   assert.deepEqual(submitted, { grooming_preference: 'regular_trim' });
   assert.equal(refreshes, 2);
 
-  start.queuedList = [{ ...booking, id: 1, queueNumber: 1 }, walkin];
-  start.confirmStartGroomingPet(walkin, zeus);
+  const later = { ...pet, bookingPetId: 9, petQueueNumber: 14 };
+  const laterBooking = { ...booking, id: 99, queueNumber: 1, pets: [later] };
+  const partial = { ...walkin, status: 'in-progress', pets: [
+    { ...ginger, groomingState: 'in_progress' },
+    { ...pet, bookingPetId: 10, petQueueNumber: 11, groomingState: 'finished' },
+    { ...pet, bookingPetId: 11, petQueueNumber: 10, groomingState: 'cancelled' },
+    { ...pet, bookingPetId: 12, petQueueNumber: 9, groomingStartedAtIso: '2026-10-16T09:00:00+08:00' },
+    { ...pet, bookingPetId: 13, petQueueNumber: 8, groomingFinishedAtIso: '2026-10-16T10:00:00+08:00' },
+    { ...pet, bookingPetId: 14, petQueueNumber: null },
+    zeus,
+  ] };
+  start.queuedList = [laterBooking];
+  start.inProgressList = [partial];
+  start.activeGroomers = 2;
+  start.activeGroomingPets = 1;
+  assert.equal(start.getNextGroomingPet(), zeus);
+  start.confirmStartGroomingPet(laterBooking, later);
   assert.equal(start.actionConfirmModal.title, 'Queue Order Warning');
-  assert.equal(start.actionConfirmModal.variant, 'warning');
-  assert.match(start.actionConfirmModal.message, /earlier queue still has unfinished pets/);
+  assert.equal(start.actionConfirmModal.message, '#12 Zeus is still waiting. Start #14 Hopper first?');
   start.closeActionConfirmModal();
+  start.inProgressList = [{ ...partial, pets: [...partial.pets, { ...ginger, bookingPetId: 15 }] }];
+  start.confirmStartGroomingPet(laterBooking, later);
+  assert.equal(start.actionConfirmModal.message, '2 earlier pets are still waiting. Start #14 Hopper first?');
+  start.closeActionConfirmModal();
+  start.confirmStartGroomingPet(partial, zeus);
+  assert.equal(start.actionConfirmModal.title, 'Start Grooming', 'The next pet can start normally with a free groomer');
+  start.closeActionConfirmModal();
+  start.inProgressList = [{ ...partial, pets: partial.pets.filter(item => item !== zeus) }];
+  assert.equal(start.getNextGroomingPet(), later);
+  assert.deepEqual(Array.from(start.getQueuedPets({ pets: [
+    { ...ginger, species: 'Dog' }, { ...zeus, species: 'Cat' }, { ...pet, petQueueNumber: null },
+  ] }), item => item.petQueueNumber), [12, 13, null], 'Assigned tickets control display order');
   start.activeGroomers = 1;
   start.activeGroomingPets = 1;
   start.confirmStartGroomingPet(walkin, zeus);
@@ -314,7 +345,7 @@ async function startGroomingConfirmation() {
   assert.equal(start.pickupModal.open, false, 'Successful pickup still closes its confirmation');
   assert.equal(refreshes, 3, 'Successful pickup retains its existing single refresh');
 }
-async function staticModalInteractions() {
+async function staticModalInteractions(queueOnly = false) {
   // Isolated, fixture-only browser: no localhost account, database, or camera.
   const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
   const html = fs.readFileSync(path.join(__dirname, '../pages/admin/appointments.html'), 'utf8');
@@ -324,21 +355,34 @@ async function staticModalInteractions() {
   const alpine = await alpineResponse.text();
   const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {}) });
   try {
-    for (const role of ['admin', 'grooming_receptionist', 'clinic_receptionist']) {
+    for (const role of queueOnly ? ['admin'] : ['admin', 'grooming_receptionist', 'clinic_receptionist']) {
       const page = await browser.newPage();
       page.setDefaultTimeout(5000);
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
-      await page.route('**/*', route => route.abort());
-      await page.setContent(`<style>[x-cloak]{display:none!important}.fixed,.pickup-confirm-overlay{position:fixed;inset:0;background:#7778;display:flex;align-items:center;justify-content:center}.fixed>div,.pickup-confirm-card{background:white;width:600px;max-height:80vh;overflow:auto}</style><button id="opener">Open workflow</button><div inert id="already-inert">Unavailable</div>${main}`);
+      const fixtureUrl = 'https://grooming-board.test/';
+      const notificationsUrl = fixtureUrl + 'scripts/components/admin-notifications.js';
+      await page.route('**/*', route => {
+        if (route.request().url() === fixtureUrl) {
+          return route.fulfill({ contentType: 'text/html', body: `<style>[x-cloak]{display:none!important}.fixed,.pickup-confirm-overlay{position:fixed;inset:0;background:#7778;display:flex;align-items:center;justify-content:center}.fixed>div,.pickup-confirm-card{background:white;width:600px;max-height:80vh;overflow:auto}</style><button id="opener">Open workflow</button><div inert id="already-inert">Unavailable</div>${main}` });
+        }
+        if (route.request().url() === notificationsUrl) {
+          return route.fulfill({ path: path.join(__dirname, '../scripts/components/admin-notifications.js') });
+        }
+        return route.abort();
+      });
+      await page.goto(fixtureUrl);
       await page.addScriptTag({ path: path.join(__dirname, '../scripts/components/admin-dashboard.js') });
       await page.addScriptTag({ path: path.join(__dirname, '../scripts/components/cash-payment.js') });
       await page.addScriptTag({ path: path.join(__dirname, '../scripts/components/product-form.js') });
-      await page.addScriptTag({ path: path.join(__dirname, '../scripts/components/admin-notifications.js') });
+      await page.addScriptTag({ path: path.join(__dirname, '../scripts/components/product-search-dropdown.js') });
+      await page.addScriptTag({ path: path.join(__dirname, '../scripts/utils/philippine-mobile.js') });
+      await page.addScriptTag({ path: path.join(__dirname, '../scripts/components/admin-sidebar.js') });
+      await page.addScriptTag({ url: notificationsUrl });
       await page.evaluate(role => {
         const create = window.adminDashboard;
         window.API = { getRole: () => role === 'admin' ? 'admin' : 'staff' };
-        window.PaymentInvoice = { template: '', print() { window.printed = true; } };
+        window.PaymentInvoice = { template: '', paymentId: () => null, print() { window.printed = true; } };
         window.AdminNotificationService = {
           subscribe: () => () => {},
           load: async () => ({ notifications: [], unread_count: 0, pagination: { has_more: false } }),
@@ -350,7 +394,7 @@ async function staticModalInteractions() {
           stop() { window.scannerStops++; return Promise.resolve(); }
         };
         window.InventoryAPI = { findByBarcode: async () => ({ data: {
-          item_id: 21, item_name: 'Test Shampoo', unit: 'bottle', category: 'grooming',
+          item_id: 21, item_name: 'Test Shampoo', unit: 'bottle', category: 'grooming_supply',
           is_active: true, selling_price: 100, saleable_quantity: 5,
         } }) };
         window.adminDashboard = () => {
@@ -362,6 +406,72 @@ async function staticModalInteractions() {
       }, role);
       await page.addScriptTag({ content: alpine });
       await page.waitForFunction(() => !!window.Alpine && !!document.querySelector('main')._x_dataStack);
+      if (role === 'admin') {
+        const boardStyles = await page.addStyleTag({ path: path.join(__dirname, '../css/custom.css') });
+        await page.evaluate(({ first, second, other }) => {
+          const ui = Alpine.$data(document.querySelector('main'));
+          ui.bookingsLoaded = true;
+          ui.activeTab = 'queued';
+          ui.activeGroomers = 2;
+          ui.queuedList = [
+            { id: 42, ownerName: 'First Owner', status: 'queued', pets: [second, first], sedationConsent: true },
+            { id: 43, ownerName: 'Second Owner', status: 'queued', pets: [other] },
+          ];
+        }, {
+          first: { ...pet, petName: 'Kou', petQueueNumber: 8 },
+          second: { ...sibling, petName: 'Joseph', petQueueNumber: 9 },
+          other: { ...pet, bookingPetId: 9, petQueueNumber: 10 },
+        });
+        const firstCard = page.locator('.grooming-booking-card').filter({ hasText: 'First Owner' });
+        const next = page.locator('.grooming-booking-card').getByText('Next', { exact: true });
+        await firstCard.getByText('Next', { exact: true }).waitFor({ state: 'visible' });
+        assert.equal(await next.count(), 1);
+        await page.getByRole('button', { name: 'Expand pets for First Owner' }).click();
+        const rows = firstCard.locator('.admin-queued-pet-card');
+        await rows.first().getByText('Next', { exact: true }).waitFor({ state: 'visible' });
+        assert.equal(await next.count(), 1);
+        assert.deepEqual(await rows.locator('.admin-queued-pet-queue').allTextContents(), ['#8', '#9']);
+        assert.equal(await rows.getByRole('button', { name: 'Start Grooming' }).count(), 2);
+        assert.equal(await firstCard.getByText('Sedation authorized', { exact: true }).count(), 1);
+        assert.equal(await rows.getByText('Sedation authorized', { exact: true }).count(), 0);
+        await rows.filter({ hasText: 'Joseph' }).getByRole('button', { name: 'Start Grooming' }).click();
+        const confirmation = page.locator('[x-show="actionConfirmModal.open"]');
+        await confirmation.getByText('#8 Kou is still waiting. Start #9 Joseph first?', { exact: true }).waitFor({ state: 'visible' });
+        await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await confirmation.waitFor({ state: 'hidden' });
+        await page.evaluate(() => {
+          const ui = Alpine.$data(document.querySelector('main'));
+          const [first, other] = ui.queuedList;
+          first.pets[0].groomingState = 'in_progress';
+          ui.inProgressList = [{ ...first, status: 'in-progress' }];
+          ui.queuedList = [other];
+          ui.activeTab = 'in-progress';
+        });
+        await firstCard.getByText('Next', { exact: true }).waitFor({ state: 'visible' });
+        await page.getByRole('button', { name: 'Expand pets for First Owner' }).click();
+        await rows.filter({ hasText: 'Kou' }).getByText('Next', { exact: true }).waitFor({ state: 'visible' });
+        await page.evaluate(() => {
+          const ui = Alpine.$data(document.querySelector('main'));
+          ui.inProgressList[0].pets[1].groomingState = 'in_progress';
+          ui.activeTab = 'queued';
+        });
+        const secondCard = page.locator('.grooming-booking-card').filter({ hasText: 'Second Owner' });
+        await secondCard.getByText('Next', { exact: true }).waitFor({ state: 'visible' });
+        assert.equal(await next.count(), 1);
+        assert.equal(await secondCard.getByRole('button', { name: 'Start Grooming' }).isVisible(), true);
+        await page.evaluate(() => {
+          const ui = Alpine.$data(document.querySelector('main'));
+          ui.queuedList = [];
+          ui.inProgressList = [];
+          ui.bookingsLoaded = false;
+        });
+        await boardStyles.evaluate(style => style.remove());
+        assert.deepEqual(errors, [], 'Pet queue interactions have no Alpine runtime errors');
+        if (queueOnly) {
+          await page.close();
+          continue;
+        }
+      }
       const cases = [
         ['paymentModal.open', 'Close payment modal'],
         ['detailsModalOpen', 'Close Grooming Details'],
@@ -541,7 +651,8 @@ async function staticModalInteractions() {
 }
 
 startGroomingConfirmation().then(async () => {
-  if (process.argv.includes('--browser')) await staticModalInteractions();
+  if (process.argv.includes('--queue-browser')) await staticModalInteractions(true);
+  else if (process.argv.includes('--browser')) await staticModalInteractions();
   console.log('Admin Grooming board regression tests passed.');
 })
   .catch(error => { console.error(error); process.exitCode = 1; });

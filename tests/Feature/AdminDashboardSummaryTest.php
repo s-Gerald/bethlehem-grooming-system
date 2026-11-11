@@ -677,7 +677,7 @@ class AdminDashboardSummaryTest extends TestCase
             $pets[] = [
                 'pet_id' => $petId,
                 'pet_name' => "Pet {$petId}",
-                'species' => 'dog',
+                'species' => in_array($petId, [13, 16], true) ? 'cat' : 'dog',
                 'size' => 'small',
             ];
 
@@ -706,7 +706,7 @@ class AdminDashboardSummaryTest extends TestCase
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertSame(
-            [13, 14, 15, 16, 17],
+            [16, 13, 14, 17, 15],
             DB::table('booking_pets')
                 ->where('booking_id', 3)
                 ->orderBy('booking_pet_id')
@@ -725,8 +725,8 @@ class AdminDashboardSummaryTest extends TestCase
 
         $schedule = $controller->index(Request::create('/api/admin/bookings', 'GET'))->getData(true);
         $this->assertSame(
-            [13, 14, 15, 16, 17],
-            collect($schedule['queuedList'][0]['pets'])->pluck('petQueueNumber')->all(),
+            [13 => 16, 14 => 13, 15 => 14, 16 => 17, 17 => 15],
+            collect($schedule['queuedList'][0]['pets'])->sortBy('bookingPetId')->pluck('petQueueNumber', 'bookingPetId')->all(),
         );
 
         Carbon::setTestNow(Carbon::parse('2026-06-30 08:00:00'));
@@ -739,7 +739,7 @@ class AdminDashboardSummaryTest extends TestCase
         );
     }
 
-    public function test_starting_one_pet_moves_owner_card_only_to_in_progress_feed(): void
+    public function test_starting_later_pet_preserves_tickets_and_moves_owner_card_only_to_in_progress_feed(): void
     {
         DB::table('bookings')->insert([
             'booking_id' => 1,
@@ -756,19 +756,19 @@ class AdminDashboardSummaryTest extends TestCase
         ]);
 
         DB::table('booking_pets')->insert([
-            ['booking_pet_id' => 1, 'booking_id' => 1, 'pet_id' => 1],
-            ['booking_pet_id' => 2, 'booking_id' => 1, 'pet_id' => 2],
+            ['booking_pet_id' => 1, 'booking_id' => 1, 'pet_id' => 1, 'pet_queue_number' => 8, 'pet_queue_date' => '2026-06-24'],
+            ['booking_pet_id' => 2, 'booking_id' => 1, 'pet_id' => 2, 'pet_queue_number' => 9, 'pet_queue_date' => '2026-06-24'],
         ]);
 
         $controller = new AdminBookingController;
-        $firstResponse = $controller->startPetGrooming(1, 1);
+        $firstResponse = $controller->startPetGrooming(1, 2);
 
         $this->assertSame(200, $firstResponse->getStatusCode());
         $this->assertFalse($firstResponse->getData(true)['all_pets_started']);
         $this->assertSame(1, \App\Models\ActivityLog::where('action', 'grooming_started')->count());
         $this->assertSame('checked_in', DB::table('bookings')->where('booking_id', 1)->value('status'));
-        $this->assertNotNull(DB::table('booking_pets')->where('booking_pet_id', 1)->value('grooming_start_time'));
-        $this->assertNull(DB::table('booking_pets')->where('booking_pet_id', 2)->value('grooming_start_time'));
+        $this->assertSame('2026-06-24 12:00:00', DB::table('booking_pets')->where('booking_pet_id', 2)->value('grooming_start_time'));
+        $this->assertNull(DB::table('booking_pets')->where('booking_pet_id', 1)->value('grooming_start_time'));
 
         $schedule = $controller->index(Request::create('/api/admin/bookings', 'GET'))->getData(true);
         $this->assertSame([], collect($schedule['queuedList'])->pluck('id')->all());
@@ -779,16 +779,23 @@ class AdminDashboardSummaryTest extends TestCase
         foreach (['petName', 'breed', 'ownerName'] as $field) {
             $this->assertSame($schedule['inProgressList'][0][$field], $preview[$field]);
         }
-        $this->assertTrue($schedule['inProgressList'][0]['pets'][0]['isGroomingStarted']);
-        $this->assertFalse($schedule['inProgressList'][0]['pets'][1]['isGroomingStarted']);
+        $petsById = collect($schedule['inProgressList'][0]['pets'])->keyBy('bookingPetId');
+        $this->assertFalse($petsById[1]['isGroomingStarted']);
+        $this->assertTrue($petsById[2]['isGroomingStarted']);
+        $this->assertSame([1 => 8, 2 => 9], $petsById->sortKeys()->pluck('petQueueNumber', 'bookingPetId')->all());
 
-        $secondResponse = $controller->startPetGrooming(1, 2);
+        Carbon::setTestNow('2026-06-24 12:05:00');
+        $secondResponse = $controller->startPetGrooming(1, 1);
 
         $this->assertSame(200, $secondResponse->getStatusCode());
         $this->assertTrue($secondResponse->getData(true)['all_pets_started']);
         $this->assertSame(2, \App\Models\ActivityLog::where('action', 'grooming_started')->count());
         $this->assertSame('in_progress', DB::table('bookings')->where('booking_id', 1)->value('status'));
         $this->assertNotNull(DB::table('bookings')->where('booking_id', 1)->value('grooming_started_at'));
+        $this->assertDatabaseHas('booking_pets', ['booking_pet_id' => 1, 'pet_queue_number' => 8, 'pet_queue_date' => '2026-06-24',
+            'grooming_start_time' => '2026-06-24 12:05:00']);
+        $this->assertDatabaseHas('booking_pets', ['booking_pet_id' => 2, 'pet_queue_number' => 9, 'pet_queue_date' => '2026-06-24',
+            'grooming_start_time' => '2026-06-24 12:00:00']);
     }
 
     public function test_started_pet_customer_notification_mentions_only_that_pet(): void

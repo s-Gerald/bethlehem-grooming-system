@@ -620,7 +620,7 @@
           </section>
 
           <!-- Shared queue card: the booking keeps the same anatomy through pickup. -->
-          <section x-cloak x-show="bookingsLoaded &amp;&amp; activeTab !== 'incoming'" class="mt-6 space-y-4" aria-label="Grooming visits">
+          <section x-cloak x-show="bookingsLoaded &amp;&amp; activeTab !== 'incoming'" x-effect="nextGroomingPet = getNextGroomingPet()" class="mt-6 space-y-4" aria-label="Grooming visits">
             <template x-if="operationalBookings.length === 0">
               <div class="grooming-empty" x-text="({ queued: 'No pets are queued right now', 'in-progress': 'No ongoing grooming right now', 'for-payment': 'No pending payments', 'to-be-picked-up': 'No pets awaiting pickup' })[activeTab]"></div>
             </template>
@@ -633,6 +633,9 @@
                     <div class="grooming-booking-title">
                       <h4 x-text="booking.ownerName"></h4>
                       <span class="grooming-status" x-text="groomingStatusLabel(booking)"></span>
+                      <template x-if="nextGroomingPet && (activeTab === 'queued' || activeTab === 'in-progress') && !isGroomingBookingExpanded(booking) && booking.pets?.includes(nextGroomingPet)">
+                        <span class="grooming-selection-chip grooming-selection-chip--compact" :title="'Next: ' + groomingQueuePetLabel(nextGroomingPet)">Next</span>
+                      </template>
                     </div>
                     <p class="grooming-contact" x-text="formatMobileNumber(booking.contactNumber)"></p>
                     <div class="grooming-booking-meta">
@@ -651,7 +654,7 @@
                     <div class="grooming-stage-actions">
                       <template x-if="booking.pets?.length === 1 && !isGroomingBookingExpanded(booking)">
                         <div class="grooming-stage-actions">
-                          <template x-if="petGroomingState(booking.pets[0]) === 'not_started'">
+                          <template x-if="isPetWaitingForGrooming(booking.pets[0])">
                             <button type="button" @click="confirmStartGroomingPet(booking, booking.pets[0])" :disabled="isGroomerCapacityFull || isActionBusy('startPetGrooming', booking.id)" :title="isGroomerCapacityFull ? 'Groomer currently busy' : ''" class="admin-queued-pet-start">
                               <span x-text="isActionBusy('startPetGrooming', booking.id) ? getActionLabel('startPetGrooming') : 'Start Grooming'"></span>
                             </button>
@@ -709,10 +712,14 @@
                       <template x-for="(pet, petIndex) in getQueuedPets(booking)" :key="pet.bookingPetId ?? pet.id ?? petIndex">
                         <article class="admin-queued-pet-card">
                           <div class="admin-queued-pet-main">
-                            <span class="admin-queued-pet-queue" x-text="formatPetQueueNumber(pet, petIndex)"></span>
+                            <span class="admin-queued-pet-queue" x-text="formatPetQueueNumber(pet)"></span>
                             <div class="admin-queued-pet-information">
-                              <h5 x-text="pet.petName ?? pet.pet_name ?? pet.name"></h5>
-                              <span class="inline-block rounded-full px-2 py-1 text-xs font-semibold" :class="sedationConsentStatusClass(booking)" x-text="sedationConsentStatusLabel(booking)"></span>
+                              <div class="flex flex-wrap items-center gap-2">
+                                <h5 x-text="pet.petName ?? pet.pet_name ?? pet.name"></h5>
+                                <template x-if="isGroomingBookingExpanded(booking) && pet === nextGroomingPet">
+                                  <span class="grooming-selection-chip grooming-selection-chip--compact">Next</span>
+                                </template>
+                              </div>
                               <span x-show="petGroomingState(pet) === 'cancelled'" class="grooming-note-flag">Cancelled</span>
                               <p class="admin-queued-pet-basic">
                                 <span x-text="pet.breed || pet.species"></span>
@@ -736,7 +743,7 @@
                               </div>
                             </div>
                             <div class="admin-queued-pet-actions">
-                              <template x-if="petGroomingState(pet) === 'not_started'">
+                              <template x-if="isPetWaitingForGrooming(pet)">
                                 <button type="button" @click="confirmStartGroomingPet(booking, pet)" :disabled="isGroomerCapacityFull || isActionBusy('startPetGrooming', booking.id)" :title="isGroomerCapacityFull ? 'Groomer currently busy' : ''" class="admin-queued-pet-start">
                                   <span x-text="isActionBusy('startPetGrooming', booking.id) ? getActionLabel('startPetGrooming') : 'Start Grooming'"></span>
                                 </button>
@@ -755,7 +762,7 @@
                                   </div>
                                 </div>
                               </template>
-                              <button type="button" @click="printPetCard(booking, pet, petIndex)" class="admin-queued-pet-print" :aria-label="'Print grooming card for ' + pet.petName"><svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#printer"></use></svg>Print</button>
+                              <button type="button" @click="printPetCard(booking, pet)" class="admin-queued-pet-print" :aria-label="'Print grooming card for ' + pet.petName"><svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#printer"></use></svg>Print</button>
                             </div>
                           </div>
                         </article>
@@ -1611,6 +1618,6 @@
     <script src="/scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="/scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="/scripts/services/grooming-forecast-presentation.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1"></script>
-    <script src="/scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261110&product-dropdown=20261029-v2&intake-reliability=20261029&invoice-products=20261029&references=20261031&pet-sessions=20261031-v1&cancel-confirm=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-admin-v1&pet-profile=20261110-v1&body-condition=20261110-v2&short-notes=500-20261110"></script>
+    <script src="/scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261110&product-dropdown=20261029-v2&intake-reliability=20261029&invoice-products=20261029&references=20261031&pet-sessions=20261031-v1&cancel-confirm=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-admin-v1&pet-profile=20261110-v1&body-condition=20261110-v2&short-notes=500-20261110&pet-queue=20261111"></script>
   </body>
 </html>

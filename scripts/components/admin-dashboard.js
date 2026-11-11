@@ -5,6 +5,13 @@ const PAYMENT_SIZE_OPTIONS = [
   { value: "extra_large", label: "Extra Large" },
 ];
 
+function getPetQueueNumber(pet) {
+  const value = pet?.petQueueNumber ?? pet?.pet_queue_number;
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
 const PAYMENT_SERVICE_BY_ID = new Map();
 const PAYMENT_SERVICE_BY_NAME = new Map();
 
@@ -504,6 +511,7 @@ function adminDashboard() {
     incomingList: [],
     queuedList: [],
     inProgressList: [],
+    nextGroomingPet: null,
     forPickupList: [],
     // forPickupList kept for backward-compat; new data comes as forPaymentList
     releasedList: [],
@@ -1049,7 +1057,7 @@ function adminDashboard() {
     // Confirms a per-pet start. The selected pet travels with the cloned booking
     // so the shared confirmation modal can continue using its existing contract.
     confirmStartGroomingPet(booking, pet) {
-      if (this.petGroomingState(pet) !== "not_started" || pet?.isGroomingStarted || this.isGroomerCapacityFull) {
+      if (!this.isPetWaitingForGrooming(pet) || this.isGroomerCapacityFull) {
         if (this.isGroomerCapacityFull) {
           this.groomerCapacityError = "Groomer capacity is full. Finish a pet before starting another.";
         }
@@ -1058,21 +1066,28 @@ function adminDashboard() {
 
       const petName = String(pet?.petName ?? pet?.pet_name ?? pet?.name ?? "this pet").trim();
       const isWalkIn = booking.bookingType === "Walk-In";
-      const hasEarlierUnfinishedPets = this.hasEarlierQueuedUnfinishedPets(booking);
+      const queueNumber = getPetQueueNumber(pet);
+      const earlierPets = queueNumber === null ? [] : this.getWaitingGroomingQueue()
+        .filter((waitingPet) => getPetQueueNumber(waitingPet) < queueNumber);
+      let message = isWalkIn ? `Start grooming for ${petName}?` : `Are you sure you want to start grooming for ${petName}?`;
+      if (earlierPets.length) {
+        const waitingMessage = earlierPets.length === 1
+          ? `${this.groomingQueuePetLabel(earlierPets[0])} is still waiting.`
+          : `${earlierPets.length} earlier pets are still waiting.`;
+        message = `${waitingMessage} Start ${this.groomingQueuePetLabel(pet)} first?`;
+      }
       this.openActionConfirmModal({
         action: "startPetGrooming",
         booking: {
           ...booking,
           actionPet: isWalkIn ? { ...pet } : { ...pet, groomingPreference: pet.groomingPreference || "" },
         },
-        title: hasEarlierUnfinishedPets ? "Queue Order Warning" : (isWalkIn ? "Start Grooming" : "Confirm Start Grooming"),
-        message: hasEarlierUnfinishedPets
-          ? "An earlier queue still has unfinished pets. Are you sure you want to start grooming this pet first?"
-          : (isWalkIn ? `Start grooming for ${petName}?` : `Are you sure you want to start grooming for ${petName}?`),
+        title: earlierPets.length ? "Queue Order Warning" : (isWalkIn ? "Start Grooming" : "Confirm Start Grooming"),
+        message,
         confirmLabel: "Yes, Start",
         busyLabel: "Starting...",
         icon: "grooming",
-        variant: hasEarlierUnfinishedPets ? "warning" : "primary",
+        variant: earlierPets.length ? "warning" : "primary",
       });
     },
 
@@ -1145,14 +1160,14 @@ function adminDashboard() {
       return this.hasActiveGroomingPets(booking);
     },
 
-    hasUnfinishedQueuedPets(booking) {
-      const pets = Array.isArray(booking?.pets) ? booking.pets : [];
-      return pets.some((pet) => !this.isPetGroomingFinished(pet) && this.petGroomingState(pet) !== "cancelled");
+    isPetWaitingForGrooming(pet) {
+      return this.petGroomingState(pet) === "not_started"
+        && !this.isPetGroomingStarted(pet) && !this.isPetGroomingFinished(pet);
     },
 
     getWaitingGroomingPets(booking) {
       const pets = Array.isArray(booking?.pets) ? booking.pets : [];
-      return pets.filter((pet) => this.petGroomingState(pet) === "not_started");
+      return pets.filter((pet) => this.isPetWaitingForGrooming(pet));
     },
 
     petGroomingState(pet) {
@@ -1191,32 +1206,16 @@ function adminDashboard() {
       return this.petGroomingState(pet) === "in_progress";
     },
 
-    hasEarlierQueuedUnfinishedPets(booking) {
-      const selectedId = String(booking?.id ?? "");
-      const selectedIndex = this.queuedList.findIndex(
-        (queuedBooking) => String(queuedBooking?.id ?? "") === selectedId,
-      );
+    getWaitingGroomingQueue() {
+      return [...this.queuedList, ...this.inProgressList]
+        .flatMap((booking) => this.getWaitingGroomingPets(booking))
+        .filter((pet) => getPetQueueNumber(pet) !== null);
+    },
 
-      if (selectedIndex > 0) {
-        return this.queuedList
-          .slice(0, selectedIndex)
-          .some((queuedBooking) => this.hasUnfinishedQueuedPets(queuedBooking));
-      }
-
-      const selectedQueueNumber = Number(booking?.queueNumber ?? 0);
-      if (!Number.isFinite(selectedQueueNumber) || selectedQueueNumber <= 0) {
-        return false;
-      }
-
-      return this.queuedList.some((queuedBooking) => {
-        const queueNumber = Number(queuedBooking?.queueNumber ?? 0);
-        return (
-          Number.isFinite(queueNumber) &&
-          queueNumber > 0 &&
-          queueNumber < selectedQueueNumber &&
-          this.hasUnfinishedQueuedPets(queuedBooking)
-        );
-      });
+    getNextGroomingPet() {
+      return this.getWaitingGroomingQueue().reduce((next, pet) => (
+        next === null || getPetQueueNumber(pet) < getPetQueueNumber(next) ? pet : next
+      ), null);
     },
 
     // Opens a second confirmation before finishing an In-Progress booking.
@@ -2662,7 +2661,7 @@ function adminDashboard() {
       );
     },
 
-    // Presents pets as dogs first, cats second, and others afterward.
+    // Show assigned tickets first, then keep the species order for unassigned pets.
     getQueuedPets(booking) {
       const pets = Array.isArray(booking?.pets) ? booking.pets : [];
       const speciesRank = (pet) => {
@@ -2675,13 +2674,14 @@ function adminDashboard() {
         return 2;
       };
 
-      return pets
-        .map((pet, originalIndex) => ({ pet, originalIndex }))
-        .sort((left, right) =>
-          speciesRank(left.pet) - speciesRank(right.pet) ||
-          left.originalIndex - right.originalIndex,
-        )
-        .map(({ pet }) => pet);
+      return [...pets].sort((left, right) => {
+        const leftNumber = getPetQueueNumber(left);
+        const rightNumber = getPetQueueNumber(right);
+        if (leftNumber === null && rightNumber === null) {
+          return speciesRank(left) - speciesRank(right);
+        }
+        return (leftNumber ?? Infinity) - (rightNumber ?? Infinity);
+      });
     },
 
     isGroomingPaid(booking) {
@@ -2718,9 +2718,14 @@ function adminDashboard() {
         && this.isPetGroomingInProgress(pet) && !this.isPetGroomingFinished(pet);
     },
 
-    formatPetQueueNumber(pet, petIndex = 0) {
-      const queueNumber = Number(pet?.petQueueNumber);
-      return Number.isFinite(queueNumber) && queueNumber > 0 ? `#P${queueNumber}` : "Not assigned";
+    formatPetQueueNumber(pet) {
+      const queueNumber = getPetQueueNumber(pet);
+      return queueNumber === null ? "Not assigned" : `#${queueNumber}`;
+    },
+
+    groomingQueuePetLabel(pet) {
+      const name = String(pet.petName ?? pet.pet_name ?? pet.name ?? "").trim();
+      return name && name !== "—" ? `${this.formatPetQueueNumber(pet)} ${name}` : this.formatPetQueueNumber(pet);
     },
 
     formatPetCardServiceLabel(pet, booking) {
@@ -2796,7 +2801,7 @@ function adminDashboard() {
       return element.innerHTML;
     },
 
-    printPetCard(booking, pet, petIndex = 0) {
+    printPetCard(booking, pet) {
       const services = this.getPetServicesAvailed(pet, booking);
       const serviceItems = services.length > 0
         ? services.map((service) => {
@@ -2835,7 +2840,7 @@ function adminDashboard() {
       printRoot.innerHTML = `
         <header class="pet-grooming-print-header">
           <p class="pet-grooming-print-label">Queue number</p>
-          <strong class="pet-grooming-print-queue">${this.escapePrintHtml(this.formatPetQueueNumber(pet, petIndex))}</strong>
+          <strong class="pet-grooming-print-queue">${this.escapePrintHtml(this.formatPetQueueNumber(pet))}</strong>
           <h1 class="pet-grooming-print-name">${this.escapePrintHtml(petName)}</h1>
           ${petDescription ? `<p class="pet-grooming-print-description">${this.escapePrintHtml(petDescription)}</p>` : ""}
           <p class="pet-grooming-print-owner"><span>Owner</span> ${this.escapePrintHtml(booking?.ownerName || "Not provided")}</p>
@@ -2877,7 +2882,7 @@ function adminDashboard() {
       document.head.appendChild(pageStyle);
       document.body.appendChild(printRoot);
       document.body.classList.add("pet-grooming-card-printing");
-      document.title = `${this.formatPetQueueNumber(pet, petIndex)} ${petName}`;
+      document.title = `${this.formatPetQueueNumber(pet)} ${petName}`;
       window.addEventListener("afterprint", cleanup);
       cleanupTimer = window.setTimeout(cleanup, 60000);
       try {

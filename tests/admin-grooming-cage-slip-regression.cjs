@@ -76,9 +76,9 @@ const original = JSON.stringify(booking);
 ui.printPetCard(booking, pet);
 const html = appended.innerHTML;
 assert.equal(printed, 1, "One print request per selected pet");
-assert.equal(context.document.title, "#P12 Mochi <small>");
+assert.equal(context.document.title, "#12 Mochi <small>");
 const orderedContent = [
-  "#P12", "Mochi &lt;small&gt;", "Persian · Small", "Alex &amp; Sam",
+  "#12", "Mochi &lt;small&gt;", "Persian · Small", "Alex &amp; Sam",
   "Regular Grooming", "Nail Trim", "Customer Note", "Keep tail fluffy.",
   "Staff Note", "Handle gently around ears.", "Allergies &amp; Special Care Notes", "Sensitive skin",
   "Grooming Cage Slip", "Bethlehem Animal Clinic",
@@ -106,7 +106,7 @@ const emptyPet = {
   pet_name: "Luna", breed: "—", pet_type: "cat", pet_size: "medium",
   special_instructions: " \n ", medical_conditions: " \n ",
 };
-ui.printPetCard({ ownerName: "Taylor", internalStaffNote: " \n " }, emptyPet, 2);
+ui.printPetCard({ ownerName: "Taylor", internalStaffNote: " \n " }, emptyPet);
 assert.ok(appended.innerHTML.includes("Not assigned"));
 assert.ok(appended.innerHTML.includes("Cat · Medium"), "Species replaces missing breed");
 for (const heading of ["Selected services", "Customer Note", "Staff Note", "Allergies &amp; Special Care Notes"]) {
