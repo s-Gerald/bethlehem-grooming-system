@@ -101,20 +101,21 @@ class AdminDashboardMysqlTest extends TestCase
             ->assertJsonPath('summary.revenuePaymentCount', 2);
     }
 
-    public function test_repeated_summary_preserves_day_boundary_expiry_and_notification_categories(): void
+    public function test_repeated_summary_marks_missed_registrations_no_show_once_and_preserves_notification_categories(): void
     {
-        $expired = $this->booking('EXPIRED', 'waiting_to_arrive', date: '2026-10-20');
+        $noShowBooking = $this->booking('GROOMING-NO-SHOW', 'waiting_to_arrive', date: '2026-10-20');
         $today = $this->booking('TODAY', 'waiting_to_arrive');
         $future = $this->booking('FUTURE', 'waiting_to_arrive', date: '2026-10-22');
-        $clinic = DB::table('clinic_appointments')->insertGetId(['appointment_reference' => 'CLINIC-EXPIRED',
+        $noShowClinic = DB::table('clinic_appointments')->insertGetId(['appointment_reference' => 'CLINIC-NO-SHOW',
             'appointment_date' => '2026-10-20', 'status' => 'waiting_to_arrive']);
         for ($i = 0; $i < 2; $i++) {
             $this->getJson('/api/admin/dashboard/summary')->assertOk()->assertJsonPath('activeTodayCount', 1);
         }
-        $this->assertSame('expired', DB::table('bookings')->where('booking_id', $expired)->value('status'));
+        $this->assertSame('no_show', DB::table('bookings')->where('booking_id', $noShowBooking)->value('status'));
+        $this->assertSame('no_show', DB::table('clinic_appointments')->where('id', $noShowClinic)->value('status'));
         $this->assertSame(2, DB::table('bookings')->whereIn('booking_id', [$today, $future])->where('status', 'waiting_to_arrive')->count());
-        $this->assertSame(1, Notification::where('booking_id', $expired)->where('type', Notification::TYPE_NO_SHOW)->count());
-        $this->assertSame(1, Notification::where('clinic_appointment_id', $clinic)->where('type', Notification::TYPE_CLINIC_NO_SHOW)->count());
+        $this->assertSame(1, Notification::where('booking_id', $noShowBooking)->where('type', Notification::TYPE_NO_SHOW)->count());
+        $this->assertSame(1, Notification::where('clinic_appointment_id', $noShowClinic)->where('type', Notification::TYPE_CLINIC_NO_SHOW)->count());
         $this->assertSame('grooming', Notification::categoryForType(Notification::TYPE_NO_SHOW));
         $this->assertSame('clinic', Notification::categoryForType(Notification::TYPE_CLINIC_NO_SHOW));
     }
