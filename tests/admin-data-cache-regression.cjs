@@ -319,6 +319,45 @@ async function onlineSettlementInvalidation() {
   await assert.rejects(e.API.adminRequest('POST', '/pos/online-payment', {}));
   assert.equal(e.API.readAdminCache(inventory), null, 'An uncertain creation response can still own a stock hold');
 }
+async function authenticatedAttachmentResponses() {
+  const e = environment();
+  const endpoint = '/admin/clinic-appointments/4/attachments/8/download';
+  const png = new Blob(['attachment bytes'], {type: 'image/png'});
+  const attachmentResponse = {
+    ok: true, status: 200,
+    headers: new Headers({
+      'Content-Type': 'image/png',
+      'Content-Disposition': "attachment; filename*=UTF-8''clinic%20image.png",
+    }),
+    json: () => assert.fail('A successful file response must not be read as JSON'),
+    blob: async () => png,
+  };
+  e.respond((path, options) => {
+    assert.equal(path, endpoint);
+    assert.match(options.headers.Authorization, /^Bearer /);
+    return attachmentResponse;
+  });
+  const result = await e.API.clinicDownloadAttachment(4, 8);
+  assert.equal(result.blob, png);
+  assert.equal(result.fileName, 'clinic image.png');
+  assert.equal(result.contentType, 'image/png');
+  assert.equal(e.calls.length, 1);
+
+  for (const [status, message] of [
+    [403, 'Forbidden.'], [404, 'Attachment not found.'], [409, 'Attachment unavailable.'],
+    [500, 'Could not read attachment.'], [401, 'Unauthenticated.'],
+  ]) {
+    e.respond(() => response({message, code: 'fixture_error'}, status));
+    await assert.rejects(e.API.clinicDownloadAttachment(4, 8), {status, message, code: 'fixture_error'});
+  }
+
+  const fresh = environment(), waiting = deferred();
+  fresh.respond(() => waiting.promise);
+  const pending = fresh.API.clinicDownloadAttachment(4, 8);
+  fresh.API.setAdminToken('2|replacement-session');
+  waiting.resolve({...attachmentResponse, blob: () => assert.fail('A replaced session must not read the file')});
+  await assert.rejects(pending, /Session changed while loading/);
+}
 async function inventoryReadMutationRace() {
   const e=environment(), old=deferred(), key='/inventory/items?page=1&sort=newest';
   e.respond(()=>old.promise); const a=e.API.adminRequest('GET',key), b=e.API.adminRequest('GET',key);
@@ -328,6 +367,6 @@ async function inventoryReadMutationRace() {
   await e.API.adminRequest('GET',key);
 
 }
-if (require.main === module) (async () => { for (const test of [formattedPhoneSearchPreservesCanonicalCacheKeys, navigationAndRetention, deduplicationAndMutationRace, preciseInvalidationAndCrossTab, failuresAndSessionOwnership, boundedSearchAndOperationalReuse, retainedDataWaitsForSessionVerification, dashboardRoleChangeRejectsPendingData]) {
+if (require.main === module) (async () => { for (const test of [authenticatedAttachmentResponses, formattedPhoneSearchPreservesCanonicalCacheKeys, navigationAndRetention, deduplicationAndMutationRace, preciseInvalidationAndCrossTab, failuresAndSessionOwnership, boundedSearchAndOperationalReuse, retainedDataWaitsForSessionVerification, dashboardRoleChangeRejectsPendingData]) {
   await test(); console.log(test.name+' passed');
 } for (const test of [scopedPresentationPolicies, scopedMutationInvalidation, onlineSettlementInvalidation, inventoryReadMutationRace]) { await test(); console.log(test.name+' passed'); } })().catch(error => { console.error(error); process.exitCode = 1; });

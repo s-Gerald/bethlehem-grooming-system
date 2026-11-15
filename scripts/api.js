@@ -2064,9 +2064,9 @@ var API = (() => {
       if (timeoutId) clearTimeout(timeoutId);
     }
 
-    const expectsBlob = requestOptions.responseType === "blob";
-    const data = response.ok && expectsBlob
-      ? null
+    const successfulBlob = response.ok && requestOptions.responseType === "blob";
+    const data = successfulBlob
+      ? undefined
       : await response.json().catch(() => ({}));
 
     // A response for an older in-flight request must never erase a newer
@@ -2078,6 +2078,29 @@ var API = (() => {
       throw new Error('Session changed while loading. Please try again.');
     }
     if (response.ok && endpoint === '/session') legacyCredentials.delete(token);
+
+    if (successfulBlob) {
+      const contentDisposition = response.headers.get("Content-Disposition") || "";
+      const encodedFileName = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+      const quotedFileName = contentDisposition.match(/filename="([^"]+)"/i)?.[1];
+      const plainFileName = contentDisposition.match(/filename=([^;]+)/i)?.[1]?.trim();
+      let fileName = encodedFileName || quotedFileName || plainFileName || null;
+
+      if (fileName) {
+        try {
+          fileName = decodeURIComponent(fileName.replace(/^"|"$/g, ""));
+        } catch {
+          fileName = fileName.replace(/^"|"$/g, "");
+        }
+      }
+
+      return {
+        blob: await response.blob(),
+        fileName,
+        contentType: response.headers.get("Content-Type") || "application/octet-stream",
+      };
+    }
+
     // Creation can commit a stock hold before returning an uncertain HTTP 502;
     // provider-confirmed expiry can release it during a GET status check.
     if (responseBelongsToCurrentSession && token === getAdminToken() && data.online_payment?.id
@@ -2188,28 +2211,6 @@ var API = (() => {
       error.code = data.code || null;
       error.data = data;
       throw error;
-    }
-
-    if (expectsBlob) {
-      const contentDisposition = response.headers.get("Content-Disposition") || "";
-      const encodedFileName = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
-      const quotedFileName = contentDisposition.match(/filename="([^"]+)"/i)?.[1];
-      const plainFileName = contentDisposition.match(/filename=([^;]+)/i)?.[1]?.trim();
-      let fileName = encodedFileName || quotedFileName || plainFileName || null;
-
-      if (fileName) {
-        try {
-          fileName = decodeURIComponent(fileName.replace(/^"|"$/g, ""));
-        } catch {
-          fileName = fileName.replace(/^"|"$/g, "");
-        }
-      }
-
-      return {
-        blob: await response.blob(),
-        fileName,
-        contentType: response.headers.get("Content-Type") || "application/octet-stream",
-      };
     }
 
     return data;
