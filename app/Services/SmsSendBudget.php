@@ -8,7 +8,7 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 
 class SmsSendBudget
 {
-    public function reserve(int $userId, string $phone, ?string $ip = null): void
+    public function reserve(?int $userId, string $phone, ?string $ip = null): void
     {
         $lock = Cache::lock('sms:send-budget', 5);
         if (! $lock->get()) {
@@ -16,10 +16,10 @@ class SmsSendBudget
         }
         try {
             $limits = [
-                ['user:'.$userId, 'user_hourly_limit', 5, 3600],
+                ...($userId !== null ? [['user:'.$userId, 'user_hourly_limit', 5, 3600]] : []),
                 ['phone:'.hash('sha256', $phone), 'phone_hourly_limit', 5, 3600],
                 ...($ip !== null ? [['ip:'.hash('sha256', $ip), 'ip_hourly_limit', 20, 3600]] : []),
-                ['user-day:'.$userId, 'user_daily_limit', 20, 86400],
+                ...($userId !== null ? [['user-day:'.$userId, 'user_daily_limit', 20, 86400]] : []),
                 ['phone-day:'.hash('sha256', $phone), 'phone_daily_limit', 20, 86400],
                 ['global:hour', 'global_hourly_limit', 100, 3600],
                 ['global:day', 'global_daily_limit', 500, 86400],

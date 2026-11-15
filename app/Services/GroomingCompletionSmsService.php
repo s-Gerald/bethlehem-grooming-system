@@ -6,6 +6,7 @@ use App\Jobs\SendGroomingCompletionSms;
 use App\Models\Booking;
 use App\Models\BookingPet;
 use App\Models\User;
+use App\Support\PhilippineMobile;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\NullStore;
 use Illuminate\Support\Facades\Bus;
@@ -17,10 +18,11 @@ class GroomingCompletionSmsService
     public function record(Booking $booking): void
     {
         if (! config('services.grooming_completion_sms.enabled', false) || ! $booking->grooming_finished_at) return;
-        $booking->loadMissing('user');
-        if (! $this->eligible($booking->user)) return;
+        $recipient = $this->resolveRecipient($booking);
+        if (! $recipient) return;
         $inserted = DB::table('grooming_completion_sms')->insertOrIgnore([
-            'booking_id' => $booking->getKey(), 'user_id' => $booking->user_id, 'status' => 'pending',
+            'booking_id' => $booking->getKey(), 'user_id' => $recipient['user_id'],
+            'walkin_id' => $recipient['walkin_id'], 'status' => 'pending',
             'created_at' => now(), 'updated_at' => now(),
         ]);
         if ($inserted) DB::afterCommit(fn () => $this->dispatchPending($booking->getKey()));
@@ -61,8 +63,9 @@ class GroomingCompletionSmsService
         $providerId = null;
         try {
             $event = DB::table('grooming_completion_sms')->where('id', $id)->first();
-            $booking = Booking::with(['user', 'bookingPets.pet'])->find($event->booking_id);
-            if (! $booking || ! $booking->grooming_finished_at || $booking->user_id !== $event->user_id || ! $this->eligible($booking->user)) {
+            $booking = Booking::with('bookingPets.pet')->find($event->booking_id);
+            $recipient = $booking?->grooming_finished_at ? $this->resolveRecipient($booking) : null;
+            if (! $recipient || $recipient['user_id'] !== $event->user_id || $recipient['walkin_id'] !== $event->walkin_id) {
                 $status = 'skipped';
             } elseif (! app()->environment('testing') && (Cache::getStore() instanceof ArrayStore || Cache::getStore() instanceof NullStore)) {
                 $status = 'failed';
@@ -71,8 +74,8 @@ class GroomingCompletionSmsService
                 if ($activePets->isEmpty() || ! $activePets->every(fn ($pet) => $pet->grooming_state === BookingPet::GROOMING_STATE_FINISHED && $pet->grooming_end_time)) {
                     $status = 'skipped';
                 } else {
-                    app(SmsSendBudget::class)->reserve($booking->user_id, $booking->user->phone);
-                    $result = app(IprogSmsOtpService::class)->sendMessage($booking->user->phone,
+                    app(SmsSendBudget::class)->reserve($recipient['user_id'], $recipient['phone']);
+                    $result = app(IprogSmsOtpService::class)->sendMessage($recipient['phone'],
                         ClinicSmsMessage::grooming($activePets->map(fn ($pet) => $pet->pet?->pet_name)->values()->all()));
                     $status = $result['status'];
                     $providerId = $result['provider_message_id'];
@@ -86,6 +89,36 @@ class GroomingCompletionSmsService
         DB::table('grooming_completion_sms')->where('id', $id)->update([
             'status' => $status, 'provider_message_id' => $providerId, 'updated_at' => now(),
         ]);
+    }
+
+    /** @return array{user_id: ?int, walkin_id: ?int, phone: string}|null */
+    private function resolveRecipient(Booking $booking): ?array
+    {
+        $walkin = $booking->walkin_id !== null ? $booking->loadMissing('walkin')->walkin : null;
+        $bookingUserId = $booking->user_id;
+        $walkinUserId = $walkin?->user_id;
+
+        // Conflicting account links leave the recipient ambiguous.
+        if ($bookingUserId !== null && $walkinUserId !== null && $bookingUserId !== $walkinUserId) {
+            return null;
+        }
+
+        if ($bookingUserId !== null || $walkinUserId !== null) {
+            $user = $bookingUserId !== null
+                ? $booking->loadMissing('user')->user
+                : $walkin->loadMissing('user')->user;
+
+            return $this->eligible($user)
+                ? ['user_id' => $user->getKey(), 'walkin_id' => null, 'phone' => $user->phone]
+                : null;
+        }
+
+        if (! $walkin) return null;
+
+        $phone = PhilippineMobile::normalize($walkin->phone);
+        return PhilippineMobile::entryError($phone) === null
+            ? ['user_id' => null, 'walkin_id' => $walkin->getKey(), 'phone' => $phone]
+            : null;
     }
 
     private function eligible(?User $user): bool
