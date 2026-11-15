@@ -41,6 +41,23 @@ for(const walkIn of [false,true]){
   assert.match(card.slice(card.lastIndexOf('</section>',estimate),estimate),/<\/section>\s*<div\s+$/,'The duration block is outside and immediately after Select Services');
 }
 {
+  const sizeGuidance = /Size may be confirmed by clinic staff at check-in\./;
+  const cardSelection = {...selection, specialInstructions: ''};
+  const unverifiedPet = {...pet, sizeVerified: false};
+  const walkInCard = renderPetServiceCard(unverifiedPet, cardSelection, 0, true);
+  assert.match(walkInCard, /Size: Small/);
+  assert.doesNotMatch(walkInCard, sizeGuidance, 'Staff walk-in cards omit the size confirmation helper');
+  assert.doesNotMatch(walkInCard, /Size verified/);
+  assert.match(renderPetServiceCard(unverifiedPet, cardSelection, 0), sizeGuidance,
+    'Customer registration retains guidance for unverified sizes');
+
+  for (const walkIn of [false, true]) {
+    const verifiedCard = renderPetServiceCard({...pet, sizeVerified: true}, cardSelection, 0, walkIn);
+    assert.match(verifiedCard, /Size: Small · Size verified/);
+    assert.doesNotMatch(verifiedCard, sizeGuidance);
+  }
+}
+{
   let submitted;
   const flow = createGroomingEstimateFlow({getPets:()=>[{...pet,id:'42',petType:'Dog',size:'Extra Large'}],
     getSelections:()=>[{...selection,petId:'42',haircutRequested:true}],requestForecast:async payload=>{submitted=payload;return {closing_risk:false};},onContinue:()=>{}});

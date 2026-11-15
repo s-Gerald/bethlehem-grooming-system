@@ -132,7 +132,7 @@ export function renderPetServiceCard(pet, selection, index, walkIn = false) {
         <p class="mt-2 text-xs font-semibold text-slate-600">
           Size: ${escapeHtml(pet.size ? formatPetSizeLabel(pet.size) : "Not specified")}${pet.sizeVerified ? " · Size verified" : ""} ${renderBodyConditionChip(pet.bodyCondition, pet.bodyConditionVerified)}
         </p>
-        ${pet.sizeVerified ? "" : '<p class="mt-2 text-xs text-slate-500">Size may be confirmed by clinic staff at check-in.</p>'}
+        ${!walkIn && !pet.sizeVerified ? '<p class="mt-2 text-xs text-slate-500">Size may be confirmed by clinic staff at check-in.</p>' : ""}
       </div>
 
       ${renderPetGroomerSelection(pet, selection, walkIn)}
