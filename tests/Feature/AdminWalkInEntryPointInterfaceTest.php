@@ -18,7 +18,11 @@ class AdminWalkInEntryPointInterfaceTest extends TestCase
             $clinicPage,
         );
         $this->assertStringContainsString(
-            '(flowParams.get("flow") || flowParams.get("source")) === "clinic"',
+            'const requestedType = flowParams.get("flow") || flowParams.get("source") || readOwnerDraft().appointmentType;',
+            $ownerStep,
+        );
+        $this->assertMatchesRegularExpression(
+            '/const appointmentType = requestedType === "clinic"\s*\?\s*"clinic"\s*:\s*"grooming";/',
             $ownerStep,
         );
         $this->assertStringContainsString(
@@ -162,7 +166,8 @@ class AdminWalkInEntryPointInterfaceTest extends TestCase
             'owner_record_type: owner.ownerRecordType || "new"',
             'customer_user_id: owner.customerUserId || null',
             'unregistered_customer_id: owner.unregisteredCustomerId || null',
-            'pet_id:             state.pet?.petId || null',
+            'patients: state.patients.map(({ pet, commonConcerns, chiefComplaint }) => ({',
+            'pet_id: pet.petId || null',
         ] as $behavior) {
             $this->assertStringContainsString($behavior, $clinicConsentStep);
         }
