@@ -2,10 +2,10 @@ import { formatBookingDate } from "../services/booking-format-service.js";
 import { escapeHtml } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110&size-availability=20261110";
 import {
-  confirmationFields, confirmationSection, formatConfirmationLabel,
+  confirmationFields, confirmationOverview, confirmationSection, formatConfirmationLabel,
   formatConfirmationTimestamp, formatConfirmationPhone, ownerConfirmationFields,
   readConfirmationData, renderConfirmation,
-} from "./confirmation-presentation.js?registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261110&urls=20261103&owner-name=20261108";
+} from "./confirmation-presentation.js?registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261110&urls=20261103&owner-name=20261108&print=report-20261115";
 
 export function groomingPetConfirmation(pet, review = {}, showPrice = true) {
   const price = getGroomingPricePresentation(review.pricing);
@@ -72,7 +72,8 @@ export async function initBookingConfirmedStep() {
   const currentStatus = confirmation.status === "waiting_to_arrive" ? "Waiting to Arrive" : formatConfirmationLabel(confirmation.status) || "Not available";
   const totalPrice = getGroomingPricePresentation(confirmation.review?.totalPricing);
   const sections = [
-    confirmationSection(isWalkInConfirmation ? "Check-in Details" : "Registration Details", confirmationFields(
+    confirmationOverview(confirmationSection(isWalkInConfirmation ? "Check-in Details" : "Registration Details",
+      `<div class="confirmation-print-only">${confirmationFields([["Registration reference", confirmation.booking_reference || "Not available"]])}</div>` + confirmationFields(
       isWalkInConfirmation ? [
         ["Entry source", "Walk-in"],
         ["Queue number", confirmation.queue_number ?? "Not assigned"],
@@ -86,7 +87,7 @@ export async function initBookingConfirmedStep() {
         ["Submitted online", formatConfirmationTimestamp(confirmation.submitted_at || confirmation.created_at) || "Not available", "submittedAt"],
       ],
     )),
-    confirmationSection("Owner Information", ownerConfirmationFields(confirmation.owner)),
+    confirmationSection("Owner Information", ownerConfirmationFields(confirmation.owner))),
     confirmationSection(`Pets (${pets.length || reviewPets.length})`, petDetails || "<p>No pet information available.</p>"),
     consentFields.length ? confirmationSection("Grooming Consent", confirmationFields(consentFields)) : "",
     confirmationSection("Price Summary", `      <div class="confirmation-estimate">

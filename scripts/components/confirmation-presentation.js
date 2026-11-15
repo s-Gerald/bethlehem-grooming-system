@@ -2,9 +2,12 @@ import { escapeHtml } from "../services/booking-draft-service.js?registration=fc
 import '../utils/philippine-mobile.js?v=mobile-policy-20261110';
 
 export function confirmationFields(fields) {
-  return `<dl class="confirmation-fields">${fields.map(([label, value, id, wide, suffix = ""]) => `
-    <div${wide ? ' class="confirmation-field--wide"' : ""}><dt>${escapeHtml(label)}</dt><dd${id ? ` id="${escapeHtml(id)}"` : ""}>${escapeHtml(value ?? "Not provided")}${suffix}</dd></div>
-  `).join("")}</dl>`;
+  return `<dl class="confirmation-fields">${fields.map(([label, value, id, wide, suffix = ""]) => {
+    const text = String(value ?? "Not provided");
+    const layout = wide ? ' class="confirmation-field--wide"'
+      : text.length > 72 || text.includes("\n") ? ' class="confirmation-field--long"' : "";
+    return `<div${layout}><dt>${escapeHtml(label)}</dt><dd${id ? ` id="${escapeHtml(id)}"` : ""}>${escapeHtml(text)}${suffix}</dd></div>`;
+  }).join("")}</dl>`;
 }
 
 export function clinicReasonConfirmation(appointment) {
@@ -22,8 +25,15 @@ export function clinicReasonConfirmation(appointment) {
 }
 
 
-export function confirmationSection(title, content) {
-  return `<section class="confirmation-section"><h2>${escapeHtml(title)}</h2>${content}</section>`;
+export function confirmationSection(title, content, isPatient = false) {
+  return `<section class="confirmation-section${isPatient ? " confirmation-patient" : ""}"><h2>${escapeHtml(title)}</h2>${content}</section>`;
+}
+
+export function confirmationOverview(...sections) {
+  return `<div class="confirmation-overview">
+    <h2 class="confirmation-print-only">Visit Overview</h2>
+    <div class="confirmation-overview-fields">${sections.join("")}</div>
+  </div>`;
 }
 
 export function formatConfirmationLabel(value) {
@@ -78,7 +88,7 @@ export function bethlehemPrintHeader(printTitle) {
 export function confirmationDocument({
   message, printTitle, reference, status, walkIn = false, queueNumber, sections, warning = "", showOperational = true,
 }) {
-  return `<article class="confirmation-document" aria-label="Confirmation details">
+  return `<article class="confirmation-document print-report" aria-label="Confirmation details">
       ${bethlehemPrintHeader(printTitle)}
       ${showOperational ? `<div class="confirmation-operational">
         ${walkIn ? `<dl class="confirmation-queue"><dt>Queue number</dt><dd>${escapeHtml(queueNumber ?? "Not assigned")}</dd></dl>` : ""}

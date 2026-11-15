@@ -5,10 +5,18 @@ const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+const pageStyles = markup => [...markup.matchAll(/<link\b[^>]*rel="stylesheet"[^>]*>|<style>[\s\S]*?<\/style>/g)].map(match => match[0]).join('\n');
 const admin = read('pages/admin/archive.html');
 const adminStart = admin.indexOf('<main', admin.indexOf('<!-- Archive Body -->'));
 const adminContent = admin.slice(adminStart, admin.indexOf('</main>', adminStart) + '</main>'.length);
-const styles = [...admin.matchAll(/<link\b[^>]*rel="stylesheet"[^>]*>|<style>[\s\S]*?<\/style>/g)].map(match => match[0]).join('\n');
+const styles = pageStyles(admin);
+const confirmationPages = {
+  'grooming-online': 'pages/client/grooming-pre-registration.html',
+  'grooming-walk-in': 'pages/admin/walk-in-booking-confirmed.html',
+  'clinic-online': 'pages/client/clinic-visit-confirmed.html',
+  'clinic-walk-in': 'pages/admin/walk-in-clinic-confirmed.html',
+  'grooming-summary': 'pages/client/dashboard.html',
+};
 const session = {
   id: 91, ownerName: 'Recorded Owner', bookingReference: 'WI-91', status: 'released',
   appointmentDate: '2024-02-09', historyDate: '2024-02-10', historyAtIso: '2024-02-10T10:00:00+08:00',
@@ -61,6 +69,16 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
           .replace(/<script\b[^>]*\bsrc="[^"]+"[^>]*><\/script>/g, '')
           .replace('data-session-gate="checking"', '')});
       }
+      const confirmationPage = confirmationPages[url.pathname.split('/').at(-1)];
+      if (url.pathname.startsWith('/print-fixture/') && confirmationPage) {
+        const markup = read(confirmationPage);
+        const content = confirmationPage.endsWith('dashboard.html')
+          ? markup.match(/<dialog id="groomingVisitSummary"[\s\S]*?<main id="groomingVisitPrint"[^>]*><\/main>/)[0]
+          : '<main id="confirmationRoot" class="confirmation-page"></main>';
+        return route.fulfill({contentType: 'text/html', body: `<!doctype html><html lang="en"><head>
+          <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${pageStyles(markup)}</head>
+          <body><aside>Outside document</aside>${content}</body></html>`});
+      }
       const file = path.resolve(root, '.' + url.pathname);
       if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) return route.fulfill({status: 404, body: ''});
       return route.fulfill({path: file, contentType: file.endsWith('.js') ? 'application/javascript' : undefined});
@@ -75,6 +93,7 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
       const signature = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="24"%3E%3Cpath d="M 2 19 L 18 3 L 29 20 L 76 11" stroke="black" fill="none"/%3E%3C/svg%3E';
       const patients = [81, 82].map(id => ({
         id, clinic_visit_group_id: 1, appointment_reference: `CL-${id}`, appointment_date: '2024-02-10',
+        time_window: {window_label: id === 81 ? 'Morning arrival' : 'Afternoon arrival'},
         status: 'completed', final_status_label: 'Completed', paid: true, total_amount: 1500, payment_status_label: 'Paid',
         pet: {id, name: id === 81 ? 'Clinic pet' : 'Clinic sibling'}, ownerName: 'Recorded Owner',
         vitals: {weight_kg: id === 81 ? '3.2' : '12.3'},
@@ -140,6 +159,21 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
       };
     }, {session, grooming, clinic});
 
+    async function assertReportLayout(report) {
+      const layout = await report.evaluate(element => {
+        const header = element.querySelector('.confirmation-brand-header');
+        const field = element.querySelector('.confirmation-fields > div');
+        const [left, right] = Array.from(field.children, child => child.getBoundingClientRect());
+        return {
+          page: getComputedStyle(element).page,
+          header: getComputedStyle(header).display,
+          rowAligned: right.left > left.left && Math.abs(right.top - left.top) < 5,
+          overflow: element.scrollWidth > element.clientWidth + 1,
+        };
+      });
+      assert.deepEqual(layout, {page: 'bethlehem-report', header: 'flex', rowAligned: true, overflow: false});
+    }
+
     async function printRecord(dialog, title) {
       const printButton = dialog.getByRole('button', {name: 'Print Record', exact: true});
       await dialog.getByRole('button', {name: 'Close', exact: true}).waitFor();
@@ -153,12 +187,23 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
       assert.equal(await record.isVisible(), false, 'Print content is hidden during normal use');
       await page.emulateMedia({media: 'print'});
       await record.getByRole('heading', {name: title, exact: true}).waitFor();
+      await assertReportLayout(record);
       assert.equal(await page.locator('main').first().isVisible(), false);
       assert.equal(await dialog.isVisible(), false);
       assert.equal(await record.locator('a, button, summary, [role="alert"]').count(), 0);
       const printed = await record.innerText();
       assert.doesNotMatch(printed, /View Full Transaction|Search history|Invoice/i);
+      assert.doesNotMatch(printed, /Signed agreement|Grooming v3|Clinic v4|Historical .* agreement|Recorded .*clause|Clinic consent text/i);
+      assert.match(printed, /Signed by[\s\S]*Signed at[\s\S]*Feb 10, 2024 · 10:00 AM/);
       assert.equal(await record.locator('img[alt="Customer signature"]').count(), 1);
+      if (title.startsWith('GROOMING')) {
+        const fullGroom = record.getByRole('row').filter({hasText: 'Full groom'});
+        assert.deepEqual((await fullGroom.getByRole('cell').allTextContents()).slice(1), ['Main service', '₱600.00']);
+        assert.match(await fullGroom.innerText(), /Grooming preference.*Summer cut/);
+        assert.equal(await record.getByRole('row').filter({hasText: 'Paw balm'}).count(), 1);
+      } else {
+        assert.equal(await record.getByRole('table', {name: 'Vitals', exact: true}).count(), 2);
+      }
       if (process.env.HISTORY_SCREENSHOT_DIR) {
         await page.pdf({path: path.join(process.env.HISTORY_SCREENSHOT_DIR, title.toLowerCase().replaceAll(' ', '-') + '.pdf'),
           preferCSSPageSize: true});
@@ -237,9 +282,14 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
     assert.match(await clinicDialog.innerText(), /Sibling findings/);
     assert.doesNotMatch(await clinicDialog.innerText(), /First patient findings/);
     assert.match(await clinicDialog.innerText(), /Total paid.*3,000/);
+    await clinicDialog.getByText('View signed agreement', {exact: true}).click();
+    assert.match(await clinicDialog.innerText(), /Clinic v4[\s\S]*Clinic consent text/);
     const clinicPrint = await printRecord(clinicDialog, 'CLINIC VISIT RECORD');
     const firstPatient = clinicPrint.slice(clinicPrint.indexOf('Clinic pet'), clinicPrint.indexOf('Clinic sibling'));
     const sibling = clinicPrint.slice(clinicPrint.indexOf('Clinic sibling'));
+    assert.equal((clinicPrint.match(/Feb 10, 2024/g) || []).length, 2, 'The visit date appears once in addition to the signature timestamp');
+    assert.match(firstPatient, /Morning arrival/);
+    assert.match(sibling, /Afternoon arrival/);
     for (const [id, patientRecord] of [[81, firstPatient], [82, sibling]]) {
       for (const field of [`CL-${id}`, `record-${id}.png`, `service-${id}.pdf`, `Prescription ${id}`,
         `Diagnostic ${id}`, `Result ${id}`, `Treatment ${id}`, `Service notes ${id}`, `Follow up for ${id}`,
@@ -250,8 +300,8 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
     }
     assert.match(firstPatient, /First patient findings[\s\S]*3\.2 kg/);
     assert.match(sibling, /Sibling findings[\s\S]*12\.3 kg/);
-    assert.match(clinicPrint, /Clinic Signer[\s\S]*Clinic v4[\s\S]*Clinic consent text/);
-    assert.match(clinicPrint, /Payment Summary[\s\S]*3,000/);
+    assert.match(clinicPrint, /Follow up for 82[\s\S]*Consent & Signature[\s\S]*Clinic agreement\s+Agreed[\s\S]*Clinic Signer[\s\S]*Payment Summary[\s\S]*3,000/);
+    assert.match(await clinicDialog.innerText(), /Clinic v4[\s\S]*Clinic consent text/);
     assert.deepEqual(await page.evaluate(() => window.clinicSessionCalls), [81], 'One grouped request covers switching and printing');
     assert.equal(await page.evaluate(() => window.ungroupedClinicCalls), 0, 'Grouped visits never request details per patient');
     if (process.env.HISTORY_SCREENSHOT_DIR) {
@@ -291,13 +341,16 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
     assert.equal(await page.evaluate(() => document.activeElement.textContent.trim()), 'Print Record');
     await page.keyboard.press('Tab');
     assert.equal(await page.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Close grooming record');
+    await adminDialog.getByText('View signed agreement', {exact: true}).click();
+    assert.match(await adminDialog.innerText(), /Grooming v3[\s\S]*Recorded grooming clause/);
     const groomingPrint = await printRecord(adminDialog, 'GROOMING VISIT RECORD');
-    assert.match(groomingPrint, /Recorded Owner[\s\S]*WI-91[\s\S]*Session Details/);
-    assert.match(groomingPrint, /Grooming Signer[\s\S]*Grooming v3[\s\S]*Recorded grooming clause/);
+    assert.match(groomingPrint, /Visit Overview[\s\S]*Recorded Owner[\s\S]*WI-91/);
+    assert.match(groomingPrint, /Use the side entrance[\s\S]*Grooming consent\s+Agreed[\s\S]*Sedation consent\s+Not authorized[\s\S]*Grooming Signer[\s\S]*Payment Summary/);
+    assert.match(await adminDialog.innerText(), /Grooming v3[\s\S]*Recorded grooming clause/);
     assert.match(groomingPrint, /First pet[\s\S]*Medium · Clinic verified[\s\S]*Recorded care instructions[\s\S]*Clicked pet/);
     const firstPetRecord = groomingPrint.slice(groomingPrint.indexOf('First pet'), groomingPrint.indexOf('Clicked pet'));
     const secondPetRecord = groomingPrint.slice(groomingPrint.indexOf('Clicked pet'), groomingPrint.indexOf('Product Add-ons'));
-    assert.match(firstPetRecord, /Groomer Ana[\s\S]*Ideal · Clinic verified[\s\S]*Sensitive paws[\s\S]*10:15 AM[\s\S]*Full groom[\s\S]*Main service[\s\S]*Summer cut[\s\S]*600.00/);
+    assert.match(firstPetRecord, /Groomer Ana[\s\S]*Ideal · Clinic verified[\s\S]*10:15 AM[\s\S]*Full groom[\s\S]*Summer cut[\s\S]*Main service[\s\S]*600\.00[\s\S]*Sensitive paws/);
     assert.doesNotMatch(firstPetRecord, /Nail trim/);
     assert.match(secondPetRecord, /Nail trim[\s\S]*À la carte[\s\S]*200.00[\s\S]*Brush gently/);
     assert.match(groomingPrint, /Paw balm[\s\S]*Owner requested a call[\s\S]*Use the side entrance[\s\S]*Payment Summary[\s\S]*Total paid\s+₱1000\.00/);
@@ -342,7 +395,64 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
     }
     assert.equal(await page.evaluate(() => window.customerCalls), 2, 'Opening details makes no payment request');
     assert.equal(await page.evaluate(() => window.clinicDetailCalls), 1, 'Only the selected clinic visit loads clinical details');
+    for (const variant of Object.keys(confirmationPages)) {
+      await page.goto(`https://history.test/print-fixture/${variant}`);
+      const summary = variant === 'grooming-summary';
+      await page.evaluate(async variant => {
+        const walkIn = variant.endsWith('walk-in');
+        const status = walkIn ? 'checked_in' : 'waiting_to_arrive';
+        const pets = ['Coco', 'Milo'];
+        const owner = {name: 'Recorded Owner', email: 'owner@example.test'};
+        window.API.waitForSessionVerification = window.API.waitForCustomerSession = async () => true;
+        if (walkIn) document.body.dataset.confirmationContext = 'walk-in';
+        if (variant === 'grooming-summary') {
+          window.API.getBooking = async () => ({booking: {
+            booking_reference: 'GR-SUMMARY', status, booking_date: '2024-02-10', owner,
+            booking_pets: pets.map(pet_name => ({pet: {pet_name}})),
+          }});
+          const {openGroomingVisitSummary} = await import('/scripts/components/grooming-visit-summary.js');
+          await openGroomingVisitSummary(1, null, () => 'Waiting to Arrive');
+        } else if (variant.startsWith('clinic')) {
+          sessionStorage.setItem(walkIn ? 'walkInClinicConfirmation' : 'clinicVisitConfirmation', JSON.stringify({
+            owner, service_day: '2024-02-10', patients: pets.map((name, index) => ({
+              status, pet: {name}, queue_number: walkIn ? index + 1 : null, appointment_reference: `CL-FIXTURE-${index}`,
+            })),
+          }));
+          await import('/scripts/components/clinic-visit-confirmed.js');
+        } else {
+          sessionStorage.setItem(walkIn ? 'walkInBookingConfirmation' : 'bookingConfirmation', JSON.stringify({
+            owner, status, booking_reference: 'GR-CONFIRM', booking_date: '2024-02-10', queue_number: walkIn ? 3 : null,
+            submitted_at: '2024-02-09T10:15:00+08:00', pets: pets.map(petName => ({petName})),
+          }));
+          const {initBookingConfirmedStep} = await import('/scripts/components/booking-confirmed-step.js');
+          if (!walkIn) await initBookingConfirmedStep();
+        }
+      }, variant);
+      const printButton = page.getByRole('button', {name: summary ? 'Print Summary' : 'Print Confirmation'});
+      await printButton.waitFor();
+      assert.equal(await page.evaluate(() => window.printCalls), 0);
+      if (!summary) assert.equal(await page.getByRole('link', {name: /Go to Grooming|Go to Active Cases|Return to Dashboard/}).isVisible(), true);
+      await printButton.click();
+      assert.equal(await page.evaluate(() => window.printCalls), 1);
+      if (summary) {
+        assert.equal(await page.locator('#groomingVisitSummary').isVisible(), true);
+        assert.equal(await page.locator('#groomingVisitPrint').isVisible(), false);
+        // The native print call uses this class for the duration of the dialog.
+        await page.evaluate(() => document.body.classList.add('grooming-summary-printing'));
+      }
+      await page.emulateMedia({media: 'print'});
+      const report = page.locator('.print-report');
+      await assertReportLayout(report);
+      const printable = await report.innerText();
+      assert.match(printable, /BETHLEHEM[\s\S]*Visit Overview[\s\S]*Recorded Owner[\s\S]*Coco[\s\S]*Milo/);
+      assert.doesNotMatch(printable, /Outside document|Print Confirmation|Print Summary/);
+      assert.equal(await page.locator('aside').isVisible(), false);
+      if (process.env.HISTORY_SCREENSHOT_DIR) {
+        await page.pdf({path: path.join(process.env.HISTORY_SCREENSHOT_DIR, `${variant}-report.pdf`), preferCSSPageSize: true});
+      }
+      await page.emulateMedia({media: 'screen'});
+    }
     assert.deepEqual(errors, []);
-    console.log('History browser checks passed: persisted session printing, print cleanup, deep links, focus, startup/retry and responsive customer payments.');
+    console.log('Browser checks passed for History, both online and walk-in confirmations, and the customer Grooming summary.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

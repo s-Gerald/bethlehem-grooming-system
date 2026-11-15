@@ -35,7 +35,8 @@
   border-radius: 28px; padding: 1.5rem 2rem;
 }
 .confirmation-brand-header { padding-bottom: 1.25rem; border-bottom: 1px solid var(--confirmation-border); }
-.confirmation-print-heading { display: none; }
+.confirmation-print-heading, .confirmation-print-only { display: none; }
+.confirmation-overview, .confirmation-overview-fields { display: contents; }
 .confirmation-operational { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 2rem; padding: 1.25rem 0 .5rem; }
 .confirmation-page dt { color: var(--confirmation-muted); font-size: .75rem; font-weight: 600; }
 .confirmation-page dd { overflow-wrap: anywhere; white-space: pre-wrap; }
@@ -50,7 +51,7 @@
 .confirmation-message { padding-bottom: 1.25rem; color: var(--confirmation-muted); }
 .confirmation-warning { color: var(--confirmation-waiting); padding-bottom: 1rem; }
 .confirmation-section { padding: 1.25rem 0; border-top: 1px solid var(--confirmation-border); }
-.confirmation-section:last-child { padding-bottom: 0; }
+.confirmation-document > .confirmation-section:last-child { padding-bottom: 0; }
 .confirmation-section h2 { font-size: 1rem; margin-bottom: .875rem; }
 .confirmation-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .875rem 1.5rem; }
 .confirmation-fields > div { min-width: 0; }
@@ -86,7 +87,7 @@
   .confirmation-actions { flex-direction: column; align-items: stretch; }
 }
 @media print {
-  @page bethlehem-confirmation {
+  @page bethlehem-report {
     size: A4 portrait;
     margin: 12mm;
     @top-left { content: ""; }
@@ -96,39 +97,163 @@
     @bottom-center { content: ""; }
     @bottom-right { content: ""; }
   }
+
   body.confirmation-ready > :not(main):not([data-grooming-step="confirmed"]) { display: none !important; }
-  .confirmation-page { page: bethlehem-confirmation; max-width: none; padding: 0 !important; margin: 0; font-size: 10pt; line-height: 1.3; }
-  .confirmation-success, .confirmation-actions { display: none !important; }
-  .confirmation-document { padding: 0; margin: 0; border: 0; border-radius: 0; }
-  .confirmation-page * { box-shadow: none !important; color: var(--confirmation-ink) !important; background: transparent !important; }
-  .confirmation-brand-header { padding-bottom: 3mm; break-inside: avoid; }
-  .confirmation-page .brand-lockup__mark { width: 13mm; }
-  .confirmation-page .brand-lockup__divider { height: 12mm; border-left: 1pt solid var(--confirmation-ink); }
-  .confirmation-page .brand-lockup__name { font-size: 12pt; }
-  .confirmation-page .brand-lockup__service { font-size: 12pt; padding-left: 0; }
-  .confirmation-print-heading { display: block; margin-top: 3mm !important; font-size: 13pt; font-weight: 700; }
-  .confirmation-page :is(h2, h3, .confirmation-print-heading) { color: var(--confirmation-heading) !important; }
-  .confirmation-page .grooming-summary-pet-status { margin: 1mm 0 2mm !important; font-size: 9pt; }
-  .confirmation-page .grooming-summary-pet > .confirmation-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .confirmation-operational { padding: 3mm 0 2mm; gap: 3mm 8mm; break-inside: avoid; }
-  .confirmation-queue dd { font-size: 20pt; }
-  .confirmation-reference dd { font-size: 11pt; }
-  .confirmation-page dt { font-size: 9pt; }
-  .confirmation-badge { font-size: 9pt; padding: 1mm 2mm; }
-  .confirmation-message { padding-bottom: 3mm; font-size: 9pt; }
-  .confirmation-section { padding: 3mm 0; break-inside: avoid; }
-  .confirmation-section:has(.confirmation-pet) { break-inside: auto; }
-  .confirmation-section h2 { margin-bottom: 2mm; font-size: 11pt; break-after: avoid; }
-  .confirmation-pet h3 { margin-bottom: 2mm; font-size: 10.5pt; break-after: avoid; }
-  .confirmation-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2mm 5mm; }
-  .confirmation-fields--reason { grid-template-columns: minmax(0, 1fr); }
-  .confirmation-pet > .confirmation-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .confirmation-fields > div, .confirmation-pet, .confirmation-estimate { break-inside: avoid; }
-  .confirmation-fields > .confirmation-field--wide { break-inside: auto; }
-  .confirmation-fields dd { margin-top: .5mm; }
-  .confirmation-pet + .confirmation-pet { margin-top: 3mm; padding-top: 3mm; }
-  .confirmation-pet-services { margin-top: 2mm; padding-top: 2mm; }
-  .confirmation-estimate { margin-top: 3mm; padding-top: 2mm; gap: 2mm; }
-  .confirmation-estimate dd { font-size: 11pt; }
-  .confirmation-estimate-note { font-size: 9pt; }
+  .confirmation-page { max-width: none; padding: 0 !important; margin: 0; }
+  .confirmation-success, .confirmation-actions, .confirmation-operational { display: none !important; }
+
+  .print-report {
+    --report-heading: #1f3850;
+    --report-ink: #202b37;
+    --report-muted: #485768;
+    --report-rule: #cbd3db;
+    --report-font: Arial, Helvetica, sans-serif;
+    page: bethlehem-report;
+    box-sizing: border-box;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: white;
+    color: var(--report-ink);
+    font: 10pt/1.34 var(--report-font);
+    overflow-wrap: anywhere;
+    orphans: 3;
+    widows: 3;
+  }
+
+  .print-report :is(h1, h2, h3, h4, p, dl, dd, figure) { margin: 0; }
+  .print-report :is(h1, h2, h3, h4) { color: var(--report-heading); font-weight: 700; break-after: avoid; }
+  .print-report h2 { font-size: 12pt; }
+  .print-report h3 { font-size: 10.5pt; }
+  .print-report h4 { font-size: 10pt; }
+  .print-report :is(a, button) { display: none !important; }
+  .print-report :is(dt, dd, th, td) { color: var(--report-ink); }
+
+  .print-report .confirmation-brand-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 9mm;
+    margin-bottom: 3.5mm;
+    padding: 0 0 3mm;
+    border-bottom: 1.5pt solid var(--report-heading);
+    break-inside: avoid;
+    break-after: avoid;
+  }
+  .print-report .brand-lockup { display: flex; flex: none; gap: 2mm; }
+  .print-report .brand-lockup__mark { width: 12mm; }
+  .print-report .brand-lockup__divider { height: 10mm; border-left: 0.55pt solid var(--report-rule); }
+  .print-report .brand-lockup__text { display: flex; gap: 0.5mm; }
+  .print-report :is(.brand-lockup__name, .brand-lockup__service) {
+    padding: 0;
+    background: none;
+    color: var(--report-heading);
+    font: 700 9pt/1.1 var(--report-font);
+    letter-spacing: .08em;
+  }
+  .print-report .confirmation-print-heading {
+    display: block;
+    max-width: 92mm;
+    font-size: 14pt;
+    line-height: 1.12;
+    text-align: right;
+    text-transform: uppercase;
+  }
+  .print-report .confirmation-print-only { display: block; }
+  .print-report .confirmation-overview { display: block; }
+  .print-report :is(.report-section, .confirmation-section, .confirmation-overview) {
+    border: 0;
+    border-top: 0.55pt solid var(--report-rule);
+    margin-block: 3mm 0;
+    padding: 2mm 0 0;
+  }
+  .print-report .confirmation-brand-header + :is(.report-section, .confirmation-overview) {
+    border-top: 0;
+    margin-top: 0;
+    padding-top: 0;
+  }
+  .print-report :is(.report-section, .confirmation-section, .confirmation-overview) > :is(h2, h3) { margin-bottom: 1.5mm; }
+
+  .print-report .confirmation-overview-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 5mm; }
+  .print-report .confirmation-overview-fields:has(> :only-child) { display: block; }
+  .print-report .confirmation-overview-fields > .confirmation-section { border: 0; margin: 0; padding: 0; min-width: 0; }
+  .print-report .confirmation-overview-fields > .confirmation-section > h2 { display: none; }
+
+  .print-report .confirmation-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 5mm;
+  }
+  .print-report :is(.confirmation-fields--reason, .confirmation-overview-fields .confirmation-fields,
+    .confirmation-fields:has(> :is(.confirmation-field--long, .confirmation-field--wide))) {
+    display: block;
+  }
+  .print-report .confirmation-fields > div {
+    display: grid;
+    grid-template-columns: 40% minmax(0, 1fr);
+    align-items: baseline;
+    gap: 2mm;
+    min-width: 0;
+    padding: 1mm 0;
+    border-bottom: 0.4pt solid var(--report-rule);
+    break-inside: avoid;
+  }
+  .print-report .confirmation-fields dt { color: var(--report-muted); font-size: 9pt; font-weight: 600; }
+  .print-report .confirmation-fields dd { min-width: 0; white-space: pre-wrap; }
+  .print-report .confirmation-fields > :is(.confirmation-field--long, .confirmation-field--wide) {
+    display: block;
+    break-inside: auto;
+  }
+  .print-report :is(.confirmation-field--long, .confirmation-field--wide) dt { break-after: avoid; margin-bottom: 0.5mm; }
+
+  .print-report :is(.report-subject, .confirmation-pet) { margin-top: 3.5mm; }
+  .print-report :is(.report-subject-header, .confirmation-pet > h3, .confirmation-patient > h2) {
+    border-bottom: 0.9pt solid var(--report-heading);
+    margin: 0 0 1.2mm;
+    padding-bottom: 1mm;
+    break-inside: avoid;
+    break-after: avoid;
+  }
+  .print-report .report-subject-header p { color: var(--report-muted); }
+  .print-report :is(.confirmation-pet, .report-subject) { border-top: 0; padding-top: 0; }
+  .print-report .report-subject > .report-section { border: 0; margin-top: 2.4mm; padding-top: 0; }
+  .print-report :is(.confirmation-pet-services, .confirmation-fields--reason, .report-entry + .report-entry) { margin-top: 1.5mm; }
+  .print-report .confirmation-pet-services { border: 0; padding: 0; }
+  .print-report :is(.report-entry h4, .grooming-summary-pet-status) { margin-bottom: 0.6mm; }
+  .print-report :is(.grooming-summary-pet-status, .confirmation-warning, .confirmation-message, .confirmation-estimate-note) {
+    color: var(--report-muted);
+    font-size: 9pt;
+  }
+  .print-report :is(.confirmation-message, .confirmation-warning) { padding: 0 0 1.5mm; }
+  .print-report .confirmation-estimate { display: block; border: 0; margin: 0; padding: 0; }
+  .print-report .confirmation-estimate dd, .print-report .grooming-summary-total dd { font-size: inherit; }
+  .print-report .confirmation-estimate-note { margin-top: 1mm; }
+  .print-report .confirmation-estimate .confirmation-badge { border: 0; padding: 0; color: var(--report-ink); background: none; }
+
+  .print-report .report-table { width: 100%; border-collapse: collapse; }
+  .print-report .report-table thead { break-after: avoid; }
+  .print-report .report-table tr { break-inside: avoid; }
+  .print-report .report-table :is(th, td) {
+    padding: 1.15mm 2mm 1.15mm 0;
+    border-bottom: 0.4pt solid var(--report-rule);
+    vertical-align: top;
+    text-align: left;
+  }
+  .print-report .report-table th { border-bottom-width: 0.8pt; color: var(--report-muted); font-size: 9pt; }
+  .print-report .report-table td, .print-report .report-narrative { white-space: pre-wrap; }
+  .print-report .report-table--amount :is(th, td):last-child { text-align: right; padding-right: 0; font-variant-numeric: tabular-nums; }
+  .print-report .report-section:has(> .report-table):not(:has(tbody > tr:nth-child(4))) { break-inside: avoid; }
+
+  .print-report .report-consent { break-inside: avoid; }
+  .print-report .report-consent-content:has(.report-signature) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 52mm;
+    gap: 5mm;
+    align-items: end;
+  }
+  .print-report .report-consent-content .confirmation-fields { display: block; }
+  .print-report .report-signature figcaption { color: var(--report-muted); font-size: 9pt; font-weight: 600; }
+  .print-report .report-signature img { display: block; width: 100%; height: 18mm; object-fit: contain; border-bottom: 0.55pt solid var(--report-rule); }
 }

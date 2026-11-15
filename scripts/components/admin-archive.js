@@ -602,54 +602,24 @@ function adminArchive() {
 
     printGroomingRecord() {
       if (!this.detailsBooking || this.consentLoading || this.consentError) return;
-      const booking = this.detailsBooking;
       const request = this._consentRequest;
-      this.printRecord("grooming", () => this.detailsModalOpen && this._consentRequest === request, {
-        fields: [
-          ["Owner", this.groomingText(booking.ownerName)],
-          ["Status", booking.status === "cancelled" ? "Cancelled" : "Completed"],
-          ["Grooming reference", booking.bookingReference],
-          ["Pets", booking.pets?.length],
-          ["Owner account", booking.ownerAccountDeleted ? "Account deleted" : ""],
-        ],
-        body: this.$refs.groomingRecordBody,
-      });
+      this.printRecord("grooming", () => this.detailsModalOpen && this._consentRequest === request);
     },
 
     printClinicRecord() {
       if (!this.detailsClinicRecord || this.clinicCareLoading || this.clinicCareError) return;
       const request = this._clinicRequest;
-      const session = this.detailsClinicSession;
-      this.printRecord("clinic", () => this.clinicDetailsModalOpen && this._clinicRequest === request, {
-        fields: [
-          ["Owner", this.clinicText(this.detailsClinicRecord.ownerName)],
-          ["Patients", this.clinicDetailPatients.length],
-        ],
-        consent: this.$refs.clinicRecordConsent,
-        patients: this.clinicDetailPatients.map(({visit: record}) => ({
-          name: record.pet?.name || "Patient",
-          fields: [
-            ["Status", record.final_status_label],
-            ["Clinic reference", record.appointment_reference],
-            ["Visit date and time", this.formatClinicVisit(record, "")],
-            ["Species", record.pet?.species],
-            ["Breed", record.pet?.breed],
-            ["Attending veterinarian", this.clinicText(record.record?.primary_veterinarian_name)],
-          ],
-          sections: this.$refs.clinicVisitBody.querySelectorAll(`[data-clinic-history-patient="${record.id}"]`),
-        })),
-        totalPaid: session?.paid_at ? this.clinicMoney(session.total_amount) : "",
-      });
+      this.printRecord("clinic", () => this.clinicDetailsModalOpen && this._clinicRequest === request);
     },
 
-    async printRecord(type, stillOpen, details) {
+    async printRecord(type, stillOpen) {
       if (this.printingRecord) return;
       const trigger = document.activeElement;
       this.recordPrintError = "";
       this.printingRecord = true;
       try {
-        const { printHistoryRecord } = await import("./history-print.js?v=20261115");
-        if (stillOpen()) await printHistoryRecord(type, details, stillOpen, trigger);
+        const { printHistoryRecord } = await import("./history-print.js?v=report-20261115");
+        if (stillOpen()) await printHistoryRecord(type, this, stillOpen, trigger);
       } catch {
         if (stillOpen()) this.recordPrintError = "Could not prepare the record for printing. Try again.";
       } finally {
@@ -769,8 +739,18 @@ function adminArchive() {
     },
 
     clinicPrescriptionText(item) {
-      return [item.strength_concentration, item.dose, item.route, item.frequency, item.duration, item.instructions]
-        .filter(value => this.clinicText(value)).join(' · ');
+      return this.clinicPrescriptionFields(item).map(({value}) => value).join(' · ');
+    },
+
+    clinicPrescriptionFields(item) {
+      return [
+        {label: 'Strength / concentration', value: item.strength_concentration},
+        {label: 'Dose', value: item.dose},
+        {label: 'Route', value: item.route},
+        {label: 'Frequency', value: item.frequency},
+        {label: 'Duration', value: item.duration},
+        {label: 'Instructions', value: item.instructions},
+      ].filter(({value}) => this.clinicText(value));
     },
 
     clinicDiagnostics(visit) {

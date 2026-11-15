@@ -116,7 +116,7 @@ JS], base_path());
         ] as $detail) {
             $this->assertStringContainsString($detail, $html);
         }
-        $this->assertStringContainsString('<article class="confirmation-document" aria-label="Confirmation details">', $html);
+        $this->assertStringContainsString('<article class="confirmation-document print-report" aria-label="Confirmation details">', $html);
         $this->assertMatchesRegularExpression('/<a[^>]+href="\/account">Return to Dashboard<\/a>/', $html);
         $this->assertMatchesRegularExpression('/<button[^>]+id="printConfirmationButton"[^>]*>Print Confirmation<\/button>/', $html);
         $this->assertStringContainsString('<dt>Queue number</dt><dd>Not assigned</dd>', $html);

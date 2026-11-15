@@ -216,8 +216,8 @@
     <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110" />
     <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
     <link rel="stylesheet" href="/css/short-notes.css" />
-    <link rel="stylesheet" href="/css/components/confirmation.css?v=history-print-20261115" />
-    <link rel="stylesheet" href="/css/components/history-print.css?v=20261115" />
+    <link rel="stylesheet" href="/css/components/confirmation.css?v=history-print-20261115&print=report-20261115" />
+    <link rel="stylesheet" href="/css/components/history-print.css?v=20261115&print=report-20261115" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -625,7 +625,7 @@
                       <div><p class="history-label history-signature-label">Signature</p><img class="history-signature" :src="signedConsent.signature_image" alt="Customer signature" width="230" height="72" /></div>
                     </template>
                     <details x-ref="signedAgreement" x-show="signedConsent?.agreement_snapshot" class="history-signed-agreement">
-                      <summary data-print-label="Signed agreement">View signed agreement</summary>
+                      <summary>View signed agreement</summary>
                       <p class="history-label" x-text="'Version ' + (signedConsent?.consent_version || '')"></p>
                       <p x-text="signedConsent?.agreement_snapshot?.grooming_intro"></p>
                       <ul><template x-for="(condition, index) in (signedConsent?.agreement_snapshot?.grooming_conditions || [])" :key="index"><li x-text="condition"></li></template></ul>
@@ -691,7 +691,7 @@
                   </template>
                 </section>
 
-                <section class="history-record-section" aria-labelledby="history-payment-title" data-print-payment>
+                <section class="history-record-section" aria-labelledby="history-payment-title">
                   <h5 id="history-payment-title">Payment Summary</h5>
                   <dl x-show="detailsBooking?.productAddons?.length" class="history-payment-totals">
                     <div><dt>Grooming Services</dt><dd x-text="formatServicesAvailedTotal(detailsBooking)"></dd></div>
@@ -758,7 +758,7 @@
                   </div>
                 </section>
                 <template x-for="patient in clinicDetailPatients" :key="patient.visit.id">
-                  <div class="clinic-history-patient" x-show="patient.visit.id === detailsClinicRecord?.id" :data-clinic-history-patient="patient.visit.id">
+                  <div class="clinic-history-patient" x-show="patient.visit.id === detailsClinicRecord?.id">
                     <section class="clinic-visit-section" x-show="clinicSummaryFields(patient.visit).length || clinicMedicalAttachments(patient.visit, patient.care).length" :aria-labelledby="'clinic-summary-title-' + patient.visit.id">
                       <h5 :id="'clinic-summary-title-' + patient.visit.id">Visit Summary</h5>
                       <dl class="clinic-visit-fields">
@@ -769,7 +769,7 @@
                         <div class="clinic-attachments">
                           <template x-for="file in clinicMedicalAttachments(patient.visit, patient.care)" :key="file.id">
                             <button type="button" class="clinic-attachment" @click="openClinicAttachment(file)" :disabled="clinicAttachmentBusyId === file.id" :aria-label="'Open attachment ' + file.file_name + ' in a new tab'">
-                              <svg class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#file-image"></use></svg><span data-print-filename x-text="file.file_name"></span><span x-show="clinicAttachmentBusyId === file.id">Opening…</span>
+                              <svg class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#file-image"></use></svg><span x-text="file.file_name"></span><span x-show="clinicAttachmentBusyId === file.id">Opening…</span>
                             </button>
                           </template>
                         </div>
@@ -777,7 +777,7 @@
                     </section>
                   </div>
                 </template>
-                <section class="clinic-visit-section" x-ref="clinicRecordConsent" aria-labelledby="clinic-history-consent-title">
+                <section class="clinic-visit-section" aria-labelledby="clinic-history-consent-title">
                   <h5 id="clinic-history-consent-title">Consent &amp; Signature</h5>
                   <p x-show="!clinicCareLoading && !clinicCareError && !clinicSignedConsent" class="clinic-visit-muted">Consent record not available for this visit.</p>
                   <template x-if="clinicSignedConsent">
@@ -790,7 +790,7 @@
                       <p class="history-label history-signature-label">Signature</p>
                       <img x-show="clinicSignedConsent.signature_image" class="history-signature" :src="clinicSignedConsent.signature_image" alt="Customer signature" width="230" height="72" />
                       <details x-show="clinicSignedConsent.agreement_snapshot" class="history-signed-agreement">
-                        <summary data-print-label="Signed agreement">View signed agreement</summary>
+                        <summary>View signed agreement</summary>
                         <p class="history-label" x-text="'Version ' + clinicSignedConsent.consent_version"></p>
                         <p class="font-semibold" x-text="clinicSignedConsent.agreement_snapshot?.title"></p>
                         <div class="mt-3 space-y-4">
@@ -809,7 +809,7 @@
                 <admin-loader x-cloak x-show="clinicCareLoading"></admin-loader>
                 <div role="alert" x-show="clinicCareError" style="margin-top: 1rem"><p class="clinic-visit-note" x-text="clinicCareError"></p><button type="button" class="history-details-button" @click="loadClinicCare()">Retry care details</button></div>
                 <template x-for="patient in clinicDetailPatients" :key="patient.visit.id">
-                  <article class="clinic-history-patient" x-show="patient.visit.id === detailsClinicRecord?.id" :data-clinic-history-patient="patient.visit.id">
+                  <article class="clinic-history-patient" x-show="patient.visit.id === detailsClinicRecord?.id">
                     <section class="clinic-visit-section" x-show="clinicVitals(patient.visit).length" :aria-labelledby="'clinic-vitals-title-' + patient.visit.id">
                       <h5 :id="'clinic-vitals-title-' + patient.visit.id">Vitals</h5>
                       <dl class="clinic-visit-vitals"><template x-for="field in clinicVitals(patient.visit)" :key="field.label"><div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div></template></dl>
@@ -837,7 +837,7 @@
                                 <td><strong x-text="clinicServiceName(entry)"></strong><p class="clinic-visit-muted" x-show="Number(entry.quantity) > 1" x-text="'Quantity: ' + Number(entry.quantity)"></p>
                                   <div class="clinic-attachments" x-show="clinicServiceAttachments(entry, patient.visit).length">
                                     <template x-for="file in clinicServiceAttachments(entry, patient.visit)" :key="file.id">
-                                      <button type="button" class="clinic-attachment" @click="openClinicAttachment(file)" :disabled="clinicAttachmentBusyId === file.id" :aria-label="'Open attachment ' + file.file_name + ' in a new tab'"><svg class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#file-image"></use></svg><span data-print-filename x-text="file.file_name"></span><span x-show="clinicAttachmentBusyId === file.id">Opening…</span></button>
+                                      <button type="button" class="clinic-attachment" @click="openClinicAttachment(file)" :disabled="clinicAttachmentBusyId === file.id" :aria-label="'Open attachment ' + file.file_name + ' in a new tab'"><svg class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#file-image"></use></svg><span x-text="file.file_name"></span><span x-show="clinicAttachmentBusyId === file.id">Opening…</span></button>
                                     </template>
                                   </div>
                                 </td>
@@ -895,7 +895,7 @@
 
     <script src="/scripts/components/clinic-attachments.js?v=20261015"></script>
     <script src="/scripts/components/recorded-product-pricing.js?v=20261029"></script>
-    <script src="/scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261110&invoice-products=20261029&urls=20261103&queue-copy=20261103-admin-v1&pet-history=20261110&service-history=20261111&history-link=20261111&owner-session=20261111&clinic-consent=20261115&history-print=20261115"></script>
+    <script src="/scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261110&invoice-products=20261029&urls=20261103&queue-copy=20261103-admin-v1&pet-history=20261110&service-history=20261111&history-link=20261111&owner-session=20261111&clinic-consent=20261115&history-print=20261115&print=report-20261115"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261111&urls=20261103&inventory-expiry=20261111"></script>
   </body>

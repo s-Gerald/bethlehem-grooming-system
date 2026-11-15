@@ -4,9 +4,9 @@ import { escapeHtml } from "../services/booking-draft-service.js?registration=fc
 import { formatBookingDate } from "../services/booking-format-service.js";
 import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110";
 import {
-  clinicReasonConfirmation, confirmationDocument, confirmationFields, confirmationSection,
+  clinicReasonConfirmation, confirmationDocument, confirmationFields, confirmationOverview, confirmationSection,
   formatConfirmationLabel, formatConfirmationTimestamp, ownerConfirmationFields, printConfirmation,
-} from "./confirmation-presentation.js?visit-details=20261029&v=20261017&registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261110&urls=20261103&owner-name=20261108&body-condition=20261110-v2";
+} from "./confirmation-presentation.js?visit-details=20261029&v=20261017&registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261110&urls=20261103&owner-name=20261108&body-condition=20261110-v2&print=report-20261115";
 
 // The detail endpoint supplies saved selections, price bounds, and signed consent.
 export function groomingVisitPresentation(booking, statusLabel) {
@@ -87,7 +87,9 @@ export function groomingVisitPresentation(booking, statusLabel) {
     print: confirmationDocument({
       printTitle: title, reference: booking.booking_reference,
       status: statusLabel, message: "", showOperational: false,
-      sections: header + ownerSection + petSections + consentSection + priceSection,
+      sections: confirmationOverview(confirmationSection("Registration Details",
+        confirmationFields([["Status", statusLabel], ...registrationFields])), ownerSection)
+        + petSections + consentSection + priceSection,
     }),
   };
 }

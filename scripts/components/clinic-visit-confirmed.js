@@ -2,10 +2,10 @@ import {
   CLINIC_VISIT_CONFIRMATION_KEY, formatClinicVisitDate, requireCustomerSession,
 } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103&short-notes=500-20261110";
 import {
-  clinicReasonConfirmation, confirmationFields, confirmationSection, formatConfirmationLabel,
+  clinicReasonConfirmation, confirmationFields, confirmationOverview, confirmationSection, formatConfirmationLabel,
   formatConfirmationTimestamp, ownerConfirmationFields, readConfirmationData,
   renderConfirmation,
-} from "./confirmation-presentation.js?visit-details=20261029&registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261110&urls=20261103&owner-name=20261108";
+} from "./confirmation-presentation.js?visit-details=20261029&registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261110&urls=20261103&owner-name=20261108&print=report-20261115";
 
 export async function initClinicVisitConfirmation() {
   const walkIn = document.body.dataset.confirmationContext === "walk-in";
@@ -23,12 +23,12 @@ export async function initClinicVisitConfirmation() {
   const grouped = patients.length > 1;
   const first = patients[0];
   const sections = [
-    confirmationSection("Owner Information", ownerConfirmationFields(confirmation.owner)),
+    confirmationOverview(confirmationSection("Owner Information", ownerConfirmationFields(confirmation.owner)),
     confirmationSection(walkIn ? "Check-in Details" : "Registration Details", confirmationFields([
       ["Entry source", walkIn ? "Walk-in" : "Online Queue Registration"],
       ["Visit day", formatClinicVisitDate(confirmation.service_day || first.appointment_date)],
       ...(!walkIn && first.created_at ? [["Submitted online", formatConfirmationTimestamp(first.created_at)]] : []),
-    ])),
+    ]))),
     ...patients.map((appointment) => patientSection(appointment, walkIn, grouped)),
     typeof confirmation.terms_agreed === "boolean" ? confirmationSection("Clinic Visit Agreement", confirmationFields([
       ["Clinic visit terms", confirmation.terms_agreed ? "Agreed" : "Not agreed"],
@@ -61,7 +61,7 @@ function patientSection(appointment, walkIn, grouped) {
     ...(patient.gender ? [["Sex", formatConfirmationLabel(patient.gender)]] : []),
     ...(patient.birthdate ? [["Birth date", formatClinicVisitDate(patient.birthdate)]] : []),
     ...(patient.weight != null ? [["Weight", patient.weight + " kg"]] : []),
-  ]) + clinicReasonConfirmation(appointment));
+  ]) + clinicReasonConfirmation(appointment), true);
 }
 
 if (typeof document !== "undefined") initClinicVisitConfirmation();
