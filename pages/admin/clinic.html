@@ -989,7 +989,7 @@
                 <div x-show="canEditClinical" class="space-y-3 rounded-2xl border border-slate-200 p-3">
                   <fieldset :disabled="imagingBusy || !!imagingPending" class="space-y-3">
                     <div>
-                      <label for="imaging-service-search" class="mb-1 block text-xs font-medium text-slate-600">Imaging Service <span aria-hidden="true" class="text-red-600">*</span></label>
+                      <label for="imaging-service-search" class="mb-1 block text-xs font-medium text-slate-600">Imaging Service</label>
                       <input id="imaging-service-search" type="search" x-model="imagingQuery" @input="searchImagingServices()" @focus="if (!imagingSelected) loadImagingOptions()" @keydown.enter.prevent="if (imagingSelected) addImagingService()" aria-required="true" maxlength="200" autocomplete="off" placeholder="Search active imaging services…" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#315b7e] disabled:bg-slate-50" />
                       <admin-loader compact x-cloak x-show="imagingOptionsLoading"></admin-loader>
                       <p x-show="imagingOptionsPage > 0 && !imagingOptionsLoading && !imagingOptions.length && !imagingSelected" class="mt-1 text-xs text-slate-500">No active imaging services match this search.</p>
