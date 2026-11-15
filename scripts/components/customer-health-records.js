@@ -24,8 +24,7 @@ function clinicPrescriptions(record) {
     }));
 }
 
-// Both owner views use the same sections and conditional fields.
-export function renderClinicVisitSections(record, escapeHtml, { compact = false } = {}) {
+export function clinicVisitSections(record) {
   const weight = record.vitals?.weight_kg;
   const hasWeight = hasHealthValue(weight) && /^[+]?\d+(?:\.\d*)?$/.test(String(weight).trim())
     && Number.isFinite(Number(weight)) && Number(weight) > 0;
@@ -41,6 +40,34 @@ export function renderClinicVisitSections(record, escapeHtml, { compact = false 
         ? String(item.route).replace(/^./, (letter) => letter.toUpperCase()) : "";
       return { name: item.medicine_name, details: [["Dose", dose], ["Route", route]] };
     });
+  return [
+    ["Next steps", [
+      ["Follow-up date", recordedDate(record.follow_up_date), { emphasize: true }],
+      ...vaccines.map((item) => [`Next vaccination date · ${item.vaccine_name}`, recordedDate(item.next_due_date), { emphasize: true }]),
+      ["Follow-up instructions", record.follow_up_notes, { wide: true }],
+    ]],
+    ["Visit overview", [
+      ["Reason for visit", record.chief_complaint, { wide: true }],
+      ["Attending veterinarian", record.primary_veterinarian_name],
+      [record.diagnosis_source === "working_diagnosis" ? "Working diagnosis" : "Diagnosis", record.diagnosis],
+      ["Visit weight", hasWeight ? `${formatSavedWeight(weight)} kg` : ""],
+    ]],
+    ["Care provided", [["Recorded treatment", record.treatment_given, { wide: true }]], [
+      ["Vaccinations administered", vaccines.map((item) => ({
+        name: item.vaccine_name,
+        details: [
+          ["Administration date", recordedDate(item.administered_date)],
+          ["Next vaccination date", recordedDate(item.next_due_date)],
+        ],
+      }))],
+      ["Medicines administered", medicines],
+      ["Prescribed medications", clinicPrescriptions(record)],
+    ]],
+  ];
+}
+
+// Both owner views use the same sections and conditional fields.
+export function renderClinicVisitSections(record, escapeHtml, { compact = false } = {}) {
   const sectionHeading = compact ? "h5" : "h4";
   const groupHeading = compact ? "h6" : "h5";
   const valueClasses = compact
@@ -67,29 +94,9 @@ export function renderClinicVisitSections(record, escapeHtml, { compact = false 
         </li>`).join("")}
     </ul>` : "";
 
-  return [
-    ["Next steps", renderFields([
-      ["Follow-up date", recordedDate(record.follow_up_date), { emphasize: true }],
-      ...vaccines.map((item) => [`Next vaccination date · ${item.vaccine_name}`, recordedDate(item.next_due_date), { emphasize: true }]),
-      ["Follow-up instructions", record.follow_up_notes, { wide: true }],
-    ])],
-    ["Visit overview", renderFields([
-      ["Reason for visit", record.chief_complaint, { wide: true }],
-      ["Attending veterinarian", record.primary_veterinarian_name],
-      [record.diagnosis_source === "working_diagnosis" ? "Working diagnosis" : "Diagnosis", record.diagnosis],
-      ["Visit weight", hasWeight ? `${formatSavedWeight(weight)} kg` : ""],
-    ])],
-    ["Care provided", renderFields([["Recorded treatment", record.treatment_given, { wide: true }]])
-      + renderGroup("Vaccinations administered", vaccines.map((item) => ({
-        name: item.vaccine_name,
-        details: [
-          ["Administration date", recordedDate(item.administered_date)],
-          ["Next vaccination date", recordedDate(item.next_due_date)],
-        ],
-      })))
-      + renderGroup("Medicines administered", medicines)
-      + renderGroup("Prescribed medications", clinicPrescriptions(record))],
-  ].map(([title, content]) => content ? `
+  return clinicVisitSections(record).map(([title, entries, groups = []]) => [
+    title, renderFields(entries) + groups.map(([name, items]) => renderGroup(name, items)).join(""),
+  ]).map(([title, content]) => content ? `
     <section class="mt-4 border-t border-portal-border pt-4">
       <${sectionHeading} class="text-sm font-semibold text-portal-text">${title}</${sectionHeading}>
       ${content}

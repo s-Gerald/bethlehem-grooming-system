@@ -352,12 +352,19 @@ class BookingController extends Controller
             'cancel_count',
             'cancellation_reason',
         ]);
+        $historyRelations = ['timeWindow', 'bookingPets.groomer', 'bookingServices'];
         if (Schema::hasTable('payments')) {
             $paymentRelations = config('qr_payments.enabled', false) && Schema::hasTable('qr_payments') ? ['qrPayment'] : [];
-            $relations['payments'] = fn ($query) => $query
+            $paidPayments = fn ($query, array $with) => $query
                 ->where('payment_status', 'paid')
-                ->with($paymentRelations)
-                ->orderByDesc('paid_at');
+                ->with($with)
+                ->orderByDesc('paid_at')
+                ->orderByDesc($query->getModel()->getKeyName());
+            $relations['payments'] = fn ($query) => $paidPayments($query, $paymentRelations);
+            if (Schema::hasTable('grooming_payment_products')) {
+                $paymentRelations['products'] = fn ($query) => $query->orderBy('id');
+            }
+            $historyRelations['payments'] = fn ($query) => $paidPayments($query, $paymentRelations);
         }
 
         $activeQuery = Booking::where('user_id', $userId)
@@ -385,7 +392,7 @@ class BookingController extends Controller
 
         $historyQuery
             ->withGroomingHistoryTimestamp()
-            ->with(array_filter($relations, fn ($relation) => $relation !== 'bookingPets.pet'))
+            ->with($historyRelations)
             ->orderBy('history_at', 'desc')
             ->orderBy('booking_id', 'desc');
 
@@ -403,9 +410,9 @@ class BookingController extends Controller
             $historical = $historical || in_array($b->status, ['archived', 'cancelled', 'expired', 'no_show'], true);
             $bookingPets = $b->bookingPets ?? collect();
             $showGroomingTracker = true;
-            $paymentSummary = (bool) $b->paid
-                ? app(GroomingPaymentReadinessService::class)->summarize($b, historical: $historical)
-                : null;
+            $paidPayment = $b->relationLoaded('payments') ? $b->payments->first() : null;
+            $readiness = $paidPayment ? app(GroomingPaymentReadinessService::class) : null;
+            $paymentSummary = $readiness?->summarize($b, historical: $historical, recordedServiceIdentity: $historical);
 
             if ($petId !== null) {
                 $bookingPets = $bookingPets->where('pet_id', $petId);
@@ -421,7 +428,9 @@ class BookingController extends Controller
                     ->map(fn ($bookingService) => [
                         'booking_service_id' => $bookingService->booking_service_id,
                         'service_id' => $bookingService->service_id,
-                        'service_name' => $bookingService->service_name_snapshot ?? $bookingService->service?->service_name,
+                        'service_name' => $bookingService->service_name_snapshot
+                            ?? ($historical ? 'Grooming service' : $bookingService->service?->service_name),
+                        ...($historical ? ['service_kind' => $bookingService->service_kind_snapshot] : []),
                         'price_at_booking' => $bookingService->price_at_booking,
                         'price_min_at_booking' => $bookingService->price_min_at_booking,
                         'price_max_at_booking' => $bookingService->price_max_at_booking,
@@ -454,6 +463,7 @@ class BookingController extends Controller
                     'weight' => $pet?->weight,
                     'fur_type' => $pet?->fur_type,
                     'medical_conditions' => $pet?->medical_conditions,
+                    ...($historical && $b->booking_type !== 'walk_in' ? ['special_instructions' => $bp->special_instructions] : []),
                     'registered_size' => $bp->registered_size,
                     'confirmed_size' => $bp->confirmed_size,
                     'body_condition' => $pet?->body_condition,
@@ -475,9 +485,6 @@ class BookingController extends Controller
                 ];
             })->values();
 
-            $paidPayment = $b->relationLoaded('payments')
-                ? $b->payments->first()
-                : null;
             $customerPaymentSummary = null;
             if ($paymentSummary && $paidPayment) {
                 $safePets = collect($paymentSummary['pets']);
@@ -488,6 +495,7 @@ class BookingController extends Controller
                 $customerPaymentSummary = [
                     'status' => 'paid',
                     'final_booking_total' => $paymentSummary['final_booking_total'],
+                    'total_paid' => $paidPayment->total_amount,
                     'amount_tendered' => $paidPayment->amount_tendered,
                     'change_amount' => $paidPayment->change_amount,
                     'payment_method' => $paidPayment->payment_method,
@@ -505,6 +513,21 @@ class BookingController extends Controller
                         'final_pet_charge' => $pet['final_pet_charge'],
                     ])->values()->all(),
                 ];
+                if ($paidPayment->relationLoaded('products')) {
+                    $productCents = $paidPayment->products->sum(fn ($product) => $readiness->moneyToCents($product->subtotal));
+                    $customerPaymentSummary += [
+                        'products' => $paidPayment->products->map(fn ($product) => [
+                            'item_name' => $product->item_name,
+                            'quantity' => (int) $product->quantity,
+                            'price_at_sale' => $product->price_at_sale,
+                            'subtotal' => $product->subtotal,
+                        ])->values(),
+                        'products_total' => $readiness->centsToMoney($productCents),
+                        'grooming_services_total' => $readiness->centsToMoney(
+                            $readiness->moneyToCents($paidPayment->total_amount) - $productCents,
+                        ),
+                    ];
+                }
             }
 
             $historyAt = $b->history_at ? Carbon::parse($b->history_at) : null;
@@ -569,6 +592,21 @@ class BookingController extends Controller
             'history_total' => $historyTotal,
             'clinic_visits' => $this->upcomingClinicRegistrations($userId),
         ]);
+    }
+
+    public function historyConsent(Request $request, int $id)
+    {
+        $booking = Booking::where('user_id', $request->user()->user_id)
+            ->neverCancelled(Schema::hasColumns('bookings', ['cancel_count', 'cancellation_reason']))
+            ->whereNotIn('status', ['expired', 'no_show'])
+            ->groomingHistory(['archived'])->findOrFail($id);
+        $consent = Schema::hasTable('grooming_consents') ? $booking->groomingConsent()
+            ->first(['grooming_consent', 'sedation_consent', 'signer_name', 'signed_at', 'signature_image']) : null;
+
+        return response()->json([
+            'consent' => $consent,
+            'owner_name' => trim($request->user()->first_name.' '.$request->user()->last_name),
+        ])->header('Cache-Control', 'no-store, private');
     }
 
     private function upcomingClinicRegistrations(int $userId): array

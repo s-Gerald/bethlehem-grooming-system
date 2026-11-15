@@ -8,6 +8,9 @@
 
     <link rel="stylesheet" href="/css/output.css?health=20261029&v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030&customer-ux=20261031-v1" />
     <link rel="stylesheet" href="/css/custom.css?ui=20260915-session-modal&notif=20260915-client-notifications&release=20261001&grooming=actual-20261026&registration-ui=20261027-v3&customer-header=20261106-v2" />
+    <link rel="stylesheet" href="/css/components/customer-history.css?v=record-billing" />
+    <link rel="stylesheet" href="/css/components/confirmation.css?v=history-print-20261115&print=report-20261115" />
+    <link rel="stylesheet" href="/css/components/history-print.css?v=20261115&print=report-20261115" />
 
     <link rel="stylesheet" href="/css/session-lock.css?remember=20261029&customer-ux=20261031-v1" />
   </head>
@@ -259,7 +262,7 @@
     <div id="historyModal" class="fixed inset-0 z-[110] hidden items-center justify-center p-4 sm:p-6" aria-hidden="true">
       <div data-history-modal-backdrop class="absolute inset-0 bg-[rgba(31,50,69,0.5)]"></div>
       <section id="historyModalDialog" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle" tabindex="-1"
-        class="relative flex max-h-[90vh] w-full max-w-[760px] flex-col overflow-hidden rounded-2xl border border-portal-border bg-white shadow-portal-dropdown">
+        class="relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-portal-border bg-white shadow-portal-dropdown">
         <div class="flex items-start justify-between gap-4 border-b border-portal-border px-5 py-4 sm:px-6">
           <h2 id="historyModalTitle" class="text-xl font-bold text-portal-text">Visit details</h2>
           <button type="button" data-history-modal-close aria-label="Close visit details"
@@ -268,15 +271,21 @@
           </button>
         </div>
         <div id="historyModalContent" class="min-h-0 overflow-y-auto px-5 py-5 sm:px-6"></div>
-        <div class="flex justify-end border-t border-portal-border px-5 py-4 sm:px-6">
+        <div class="flex flex-wrap items-center justify-end gap-2 border-t border-portal-border px-5 py-4 sm:px-6">
+          <p id="historyPrintError" role="status" class="text-xs text-portal-danger"></p>
           <button type="button" data-history-modal-close class="min-h-10 rounded-xl border border-portal-border bg-portal-surface-soft px-5 py-2 text-sm font-semibold text-portal-primary-hover transition hover:bg-portal-active">Close</button>
+          <button type="button" id="historyPrintButton" class="portal-button-primary history-print-button gap-2" hidden>
+            <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg#printer"></use></svg>
+            Print Record
+          </button>
         </div>
       </section>
     </div>
 
-    <script src="/scripts/api.js?name-correction=20261108&auth-reliability=20261107&v=customer-cache-20261005-v1&auth=session-scope-20261006&health=20261016&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1&urls=20261103&owner-session=20261111"></script>
+    <script src="/scripts/api.js?name-correction=20261108&auth-reliability=20261107&v=customer-cache-20261005-v1&auth=session-scope-20261006&health=20261016&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1&urls=20261103&owner-session=20261111&history-record=billing"></script>
     <script type="module">
-      import { renderClinicVisitSections, healthDate } from "/scripts/components/customer-health-records.js?v=visit-summary";
+      import { renderClinicVisitSections, healthDate } from "/scripts/components/customer-health-records.js?v=history-record-billing";
+      import { clinicHistoryBilling, clinicHistoryPayment, groomingHistoryPets, groomingHistoryProducts, groomingPetBilling, historyDateTimeParts, historyPaymentFields, historyServiceLines, historyTimestamp, petGroomingTimes } from "/scripts/components/customer-history-billing.js?v=record-billing";
       function scheduleCustomerHistoryIdleTask(task) {
         if (typeof window.requestIdleCallback === "function") {
           window.requestIdleCallback(task, { timeout: 1200 });
@@ -492,22 +501,6 @@
           .replaceAll("'", "&#039;");
       }
 
-      function historyDateTimeParts(timestamp) {
-        if (!timestamp) return null;
-        const date = new Date(timestamp);
-        if (Number.isNaN(date.getTime())) return null;
-        const timeZone = "Asia/Manila";
-        return {
-          date: new Intl.DateTimeFormat("en-PH", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(date),
-          time: new Intl.DateTimeFormat("en-PH", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).format(date),
-        };
-      }
-
-      function historyDateTime(timestamp) {
-        const parts = historyDateTimeParts(timestamp);
-        return parts ? `${parts.date} &middot; ${parts.time}` : "Not recorded";
-      }
-
       function groomingInterval(startTimestamp, finishTimestamp) {
         const start = historyDateTimeParts(startTimestamp);
         const finish = historyDateTimeParts(finishTimestamp);
@@ -535,25 +528,6 @@
       function historyPetIcon(pet) {
         const species = String(pet?.species || "").toLowerCase();
         return species === "dog" ? "dog" : species === "cat" ? "cat" : "paw-print";
-      }
-
-      function petGroomingTimes(booking, pet) {
-        const useBookingTimes = !pet || Number(booking.number_of_pets) === 1;
-        return {
-          start: pet?.grooming_started_timestamp || (useBookingTimes ? booking.grooming_started_timestamp : null),
-          finish: pet?.grooming_finished_timestamp || (useBookingTimes ? booking.grooming_finished_timestamp : null),
-        };
-      }
-
-      function historyServiceLines(booking, pet) {
-        const settled = booking.paid && booking.payment_summary?.status === "paid"
-          ? booking.payment_summary.pets?.find((item) => Number(item.booking_pet_id) === Number(pet?.booking_pet_id))
-            || (Number(booking.number_of_pets) === 1 ? booking.payment_summary.pets?.[0] : null)
-          : null;
-        // Final service names describe care provided; billing amounts stay out of History.
-        return Array.isArray(settled?.service_breakdown)
-          ? settled.service_breakdown.filter((line) => line.label)
-          : (pet?.services || []).filter((service) => service.service_name).map((service) => ({ label: service.service_name }));
       }
 
       function historyServices(booking, pet) {
@@ -606,7 +580,8 @@
             <span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Completed</span>
           </div>
           ${renderClinicVisitSections(patient, escapeHistoryHtml)}
-          ${buildHistoryPayment(patient.payment, patient.payment?.total_paid)}`;
+          ${buildHistoryBilling("Billing breakdown", clinicHistoryBilling(patient))}
+          ${buildHistoryPayment(clinicHistoryPayment(details))}`;
         }
         return `
           <div class="flex flex-wrap items-start justify-between gap-3">
@@ -620,23 +595,36 @@
             <h4 class="text-base font-bold text-portal-text">${escapeHistoryHtml(patient.pet?.pet_name || "Patient")}</h4>
             <p class="mb-3 text-xs text-portal-muted">${escapeHistoryHtml(patient.appointment_reference)}</p>
             ${patient.status === "cancelled" ? '<p class="text-sm text-portal-muted">Cancelled</p>' : renderClinicVisitSections(patient, escapeHistoryHtml)}
-            ${details.grouped && patient.payment ? `<p class="mt-3 text-sm font-semibold">Patient subtotal ${escapeHistoryHtml(new Intl.NumberFormat("en-PH", {style: "currency", currency: "PHP"}).format(patient.payment.total_paid))}</p>` : ""}
+            ${buildHistoryBilling("Billing breakdown", clinicHistoryBilling(patient), "Patient subtotal")}
           </section>`).join("")}
-          ${buildHistoryPayment(details.payment, details.payment?.total_paid)}`;
+          ${buildHistoryPayment(clinicHistoryPayment(details))}`;
       }
 
-      function buildHistoryPayment(payment, amount, label = 'Total paid') {
-        if (payment?.status !== 'paid' || amount === null || amount === undefined || String(amount).trim() === ''
-          || !Number.isFinite(Number(amount)) || Number(amount) < 0) return '';
-        const paidOn = historyDateTimeParts(payment.paid_at);
-        const total = '₱' + new Intl.NumberFormat('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(Number(amount));
-        const fields = [[label, total], ['Payment method', payment.payment_method_label],
-          ['Paid on', paidOn ? `${paidOn.date} · ${paidOn.time}` : null]].filter(([, value]) => value);
+      function buildHistoryBilling(title, { lines, subtotal }, subtotalLabel) {
+        if (!lines.length && !(subtotal && subtotalLabel)) return "";
+        return `<section class="mt-4 border-t border-portal-border pt-4">
+          ${lines.length ? `<h4 class="text-sm font-semibold text-portal-text">${title}</h4>
+            <ul class="customer-history-lines">${lines.map(({ name, detail, preference, amount }) => `
+              <li class="customer-history-line">
+                <span class="font-medium text-portal-text">${escapeHistoryHtml(name)}</span>
+                ${detail ? `<span class="customer-history-line-meta text-xs font-medium text-portal-muted">${escapeHistoryHtml(detail)}</span>` : ""}
+                ${preference ? `<span class="customer-history-preference text-xs font-medium text-portal-primary">${escapeHistoryHtml(preference)}</span>` : ""}
+                ${amount ? `<span class="customer-history-line-value customer-history-amount font-medium text-portal-text">${escapeHistoryHtml(amount)}</span>` : ""}
+              </li>`).join("")}</ul>` : ""}
+          ${subtotal && subtotalLabel ? `<p class="customer-history-subtotal text-sm font-semibold text-portal-text">
+            ${subtotalLabel}<span class="customer-history-amount">${escapeHistoryHtml(subtotal)}</span>
+          </p>` : ""}
+        </section>`;
+      }
+
+      function buildHistoryPayment(payment) {
+        const fields = historyPaymentFields(payment);
+        if (!fields.length) return "";
         return `<section class="mt-6 border-t border-portal-border pt-4">
           <h3 class="text-base font-bold text-portal-text">Payment</h3>
           <dl class="mt-3 space-y-3">${fields.map(([name, value]) => `<div class="grid grid-cols-2 gap-3 text-sm">
-            <dt class="font-medium text-portal-muted">${escapeHistoryHtml(name)}</dt>
-            <dd class="min-w-0 text-right font-medium text-portal-text [overflow-wrap:anywhere]">${escapeHistoryHtml(value)}</dd>
+            <dt class="${name === "Total paid" ? "font-bold text-portal-text" : "font-medium text-portal-muted"}">${escapeHistoryHtml(name)}</dt>
+            <dd class="customer-history-amount min-w-0 text-right ${name === "Total paid" ? "font-bold" : "font-medium"} text-portal-text [overflow-wrap:anywhere]">${escapeHistoryHtml(value)}</dd>
           </div>`).join('')}</dl>
         </section>`;
       }
@@ -644,7 +632,10 @@
       const historyModal = document.getElementById("historyModal");
       const historyModalDialog = document.getElementById("historyModalDialog");
       const historyModalContent = document.getElementById("historyModalContent");
+      const historyPrintButton = document.getElementById("historyPrintButton");
+      const historyPrintError = document.getElementById("historyPrintError");
       let historyModalTrigger = null;
+      let historyPrintRecord = null;
 
       function historySizeLabel(size) {
         const normalized = String(size || "").trim().toLowerCase();
@@ -653,6 +644,13 @@
       }
 
       function buildHistoryModalContent(booking, pet) {
+        const pets = groomingHistoryPets(booking, pet);
+        const billing = { lines: groomingHistoryProducts(booking) };
+        return (pets.length ? pets : [null]).map((patient, index) => buildGroomingPetDetails(booking, patient, index === 0))
+          .join("") + buildHistoryBilling("Products purchased", billing) + buildHistoryPayment(booking.payment_summary);
+      }
+
+      function buildGroomingPetDetails(booking, pet, first) {
         const [outcomeLabel, outcomeClasses] = groomingOutcome(pet?.grooming_status || booking.status);
         const petName = escapeHistoryHtml(pet?.pet_name || "Pet name not recorded");
         const breed = pet?.breed && pet.breed !== "—" ? escapeHistoryHtml(pet.breed) : "Breed not recorded";
@@ -663,37 +661,34 @@
         const weight = pet?.weight === null || pet?.weight === undefined || pet?.weight === "" || !Number.isFinite(Number(pet.weight))
           ? "Not recorded"
           : `${new Intl.NumberFormat("en-PH", { maximumFractionDigits: 2 }).format(Number(pet.weight))} kg`;
-        const services = historyServiceLines(booking, pet);
-        const mainServiceIndex = services.some((line) => line.service_kind)
-          ? services.findIndex((line) => line.service_kind === "package") : 0;
-        const preference = pet?.grooming_preference_label;
         const bodyCondition = pet?.body_condition ? String(pet.body_condition).replace(/^./, letter => letter.toUpperCase()) : "";
         const arrivalWindow = escapeHistoryHtml(booking.time_window?.window_label || "Not recorded");
 
         return `
-          <div class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-4 sm:flex">
+          <section class="${first ? "" : "mt-6 border-t border-portal-border pt-6"}">
+          <header class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-4 sm:flex">
             <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-portal-icon-surface text-portal-primary" aria-hidden="true">
               <svg class="ph-icon h-7 w-7" viewBox="0 0 256 256" focusable="false"><use href="/assets/icons/phosphor.svg#${historyPetIcon(pet)}"></use></svg>
             </span>
             <div class="min-w-0 flex-1">
               <h3 class="break-words text-xl font-bold leading-tight text-portal-text">${petName}</h3>
-              <p class="mt-1 break-words text-xs font-medium text-portal-muted">Grooming reference: ${escapeHistoryHtml(booking.booking_reference || "Not recorded")}</p>
+              ${first ? `<p class="mt-1 break-words text-xs font-medium text-portal-muted">Grooming reference: ${escapeHistoryHtml(booking.booking_reference || "Not recorded")}</p>` : ""}
             </div>
             <span class="col-span-2 w-fit shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${outcomeClasses}">${outcomeLabel}</span>
-          </div>
+          </header>
 
           <div class="mt-6 grid gap-6 sm:grid-cols-2 sm:gap-8">
             <section class="min-w-0 pl-4">
               <h3 class="flex items-center gap-2 text-base font-bold text-portal-text">
                 <svg class="ph-icon h-5 w-5 text-portal-primary" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#calendar-check"></use></svg>
-                Visit summary
+                ${first ? "Visit summary" : "Grooming timeline"}
               </h3>
               <dl class="mt-4 space-y-3">
-                <div class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Visit day</dt><dd class="font-medium text-portal-text">${escapeHistoryHtml(booking.booking_date || "Not recorded")}</dd></div>
+                ${first ? `<div class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Visit day</dt><dd class="font-medium text-portal-text">${escapeHistoryHtml(booking.booking_date || "Not recorded")}</dd></div>
                 <div class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Entry source</dt><dd class="font-medium text-portal-text">${booking.booking_type === "walk_in" ? "Walk-in" : "Online Queue Registration"}</dd></div>
-                <div class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Dropped off</dt><dd class="font-medium text-portal-text">${historyDateTime(booking.dropped_off_timestamp)}</dd></div>
+                <div class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Dropped off</dt><dd class="font-medium text-portal-text">${historyTimestamp(booking.dropped_off_timestamp) || "Not recorded"}</dd></div>` : ""}
                 <div class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Grooming</dt><dd class="font-medium text-portal-text">${groomingInterval(groomingTimes.start, groomingTimes.finish)}</dd></div>
-                ${booking.booking_type !== "walk_in" && booking.time_window?.window_label ? `<div class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Arrival window</dt><dd class="font-medium text-portal-text">${arrivalWindow}</dd></div>` : ""}
+                ${first && booking.booking_type !== "walk_in" && booking.time_window?.window_label ? `<div class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Arrival window</dt><dd class="font-medium text-portal-text">${arrivalWindow}</dd></div>` : ""}
               </dl>
             </section>
 
@@ -726,20 +721,14 @@
             </section>
           </div>
 
-          <section class="mt-6 rounded-2xl border border-portal-border bg-portal-surface-soft p-4">
-            <h3 class="flex items-center gap-2 text-base font-bold text-portal-text">
-              <svg class="ph-icon h-5 w-5 text-portal-primary" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#scissors"></use></svg>
-              Services
-            </h3>
-            ${services.length ? `<ul class="mt-3 space-y-2 text-xs text-portal-text">${services.map((service, index) => `<li class="break-words">${escapeHistoryHtml(service.label)}${index === mainServiceIndex && preference ? `<div class="mt-1"><span class="inline-flex rounded-full bg-portal-active px-2 py-1 text-xs font-medium text-portal-primary">${escapeHistoryHtml(preference)}</span></div>` : ""}</li>`).join("")}</ul>` : '<p class="mt-3 text-xs text-portal-muted">No services recorded.</p>'}
-          </section>
-          ${buildHistoryPayment(booking.payment_summary, booking.payment_summary?.final_booking_total,
-            Number(booking.number_of_pets) > 1 ? 'Visit total paid' : 'Total paid')}`;
+          ${buildHistoryBilling("Services &amp; add-ons", groomingPetBilling(booking, pet), "Pet subtotal")}
+          </section>`;
       }
 
       function closeHistoryModal() {
         if (historyModal.classList.contains("hidden")) return;
         ++clinicDetailsRequest;
+        historyPrintRecord = null;
         historyModal.classList.add("hidden");
         historyModal.classList.remove("flex");
         historyModal.setAttribute("aria-hidden", "true");
@@ -751,6 +740,12 @@
       async function openHistoryModal(event, trigger) {
         const request = ++clinicDetailsRequest;
         historyModalTrigger = trigger;
+        const printableGrooming = event.type === "grooming" && !["cancelled", "expired", "no_show"].includes(event.booking.status);
+        historyPrintRecord = printableGrooming ? { event } : null;
+        historyPrintButton.hidden = !historyPrintRecord;
+        historyPrintButton.removeAttribute("aria-disabled");
+        historyPrintError.textContent = "";
+        historyModalContent.scrollTop = 0;
         document.getElementById("historyModalTitle").textContent = event.type === "clinic" ? "Visit Summary" : "Grooming session details";
         historyModalContent.innerHTML = event.type === "clinic"
           ? '<p role="status">Loading visit details…</p>' : buildHistoryModalContent(event.booking, event.pet);
@@ -762,11 +757,35 @@
         if (event.type !== "clinic") return;
         try {
           const details = await API.getCustomerClinicHistoryVisit(event.id);
-          if (request === clinicDetailsRequest) historyModalContent.innerHTML = buildClinicHistoryDetails(event, details);
+          if (request !== clinicDetailsRequest) return;
+          historyModalContent.innerHTML = buildClinicHistoryDetails(event, details);
+          historyPrintRecord = { event, details };
+          historyPrintButton.hidden = false;
         } catch {
           if (request === clinicDetailsRequest) historyModalContent.innerHTML = '<p role="alert">Clinic visit details could not be loaded.</p>';
         }
       }
+
+      historyPrintButton.addEventListener("click", async () => {
+        const record = historyPrintRecord;
+        if (!record || historyPrintButton.getAttribute("aria-disabled") === "true") return;
+        const stillOpen = () => historyPrintRecord === record;
+        historyPrintButton.setAttribute("aria-disabled", "true");
+        historyPrintError.textContent = "";
+        try {
+          const [report, details] = await Promise.all([
+            import("/scripts/components/customer-history-print.js?v=record-billing"),
+            record.details || API.getCustomerGroomingHistoryConsent(record.event.booking.booking_id),
+          ]);
+          if (!stillOpen()) return;
+          record.details = details;
+          await report.printCustomerHistoryRecord(record.event, details, stillOpen, historyPrintButton);
+        } catch {
+          if (stillOpen()) historyPrintError.textContent = "The print record could not be opened. Please try again.";
+        } finally {
+          if (stillOpen()) historyPrintButton.removeAttribute("aria-disabled");
+        }
+      });
 
       historyList.addEventListener("click", (event) => {
         const trigger = event.target.closest("[data-history-open]");
@@ -788,7 +807,7 @@
           return;
         }
         if (event.key !== "Tab") return;
-        const focusable = Array.from(historyModalDialog.querySelectorAll("button:not([disabled]), a[href], input:not([disabled])"));
+        const focusable = Array.from(historyModalDialog.querySelectorAll("button:not([disabled]):not([hidden]), a[href], input:not([disabled])"));
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) {

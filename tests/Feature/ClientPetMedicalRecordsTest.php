@@ -17,34 +17,80 @@ class ClientPetMedicalRecordsTest extends TestCase
         DB::table('users')->insert(['user_id' => 10]);
         Schema::create('walkins', fn (Blueprint $table) => $table->id());
         (require database_path('migrations/2026_11_11_000001_create_clinic_visit_groups.php'))->up();
+        (require database_path('migrations/2026_11_15_000002_create_clinic_consents.php'))->up();
         $group = \App\Models\ClinicVisitGroup::create([
             'user_id' => 10, 'source' => 'pre_registered', 'service_day' => '2026-10-10',
             'total_amount' => 3000, 'paid_at' => '2026-10-10 13:00:00', 'payment_method' => 'cash',
+        ]);
+        $group->consent()->create([
+            'clinic_consent' => true, 'signer_name' => 'Recorded owner', 'signed_at' => '2026-10-10 12:00:00',
+            'signature_image' => 'data:image/png;base64,saved', 'signature_strokes' => [],
+            'consent_version' => 'v1', 'agreement_snapshot' => ['Private agreement wording'],
         ]);
         $this->insertPet(1, 10, 'Mochi');
         $this->insertPet(2, 10, 'Rigby');
         $this->insertAppointment(101, 1, 'completed', 'CL-MOCHI', '2026-10-10');
         $this->insertAppointment(102, 2, 'completed', 'CL-RIGBY', '2026-10-10');
         $this->insertAppointment(103, 1, 'completed', 'CL-LEGACY', '2026-10-10');
-        DB::table('clinic_appointments')->whereIn('id', [101, 102])->update(['clinic_visit_group_id' => $group->id]);
+        $this->insertAppointment(104, 2, 'cancelled', 'CL-CANCELLED', '2026-10-10');
+        DB::table('clinic_appointments')->whereIn('id', [101, 102, 104])->update(['clinic_visit_group_id' => $group->id]);
+        foreach ([101 => 1200, 102 => 1800, 103 => 1200, 104 => 999] as $id => $total) {
+            $this->insertCharge($id, 'Recorded treatment', 2, $total / 2, $total);
+            if ($id === 103) $this->insertCharge($id, 'Recorded consultation', 1, 450, 450);
+            DB::table('clinic_appointments')->where('id', $id)->update([
+                'total_amount' => $id === 103 ? 1650 : $total, 'paid' => true, 'payment_method' => 'cash',
+                'paid_at' => '2026-10-10 13:00:00',
+            ]);
+        }
         $this->authenticateCustomer(10);
         $this->getJson('/api/clinic/history?summary=1')->assertOk()->assertJsonCount(2, 'visits');
         foreach (['Rigby', 'CL-RIGBY'] as $search) {
             $this->getJson('/api/clinic/history?summary=1&search='.$search)->assertOk()->assertJsonCount(1, 'visits')
-                ->assertJsonCount(2, 'visits.0.patients')->assertJsonPath('visits.0.patients.0.pet.pet_name', 'Mochi');
+                ->assertJsonCount(3, 'visits.0.patients')->assertJsonPath('visits.0.patients.0.pet.pet_name', 'Mochi')
+                ->assertJsonMissingPath('visits.0.patients.0.billing_lines');
         }
         $this->getJson('/api/clinic/history/101')->assertOk()->assertJsonPath('payment.total_paid', '3000.00')
+            ->assertJsonPath('consent.clinic_consent', true)
+            ->assertJsonPath('consent.signature_image', 'data:image/png;base64,saved')
+            ->assertJsonMissingPath('consent.agreement_snapshot')->assertJsonMissingPath('consent.signature_strokes')
             ->assertJsonPath('patients.0.diagnosis', 'Diagnosis for CL-MOCHI')
-            ->assertJsonPath('patients.1.diagnosis', 'Diagnosis for CL-RIGBY');
+            ->assertJsonPath('patients.1.diagnosis', 'Diagnosis for CL-RIGBY')
+            ->assertJsonPath('patients.0.billing_lines.0', ['description' => 'Recorded treatment',
+                'quantity' => '2.00', 'unit_price' => '600.00', 'amount' => '1200.00'])
+            ->assertJsonPath('patients.0.patient_subtotal', 1200)
+            ->assertJsonPath('patients.1.patient_subtotal', 1800)
+            ->assertJsonMissingPath('patients.2.billing_lines')
+            ->assertJsonMissingPath('patients.2.patient_subtotal');
+        $this->getJson('/api/clinic/history/103')->assertOk()->assertJsonCount(2, 'patients.0.billing_lines')
+            ->assertJsonPath('patients.0.payment.total_paid', 1650)
+            ->assertJsonMissingPath('patients.0.billing_lines.0.inventory_item_id');
         $this->getJson('/api/pets/1/medical-records')->assertOk()->assertJsonCount(2, 'medical_records')
             ->assertJsonMissing(['appointment_reference' => 'CL-RIGBY']);
         $this->authenticateCustomer(20);
         $this->getJson('/api/clinic/history/101')->assertNotFound();
     }
 
+    private function insertCharge(int $visit, string $description, float $quantity, float $price, float $amount): void
+    {
+        DB::table('clinic_charges')->insert([
+            'clinic_appointment_id' => $visit, 'description' => $description, 'quantity' => $quantity,
+            'unit_price' => $price, 'amount' => $amount, 'inventory_item_id' => 99,
+        ]);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
+
+        Schema::create('clinic_charges', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedInteger('clinic_appointment_id');
+            $table->unsignedInteger('inventory_item_id');
+            $table->string('description');
+            $table->decimal('quantity');
+            $table->decimal('unit_price');
+            $table->decimal('amount');
+        });
 
         Schema::create('pets', function (Blueprint $table) {
             $table->json('customer_locked_fields')->nullable();

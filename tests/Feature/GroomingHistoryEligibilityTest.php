@@ -12,6 +12,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -46,6 +47,8 @@ class GroomingHistoryEligibilityTest extends TestCase
             $t->id();
             $t->unsignedInteger('payment_id');
             $t->string('item_name');
+            $t->integer('quantity')->default(1);
+            $t->decimal('price_at_sale')->nullable();
             $t->decimal('subtotal');
         });
         Schema::create('clinic_appointments', function (Blueprint $t) {
@@ -65,7 +68,10 @@ class GroomingHistoryEligibilityTest extends TestCase
         Schema::table('pets', function (Blueprint $t) {
             $t->unsignedInteger('unregistered_customer_id')->nullable();
         });
-        Schema::table('booking_services', fn (Blueprint $t) => $t->string('service_name_snapshot')->nullable());
+        Schema::table('booking_services', function (Blueprint $t) {
+            $t->string('service_name_snapshot')->nullable();
+            $t->string('service_kind_snapshot')->nullable();
+        });
         DB::table('booking_services')->update(['service_name_snapshot' => 'Recorded grooming']);
         foreach (\App\Models\BookingPet::all() as $pet) {
             $pet->update(['pet_profile_snapshot' => PetProfileSnapshot::registration($pet->pet)]);
@@ -265,8 +271,18 @@ class GroomingHistoryEligibilityTest extends TestCase
     {
         DB::table('bookings')->update(['status' => 'released', 'paid' => true, 'grooming_finished_at' => now()]);
         DB::table('booking_pets')->update(['grooming_state' => 'finished', 'grooming_end_time' => now()]);
-        DB::table('payments')->insert(['booking_id' => 1, 'total_amount' => 1500, 'amount_tendered' => 2000,
-            'change_amount' => 500, 'paid_at' => now(), 'notes' => 'Internal payment note']);
+        $payment = \App\Models\Payment::create(['booking_id' => 1, 'total_amount' => 1850, 'amount_tendered' => 2000,
+            'change_amount' => 150, 'paid_at' => now(), 'payment_status' => 'paid', 'payment_method' => 'cash',
+            'notes' => 'Internal payment note']);
+        $payment->products()->create(['item_name' => 'Recorded shampoo', 'quantity' => 2,
+            'price_at_sale' => 175, 'subtotal' => 350]);
+        DB::table('booking_services')->where('booking_service_id', 1)->update([
+            'price_at_booking' => 700, 'service_kind_snapshot' => 'package',
+        ]);
+        DB::table('booking_services')->insert([
+            'booking_id' => 1, 'booking_pet_id' => 1, 'service_id' => 1,
+            'price_at_booking' => 150, 'service_name_snapshot' => 'Recorded nail trim', 'service_kind_snapshot' => 'addon',
+        ]);
         config(['grooming_services.services.regular_dog_grooming.prices' => ['small' => 9999, 'medium' => 9999, 'large' => 9999]]);
         DB::table('services')->update(['service_name' => 'Changed catalogue name']);
         $visit = app(BookingController::class)->history($this->request())->getData(true)['history'][0];
@@ -274,12 +290,41 @@ class GroomingHistoryEligibilityTest extends TestCase
         $this->assertSame(2, $visit['number_of_pets']);
         $this->assertSame('paid', $visit['payment_summary']['status']);
         $this->assertSame('1500.00', $visit['payment_summary']['final_booking_total']);
+        $this->assertSame('1850.00', $visit['payment_summary']['total_paid']);
+        $this->assertSame('1500.00', $visit['payment_summary']['grooming_services_total']);
+        $this->assertSame('350.00', $visit['payment_summary']['products_total']);
+        $this->assertSame([['item_name' => 'Recorded shampoo', 'quantity' => 2,
+            'price_at_sale' => '175.00', 'subtotal' => '350.00']], $visit['payment_summary']['products']);
         $this->assertSame('Cash', $visit['payment_summary']['payment_method_label']);
         $this->assertSame('2026-11-11T16:30:00+08:00', $visit['payment_summary']['paid_at']);
         $this->assertSame('850.00', $visit['payment_summary']['pets'][0]['final_pet_charge']);
         $this->assertSame('Recorded grooming', $visit['payment_summary']['pets'][0]['service_breakdown'][0]['label']);
+        $addon = $visit['payment_summary']['pets'][0]['service_breakdown'][1];
+        $this->assertSame('Recorded nail trim', $addon['label']);
+        $this->assertSame('150.00', $addon['price_at_booking']);
+        $this->assertSame('ala_carte', $addon['service_kind']);
+        $this->assertCount(1, $visit['payment_summary']['pets'][1]['service_breakdown']);
         $this->assertArrayNotHasKey('notes', $visit['payment_summary']);
         $this->assertArrayNotHasKey('processed_by', $visit['payment_summary']);
+    }
+
+    public function test_customer_history_signature_is_only_available_for_an_owned_completed_booking(): void
+    {
+        DB::table('grooming_consents')->insert([
+            'booking_id' => 1, 'grooming_consent' => true, 'sedation_consent' => false, 'signer_name' => 'Recorded owner',
+            'signed_at' => now(), 'signature_image' => 'data:image/png;base64,saved', 'signature_strokes' => '[]',
+            'consent_version' => 'v1', 'agreement_snapshot' => '["Private agreement wording"]',
+        ]);
+        Sanctum::actingAs(User::findOrFail(1)->forceFill(['role' => 'customer']));
+        $this->getJson('/api/booking/1/history-consent')->assertNotFound();
+        DB::table('bookings')->where('booking_id', 1)->update(['status' => 'archived']);
+        $this->getJson('/api/booking/1/history-consent')->assertOk()
+            ->assertJsonPath('consent.sedation_consent', false)
+            ->assertJsonPath('consent.signature_image', 'data:image/png;base64,saved')
+            ->assertJsonMissingPath('consent.agreement_snapshot')
+            ->assertJsonMissingPath('consent.signature_strokes');
+        Sanctum::actingAs((new User)->forceFill(['user_id' => 2, 'role' => 'customer']));
+        $this->getJson('/api/booking/1/history-consent')->assertNotFound();
     }
 
     public function test_released_history_preserves_snapshots_and_batches_owner_reads(): void

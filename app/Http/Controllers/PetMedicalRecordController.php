@@ -120,7 +120,19 @@ class PetMedicalRecordController extends Controller
         $patients = $group ? $records->where('clinic_visit_group_id', $group->id)->reorder('id')->get()
             : new \Illuminate\Database\Eloquent\Collection([$visit]);
         $patients->load('pet:pet_id,pet_name,species');
-        $details = $patients->map(fn ($patient) => $this->historyPatient($patient) + $this->formatMedicalRecord($patient))->toBase();
+        if (Schema::hasTable('clinic_charges')) {
+            $patients->filter(fn ($patient) => $patient->paid)->load([
+                'charges' => fn ($query) => $query
+                    ->select('clinic_appointment_id', 'description', 'quantity', 'unit_price', 'amount')
+                    ->orderBy('id'),
+            ]);
+        }
+        $details = $patients->map(fn ($patient) => $this->historyPatient($patient) + $this->formatMedicalRecord($patient) + [
+            'breed' => PetProfileSnapshot::resolve($patient->pet_profile_snapshot)['breed'] ?? null,
+            'billing_lines' => $patient->relationLoaded('charges') ? $patient->charges->map(fn ($charge) =>
+                $charge->only(['description', 'quantity', 'unit_price', 'amount']))->values() : [],
+            'patient_subtotal' => $group?->paid_at && $patient->paid ? $patient->total_amount : null,
+        ])->toBase();
         if ($group) {
             $cancelled = $this->ownedHistory($group->appointments()->getQuery()->where('status', 'cancelled'), $userId)
                 ->with('pet:pet_id,pet_name,species')->orderBy('id')->get();
@@ -134,7 +146,10 @@ class PetMedicalRecordController extends Controller
                 'payment_method_label' => GatewayPayment::labelFor($group->payment_method), 'paid_at' => $group->paid_at->toIso8601String(),
             ] : null,
             'grouped' => $group !== null,
-        ]);
+            'owner_name' => trim($request->user()->first_name.' '.$request->user()->last_name),
+            'consent' => $group && Schema::hasTable('clinic_consents') ? $group->consent()
+                ->first(['clinic_consent', 'signer_name', 'signed_at', 'signature_image']) : null,
+        ])->header('Cache-Control', 'no-store, private');
     }
 
     private function ownedHistory(Builder $query, int $userId): Builder

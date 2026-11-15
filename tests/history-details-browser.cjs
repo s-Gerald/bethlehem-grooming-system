@@ -33,11 +33,30 @@ const session = {
 const payment = {status: 'paid', payment_method_label: 'Cash', paid_at: '2026-11-10T16:38:00Z'};
 const grooming = {booking_id: 91, booking_reference: 'GR-91', status: 'released', paid: true, number_of_pets: 2,
   booking_date: '2026-11-11', history_date: '2026-11-11',
-  payment_summary: {...payment, final_booking_total: 1000},
-  pets: [{booking_pet_id: 11, pet_name: 'First pet', services: [{service_name: 'Recorded grooming'}]},
+  special_notes: 'Customer requested a call', internalStaffNote: 'PRIVATE GROOMING NOTE',
+  payment_summary: {...payment, final_booking_total: 1300, total_paid: 1650, grooming_services_total: 1300, products_total: 350,
+    products: [{item_name: 'Medicated shampoo', quantity: 2, price_at_sale: 175, subtotal: 350}],
+    pets: [
+      {booking_pet_id: 11, final_pet_charge: 800, service_breakdown: [
+        {label: 'Recorded grooming', service_kind: 'package', price_at_booking: 650},
+        {label: 'Recorded nail trim', service_kind: 'ala_carte', price_at_booking: 150},
+      ]},
+      {booking_pet_id: 12, final_pet_charge: 500, service_breakdown: [
+        {label: 'Recorded bath', service_kind: 'ala_carte', price_at_booking: 500},
+      ]},
+    ],
+  },
+  pets: [{booking_pet_id: 11, pet_name: 'First pet', grooming_preference_label: 'Summer cut', services: [{service_name: 'Recorded grooming'}]},
     {booking_pet_id: 12, pet_name: 'Clicked pet', services: [{service_name: 'Recorded bath'}]}]};
 const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-11-10', status: 'completed',
   pet: {pet_id: 12, pet_name: 'Clicked pet'}, treatment_given: 'Recorded care',
+  internal_staff_note: 'PRIVATE CLINIC NOTE',
+  billing_lines: [
+    {description: 'Consultation', quantity: 1, unit_price: 450, amount: 450},
+    {description: 'Ultrasound', quantity: 1, unit_price: 2050, amount: 2050},
+    {description: 'Medicine', quantity: 2, unit_price: 300, amount: 600},
+  ],
+  vitals: {weight_kg: 4.4, temperature_c: 38.9},
   payment: {...payment, total_paid: 3100, payment_method_label: 'Online Payment ' + 'LongLabel'.repeat(12)}};
 
 (async () => {
@@ -92,6 +111,14 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
       const scenario = new URL(location.href).searchParams.get('scenario');
       window.holdHistory = Boolean(scenario);
       const signature = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="24"%3E%3Cpath d="M 2 19 L 18 3 L 29 20 L 76 11" stroke="black" fill="none"/%3E%3C/svg%3E';
+      const customerConsent = {signer_name: 'Recorded Owner', signed_at: '2024-02-10T10:00:00+08:00', signature_image: signature};
+      const groupedPatients = [
+        {...clinic, id: 101, patient_subtotal: 3100},
+        {...clinic, id: 102, appointment_reference: 'CL-102', pet: {pet_id: 13, pet_name: 'Clinic sibling'}, patient_subtotal: 400,
+          billing_lines: [{description: 'Follow-up care', quantity: 1, unit_price: 400, amount: 400}]},
+        {id: 103, pet: {pet_name: 'Cancelled patient'}, status: 'cancelled',
+          billing_lines: [{description: 'Excluded charge', quantity: 1, unit_price: 999, amount: 999}]},
+      ];
       const patients = [81, 82].map(id => ({
         id, clinic_visit_group_id: 1, appointment_reference: `CL-${id}`, appointment_date: '2024-02-10',
         time_window: {window_label: id === 81 ? 'Morning arrival' : 'Afternoon arrival'},
@@ -158,11 +185,18 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
         adminGetPetCaseDetails: async () => { window.ungroupedClinicCalls++; throw new Error('Unexpected care request'); },
         getCustomerClinicHistory: async () => {
           window.customerCalls++;
-          return {visits: [{...clinic, patients: [clinic]}], current_page: 1, last_page: 1};
+          return {visits: [{...clinic, patients: [clinic]}, {...clinic, id: 101, patients: groupedPatients}], current_page: 1, last_page: 1};
         },
-        getCustomerClinicHistoryVisit: async () => {
+        getCustomerClinicHistoryVisit: async id => {
           window.clinicDetailCalls = (window.clinicDetailCalls || 0) + 1;
-          return {patients: [clinic], grouped: false};
+          const consent = {...customerConsent, clinic_consent: true};
+          return Number(id) === 101
+            ? {patients: groupedPatients, grouped: true, payment: {...clinic.payment, total_paid: 3500}, owner_name: 'Recorded Owner', consent}
+            : {patients: [clinic], grouped: false, owner_name: 'Recorded Owner', consent};
+        },
+        getCustomerGroomingHistoryConsent: async () => {
+          window.groomingConsentCalls = (window.groomingConsentCalls || 0) + 1;
+          return {owner_name: 'Recorded Owner', consent: {...customerConsent, grooming_consent: true, sedation_consent: false}};
         },
         loadCustomerData: async (endpoint, load, render) => { window.customerCalls++; render(await load()); },
         getMe: async () => ({user: {first_name: 'Owner', last_name: 'Test'}}),
@@ -184,7 +218,7 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
       assert.deepEqual(layout, {page: 'bethlehem-report', header: 'flex', rowAligned: true, overflow: false});
     }
 
-    async function printRecord(dialog, title) {
+    async function printRecord(dialog, title, variant = 'admin') {
       const printButton = dialog.getByRole('button', {name: 'Print Record', exact: true});
       await dialog.getByRole('button', {name: 'Close', exact: true}).waitFor();
       assert.equal(await page.evaluate(() => sessionStorage.length), 0);
@@ -206,16 +240,16 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
       assert.doesNotMatch(printed, /Signed agreement|Grooming v3|Clinic v4|Historical .* agreement|Recorded .*clause|Clinic consent text/i);
       assert.match(printed, /Signed by[\s\S]*Signed at[\s\S]*Feb 10, 2024 · 10:00 AM/);
       assert.equal(await record.locator('img[alt="Customer signature"]').count(), 1);
-      if (title.startsWith('GROOMING')) {
+      if (variant === 'admin' && title.startsWith('GROOMING')) {
         const fullGroom = record.getByRole('row').filter({hasText: 'Full groom'});
         assert.deepEqual((await fullGroom.getByRole('cell').allTextContents()).slice(1), ['Main service', '₱600.00']);
         assert.match(await fullGroom.innerText(), /Grooming preference.*Summer cut/);
         assert.equal(await record.getByRole('row').filter({hasText: 'Paw balm'}).count(), 1);
-      } else {
+      } else if (variant === 'admin') {
         assert.equal(await record.getByRole('table', {name: 'Vitals', exact: true}).count(), 2);
       }
       if (process.env.HISTORY_SCREENSHOT_DIR) {
-        await page.pdf({path: path.join(process.env.HISTORY_SCREENSHOT_DIR, title.toLowerCase().replaceAll(' ', '-') + '.pdf'),
+        await page.pdf({path: path.join(process.env.HISTORY_SCREENSHOT_DIR, variant + '-' + title.toLowerCase().replaceAll(' ', '-') + '.pdf'),
           preferCSSPageSize: true});
       }
       await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
@@ -223,7 +257,7 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
       await page.emulateMedia({media: 'screen'});
       assert.equal(await dialog.isVisible(), true);
       assert.equal(await printButton.evaluate(el => document.activeElement === el), true);
-      assert.equal(await page.evaluate(() => document.body.style.overflow), 'hidden');
+      assert.equal(await page.evaluate(() => getComputedStyle(document.body).overflow), 'hidden');
       return printed;
     }
 
@@ -404,13 +438,37 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
     await page.locator('[data-history-type="grooming"]').first().click();
     const customerDialog = page.getByRole('dialog');
     await customerDialog.waitFor({state: 'visible'});
-    assert.match(await customerDialog.innerText(), /Visit total paid[\s\S]*₱1,000.00[\s\S]*Cash[\s\S]*Nov 11, 2026 · 12:38 AM/);
+    const groomingText = await customerDialog.innerText();
+    assert.match(groomingText, /First pet[\s\S]*Recorded grooming[\s\S]*₱650\.00[\s\S]*Recorded nail trim[\s\S]*₱150\.00[\s\S]*Clicked pet[\s\S]*Recorded bath[\s\S]*₱500\.00/);
+    assert.match(groomingText, /Medicated shampoo[\s\S]*2 × ₱175\.00[\s\S]*₱350\.00[\s\S]*Total paid[\s\S]*₱1,650\.00[\s\S]*Cash[\s\S]*Nov 11, 2026 · 12:38 AM/);
+    for (const width of [320, 1280]) {
+      await page.setViewportSize({width, height: 850});
+      const modalContent = customerDialog.locator('#historyModalContent');
+      const product = modalContent.getByRole('listitem').filter({hasText: 'Medicated shampoo'});
+      await product.scrollIntoViewIfNeeded();
+      assert.equal(await modalContent.evaluate(el => el.scrollWidth <= el.clientWidth), true);
+      assert.equal(await product.evaluate(el => {
+        const label = el.firstElementChild.getBoundingClientRect();
+        const price = el.lastElementChild.getBoundingClientRect();
+        return price.left >= label.right && Math.abs(price.top - label.top) < 5;
+      }), true, `Grooming amounts align at ${width}px`);
+      if (process.env.HISTORY_SCREENSHOT_DIR) await page.screenshot({path: path.join(process.env.HISTORY_SCREENSHOT_DIR, `grooming-payment-${width}.png`)});
+    }
     await page.keyboard.press('Shift+Tab');
-    assert.equal(await page.evaluate(() => document.activeElement.textContent.trim()), 'Close', 'Focus stays inside the dialog');
+    assert.equal(await page.evaluate(() => document.activeElement.textContent.trim()), 'Print Record', 'Focus stays inside the dialog');
+    assert.equal(await page.evaluate(() => window.groomingConsentCalls || 0), 0, 'Only printing loads the grooming signature');
+    const customerGroomingPrint = await printRecord(customerDialog, 'GROOMING VISIT RECORD', 'customer');
+    assert.match(customerGroomingPrint, /Recorded grooming[\s\S]*Summer cut[\s\S]*₱650\.00[\s\S]*Recorded nail trim[\s\S]*₱150\.00[\s\S]*Recorded bath[\s\S]*₱500\.00[\s\S]*Medicated shampoo[\s\S]*₱350\.00/);
+    assert.match(customerGroomingPrint, /Sedation consent[\s\S]*Not agreed[\s\S]*Grooming services[\s\S]*₱1,300\.00[\s\S]*Total paid[\s\S]*₱1,650\.00/);
+    assert.doesNotMatch(groomingText + customerGroomingPrint, /PRIVATE GROOMING NOTE/);
+    assert.equal(await page.evaluate(() => window.groomingConsentCalls), 1);
     await page.keyboard.press('Escape');
-    await page.locator('[data-history-type="clinic"]').click();
+    await page.locator('[data-history-type="clinic"][data-history-key="91"]').click();
     await customerDialog.getByRole('heading', {name: 'Clicked pet', exact: true}).waitFor();
     assert.match(await customerDialog.innerText(), /Total paid[\s\S]*₱3,100.00[\s\S]*Online Payment/);
+    const customerClinicPrint = await printRecord(customerDialog, 'CLINIC VISIT RECORD', 'customer');
+    assert.match(customerClinicPrint, /Recorded care[\s\S]*Consultation[\s\S]*₱450\.00[\s\S]*Ultrasound[\s\S]*₱2,050\.00[\s\S]*Medicine[\s\S]*2 × ₱300\.00[\s\S]*₱600\.00[\s\S]*Total paid[\s\S]*₱3,100\.00/);
+    assert.doesNotMatch(customerClinicPrint, /PRIVATE CLINIC NOTE/);
     for (const width of [320, 375, 414, 768, 1280]) {
       await page.setViewportSize({width, height: 850});
       await page.evaluate(async () => {
@@ -426,6 +484,16 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
     }
     assert.equal(await page.evaluate(() => window.customerCalls), 2, 'Opening details makes no payment request');
     assert.equal(await page.evaluate(() => window.clinicDetailCalls), 1, 'Only the selected clinic visit loads clinical details');
+    await page.keyboard.press('Escape');
+    await page.locator('[data-history-type="clinic"][data-history-key="101"]').click();
+    await customerDialog.getByRole('heading', {name: 'Clinic sibling', exact: true}).waitFor();
+    const groupedClinicText = await customerDialog.innerText();
+    assert.match(groupedClinicText, /Patient subtotal[\s\S]*₱3,100\.00[\s\S]*Clinic sibling[\s\S]*Follow-up care[\s\S]*Patient subtotal[\s\S]*₱400\.00[\s\S]*Total paid[\s\S]*₱3,500\.00/);
+    const groupedClinicPrint = await printRecord(customerDialog, 'CLINIC VISIT RECORD', 'customer-grouped');
+    assert.match(groupedClinicPrint, /Patient subtotal[\s\S]*₱3,100\.00[\s\S]*Clinic sibling[\s\S]*Patient subtotal[\s\S]*₱400\.00[\s\S]*Total paid[\s\S]*₱3,500\.00/);
+    assert.doesNotMatch(groupedClinicText + groupedClinicPrint, /Excluded charge|PRIVATE CLINIC NOTE/);
+    assert.equal((groupedClinicText.match(/Total paid/g) || []).length, 1);
+    assert.equal((groupedClinicPrint.match(/Total paid/g) || []).length, 1);
     for (const variant of Object.keys(confirmationPages)) {
       await page.goto(`https://history.test/print-fixture/${variant}`);
       const summary = variant === 'grooming-summary';

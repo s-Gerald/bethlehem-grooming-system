@@ -2725,6 +2725,10 @@ var API = (() => {
     return request("GET", `/clinic/history/${id}`, null, getCustomerToken());
   }
 
+  function getCustomerGroomingHistoryConsent(id) {
+    return request("GET", `/booking/${encodeURIComponent(id)}/history-consent`, null, getCustomerToken());
+  }
+
   async function addPet(payload) {
     // POST /api/pets  (protected)
     return request("POST", "/pets", payload, getCustomerToken());
@@ -3866,6 +3870,7 @@ var API = (() => {
     storeBooking,
     getPreRegistrationAccess,
     getBookingHistory,
+    getCustomerGroomingHistoryConsent,
     getBooking,
     getClinicRegistration,
     cancelClinicRegistration,

@@ -17,7 +17,9 @@ class GroomingPaymentReadinessService
     ) {}
 
     /** Build the normal per-pet payment total for completed grooming. */
-    public function summarize(Booking $booking, bool $lockForUpdate = false, bool $historical = false): array
+    public function summarize(
+        Booking $booking, bool $lockForUpdate = false, bool $historical = false, bool $recordedServiceIdentity = false,
+    ): array
     {
         $petQuery = BookingPet::query()
             ->where('booking_id', $booking->booking_id)
@@ -38,14 +40,14 @@ class GroomingPaymentReadinessService
         $serviceRows = ! $lockForUpdate && $booking->relationLoaded('bookingServices')
             ? $booking->bookingServices->sortBy('booking_service_id')->values() : $serviceQuery->get();
         if (! $historical) (new EloquentCollection($bookingPets->all()))->loadMissing('pet');
-        (new EloquentCollection($serviceRows->all()))->loadMissing('service');
-        $serviceNames = $serviceRows->mapWithKeys(fn ($line) => [$line->service_id => $line->service?->service_name])->filter()->all();
-        $addonNames = $this->lookupLabels(
-            'addons',
-            'addon_id',
-            'addon_name',
-            $serviceRows->pluck('addon_id')->filter()->unique()->all(),
-        );
+        $serviceNames = $addonNames = [];
+        if (! $recordedServiceIdentity) {
+            (new EloquentCollection($serviceRows->all()))->loadMissing('service');
+            $serviceNames = $serviceRows->mapWithKeys(fn ($line) => [$line->service_id => $line->service?->service_name])->filter()->all();
+            $addonNames = $this->lookupLabels(
+                'addons', 'addon_id', 'addon_name', $serviceRows->pluck('addon_id')->filter()->unique()->all(),
+            );
+        }
         $servicesByPet = $serviceRows->groupBy('booking_pet_id');
         $bookingTotalCents = 0;
         $firstBlockedReason = null;
@@ -55,6 +57,7 @@ class GroomingPaymentReadinessService
             $serviceNames,
             $addonNames,
             $historical,
+            $recordedServiceIdentity,
             &$bookingTotalCents,
             &$firstBlockedReason,
         ) {
@@ -66,8 +69,11 @@ class GroomingPaymentReadinessService
                     $addonNames,
                     $bookingPet,
                     $historical,
+                    $recordedServiceIdentity,
                 ) {
-                    $isAddon = $line->addon_id !== null;
+                    $isAddon = $line->addon_id !== null || ($recordedServiceIdentity && $line->service_kind_snapshot === 'addon');
+                    $kind = $recordedServiceIdentity ? $line->service_kind_snapshot
+                        : ($historical ? ($line->service_kind_snapshot ?? $line->service?->kind) : $line->service?->kind);
                     $resolvedPrice = $historical ? [
                         'amount' => $this->centsToMoney($this->moneyToCents($line->price_at_booking)),
                         'source' => $line->price_at_booking !== null ? 'booking_snapshot' : 'unpriced',
@@ -79,15 +85,12 @@ class GroomingPaymentReadinessService
                     return [
                         'booking_service_id' => (int) $line->booking_service_id,
                         'line_type' => $isAddon ? 'add_on' : 'service',
-                        'service_kind' => $isAddon
-                            ? 'ala_carte'
-                            : (($historical ? ($line->service_kind_snapshot ?? $line->service?->kind) : $line->service?->kind)
-                                === 'package' ? 'package' : 'ala_carte'),
+                        'service_kind' => $kind === 'package' && ! $isAddon ? 'package' : 'ala_carte',
                         'service_id' => $line->service_id !== null ? (int) $line->service_id : null,
                         'addon_id' => $line->addon_id !== null ? (int) $line->addon_id : null,
-                        'label' => $isAddon
+                        'label' => $recordedServiceIdentity ? ($line->service_name_snapshot ?? 'Grooming service') : ($isAddon
                             ? ($addonNames[(int) $line->addon_id] ?? "Add-on #{$line->addon_id}")
-                            : ($line->service_name_snapshot ?? $serviceNames[(int) $line->service_id] ?? "Service #{$line->service_id}"),
+                            : ($line->service_name_snapshot ?? $serviceNames[(int) $line->service_id] ?? "Service #{$line->service_id}")),
                         'price_at_booking' => $resolvedPrice['amount'],
                         'price_source' => $resolvedPrice['source'],
                     ];

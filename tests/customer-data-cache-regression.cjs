@@ -433,7 +433,9 @@ function mountPage(env, page) {
   } else if (page === "grooming-history.html") {
     const html = fs.readFileSync(path.join(root, "pages/client/grooming-history.html"), "utf8");
     script = [...html.matchAll(/<script(?:\s+type="module")?>([\s\S]*?)<\/script>/g)]
-      .map((match) => match[1].replace(/^\s*import\s+[\s\S]*?from\s+"[^"]+";\s*/gm, "")).join("\n");
+      .map((match) => match[1].replace(/^[ \t]*import .*?;\r?$/gm, "")).join("\n");
+    const billing = fs.readFileSync(path.join(root, "scripts/components/customer-history-billing.js"), "utf8");
+    vm.runInContext(billing.replaceAll("export function", "function"), context);
   } else {
     const dashboard = fs.readFileSync(path.join(root, "scripts/components/client-dashboard.js"), "utf8");
     script = dashboard.slice(dashboard.indexOf("(function () {", dashboard.indexOf("Appointments, Grooming Tracker & History")));

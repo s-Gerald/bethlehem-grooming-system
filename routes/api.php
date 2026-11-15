@@ -141,6 +141,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     Route::post('/booking/store', [BookingController::class, 'store'])->middleware(\App\Http\Middleware\EnsureCustomerPhoneVerified::class);
     Route::get('/pre-registration/access', [BookingController::class, 'preRegistrationAccess']);
     Route::get('/booking/history', [BookingController::class, 'history']);
+    Route::get('/booking/{id}/history-consent', [BookingController::class, 'historyConsent'])->whereNumber('id');
     Route::get('/booking/grooming-capacity', [BookingController::class, 'groomingCapacity']);
     Route::get('/booking/{id}', [BookingController::class, 'show']);
     Route::post('/booking/cancel', [BookingController::class, 'cancel']);

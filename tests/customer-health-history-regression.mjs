@@ -2,16 +2,19 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 import * as healthRecords from "../scripts/components/customer-health-records.js";
+import * as historyBilling from "../scripts/components/customer-history-billing.js";
 const { renderClinicVisitSections, healthDate } = healthRecords;
 
 const page = fs.readFileSync(new URL("../pages/client/grooming-history.html", import.meta.url), "utf8");
 const script = page.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
-  .replace(/^\s*import .*?;\s*/gm, "");
+  .replace(/^[ \t]*import .*?;\r?$/gm, "");
 const clinic = {
   id: 11, appointment_reference: "CL-20261015-001", appointment_date: "2026-10-15", status: "completed",
   pet: { pet_id: 1, pet_name: "Mochi", species: "cat" }, chief_complaint: "Reduced appetite",
   diagnosis: "Gastritis", treatment_given: "Fluids administered", follow_up_date: "2026-10-20",
   prescriptions: [{ medicine: "Omeprazole", dose: "1 capsule", frequency: "Once daily", instructions: "Before meals" }],
+  billing_lines: [{ description: "Recorded consultation", quantity: 1, unit_price: 450, amount: 450 }],
+  payment: { status: "paid", total_paid: 450, payment_method_label: "Cash" },
   vet_notes: "PRIVATE", findings: "INTERNAL", attachments: ["radiograph.png"],
 };
 const booking = {
@@ -21,9 +24,14 @@ const booking = {
     { booking_pet_id: 41, pet_name: "Mochi", species: "cat", services: [{ service_name: "Selected service" }] },
     { booking_pet_id: 42, pet_name: "Bruno", species: "dog", services: [{ service_name: "Bath" }] },
   ],
-  payment_summary: { status: "paid", payment_method_label: "Cash", pets: [
-    { booking_pet_id: 41, final_pet_charge: 800, service_breakdown: [{ label: "Full grooming", price_at_booking: 800 }] },
-    { booking_pet_id: 42, final_pet_charge: 500, service_breakdown: [{ label: "Bath", price_at_booking: 500 }] },
+  payment_summary: { status: "paid", payment_method_label: "Cash", total_paid: 1150, final_booking_total: 800,
+    grooming_services_total: 800, products_total: 350,
+    products: [{ item_name: "Medicated Shampoo", quantity: 2, price_at_sale: 175, subtotal: 350 }], pets: [
+    { booking_pet_id: 41, final_pet_charge: 800, service_breakdown: [
+      { label: "Full grooming", service_kind: "package", price_at_booking: 650 },
+      { label: "Nail trim", service_kind: "ala_carte", price_at_booking: 150 },
+    ] },
+    { booking_pet_id: 42, final_pet_charge: 0, payment_kind: "cancelled", service_breakdown: [{ label: "Bath", price_at_booking: 500 }] },
   ] },
 };
 
@@ -46,7 +54,7 @@ async function run({ failClinic = false, failGrooming = false, empty = false } =
   let clinicFails = failClinic;
   const calls = [];
   const context = vm.createContext({
-    Intl, Date, console, setTimeout: callback => setImmediate(callback), clearTimeout: clearImmediate, ...healthRecords,
+    Intl, Date, console, setTimeout: callback => setImmediate(callback), clearTimeout: clearImmediate, ...healthRecords, ...historyBilling,
     document: { getElementById: element, body: element("body"), addEventListener() {} },
     window: { matchMedia: () => ({ matches: false, addEventListener() {} }), requestAnimationFrame() {} },
     API: {
@@ -98,14 +106,13 @@ assert.match(vaccination, /Rabies|Current|October 1, 2026|October 1, 2027/);
 assert.doesNotMatch(vaccination, /PRIVATE|subcutaneous|BATCH-001|Manufacturer|Route|Dose|Batch/);
 
 const ui = await run();
-const paidSummary = {status: 'paid', final_booking_total: 1000, payment_method_label: 'Cash', paid_at: '2026-11-10T16:38:00Z'};
+const paidSummary = {status: 'paid', total_paid: 1000, final_booking_total: 999, payment_method_label: 'Cash', paid_at: '2026-11-10T16:38:00Z'};
 const paidModal = (summary, count = 1, status = 'released') => vm.runInContext(`buildHistoryModalContent(${JSON.stringify({
   ...booking, status, number_of_pets: count, payment_summary: summary,
 })}, ${JSON.stringify(booking.pets[0])})`, ui.context);
 assert.match(paidModal(paidSummary), /Payment[\s\S]*Total paid[\s\S]*₱1,000\.00[\s\S]*Payment method[\s\S]*Cash[\s\S]*Paid on[\s\S]*Nov 11, 2026[\s\S]*12:38 AM/);
-assert.match(paidModal(paidSummary, 2), /Visit total paid/);
-assert.doesNotMatch(paidModal(paidSummary, 2), />Total paid</);
-for (const payment of [null, {status: 'unpaid'}, {...paidSummary, final_booking_total: null}, {...paidSummary, final_booking_total: -1}, {...paidSummary, final_booking_total: ''}]) {
+assert.equal((paidModal(paidSummary, 2).match(/>Total paid</g) || []).length, 1);
+for (const payment of [null, {status: 'unpaid'}, {...paidSummary, total_paid: null}, {...paidSummary, total_paid: -1}, {...paidSummary, total_paid: ''}]) {
   assert.doesNotMatch(paidModal(payment, 1, 'cancelled'), />Payment<|Total paid|Visit total paid|Paid on/);
 }
 const clinicPaid = {...clinic, payment: {status: 'paid', total_paid: 3100, payment_method_label: 'Online Payment', paid_at: '2026-11-10T12:41:00+08:00', cash_received: 5000, provider_id: 'PRIVATE'}};
@@ -154,7 +161,7 @@ for (const text of ["Visit overview", "Care provided", "Next steps", "Attending 
   assert.ok(fullVisit.includes(text), `Full visit includes ${text}`);
 }
 assert.doesNotMatch(fullVisit, /38.5|120|PRIVATE|INTERNAL|radiograph|confirmed|Not recorded/);
-assert.equal((fullVisit.match(/<li\b/g) || []).length, 6, "Treatments and prescriptions have separate entries");
+assert.equal((fullVisit.split("Billing breakdown")[0].match(/<li\b/g) || []).length, 6, "Treatments and prescriptions have separate entries");
 const reasonOnly = renderVisit({ chief_complaint: "Vaccination" });
 assert.match(reasonOnly, /Visit overview[\s\S]*Reason for visit[\s\S]*Vaccination/);
 assert.doesNotMatch(reasonOnly, /Care provided|Next steps|Attending veterinarian|Diagnosis|Visit weight|medications|Not recorded/);
@@ -213,15 +220,19 @@ ui.element("historyList").listeners.click({ target: { closest: () => trigger } }
 await flush();
 assert.equal(ui.element("historyModalTitle").textContent, "Visit Summary");
 assert.match(ui.element("historyModalContent").innerHTML, /Gastritis|Omeprazole/);
+assert.match(ui.element("historyModalContent").innerHTML, /Care provided[\s\S]*Billing breakdown[\s\S]*Recorded consultation[\s\S]*1 × ₱450\.00[\s\S]*Total paid[\s\S]*₱450\.00/);
 assert.doesNotMatch(ui.element("historyModalContent").innerHTML, /PRIVATE|INTERNAL|radiograph|Full grooming|Bath|Vaccinations/);
 vm.runInContext("closeHistoryModal()", ui.context);
 assert.equal(trigger.focused, true);
 assert.deepEqual(ui.calls.slice(callsBeforeDetail), ['/clinic/history/11'], "Only the selected clinic session loads medical details");
 const groomingDetails = vm.runInContext(`buildHistoryModalContent(${JSON.stringify(booking)}, ${JSON.stringify(booking.pets[0])})`, ui.context);
 assert.match(groomingDetails, /Full grooming/);
-assert.doesNotMatch(groomingDetails, /800|500|Payment Method|Total|Reviewed adjustment|Gastritis|Bath/);
+assert.match(groomingDetails, /Services &amp; add-ons[\s\S]*Full grooming[\s\S]*₱650\.00[\s\S]*Nail trim[\s\S]*₱150\.00[\s\S]*Pet subtotal[\s\S]*₱800\.00/);
+assert.match(groomingDetails, /Products purchased[\s\S]*Medicated Shampoo[\s\S]*2 × ₱175\.00[\s\S]*₱350\.00[\s\S]*Total paid[\s\S]*₱1,150\.00/);
+assert.doesNotMatch(groomingDetails, /₱500\.00|Gastritis/);
 assert.doesNotMatch(groomingDetails, /bg-portal-active/);
 const preferredSession = structuredClone(booking);
+preferredSession.payment_summary.products = [];
 preferredSession.pets[0].grooming_preference_label = "Summer Cut";
 preferredSession.payment_summary.pets[0].service_breakdown = [
   { label: "Nail Clipping", service_kind: "ala_carte" },
@@ -229,11 +240,12 @@ preferredSession.payment_summary.pets[0].service_breakdown = [
   { label: "Ear Cleaning", service_kind: "ala_carte" },
 ];
 const preferredDetails = vm.runInContext(`buildHistoryModalContent(${JSON.stringify(preferredSession)}, ${JSON.stringify(preferredSession.pets[0])})`, ui.context);
-assert.match(preferredDetails, /Regular Dog Grooming<div[^>]*><span[^>]*>Summer Cut<\/span><\/div><\/li>/);
+assert.match(preferredDetails, /Regular Dog Grooming[\s\S]*Main service[\s\S]*Summer Cut[\s\S]*Ear Cleaning/);
+assert.doesNotMatch(preferredDetails, /Products purchased|>Products</);
 assert.doesNotMatch(preferredDetails, /summer_cut/);
 assert.equal(preferredDetails.split(">Summer Cut</span>").length - 1, 1);
 const siblingDetails = vm.runInContext(`buildHistoryModalContent(${JSON.stringify(preferredSession)}, ${JSON.stringify(preferredSession.pets[1])})`, ui.context);
-assert.doesNotMatch(siblingDetails, /Summer Cut|summer_cut/);
+assert.match(siblingDetails, /Bruno[\s\S]*Bath[\s\S]*Mochi[\s\S]*Summer Cut/);
 const preferredCard = vm.runInContext(`buildHistoryCard(${JSON.stringify({ type: "grooming", booking: preferredSession, pet: preferredSession.pets[0] })})`, ui.context);
 assert.doesNotMatch(preferredCard, /Summer Cut|summer_cut/);
 const laterPet = { ...preferredSession.pets[0], grooming_preference_label: "Semi-Kalbo" };

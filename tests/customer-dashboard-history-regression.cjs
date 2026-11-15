@@ -349,7 +349,8 @@ async function testTerminalRegistrationsShowTheirHistoryOutcome() {
   assert.equal(chronology.allHistory.map(event => event.date).join(','), '2026-11-11,2026-11-11');
   const helpers = historySource.slice(historySource.indexOf('function escapeHistoryHtml'), historySource.indexOf('function closeHistoryModal'));
   const { healthDate } = await import("../scripts/components/customer-health-records.js");
-  const context = vm.createContext({ Intl, Date, healthDate, document: { getElementById: () => null } });
+  const historyBilling = await import("../scripts/components/customer-history-billing.js");
+  const context = vm.createContext({ Intl, Date, healthDate, ...historyBilling, document: { getElementById: () => null } });
   vm.runInContext(helpers, context);
   for (const [status, label] of [['archived', 'Completed'], ['cancelled', 'Cancelled'], ['expired', 'Expired'], ['no_show', 'No Show']]) {
     const booking = { status, number_of_pets: 1, pets: [] };

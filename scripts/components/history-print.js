@@ -1,7 +1,7 @@
 import { bethlehemPrintHeader, confirmationFields } from "./confirmation-presentation.js?v=report-20261115";
 import { escapeHtml } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 
-function fields(entries) {
+export function fields(entries) {
   const recorded = entries.filter(([, value]) => value != null && value !== "");
   return recorded.length ? confirmationFields(recorded) : "";
 }
@@ -10,11 +10,11 @@ function pairs(record) {
   return record.map(({label, value}) => [label, value]);
 }
 
-function section(title, content, heading = "h2") {
+export function section(title, content, heading = "h2") {
   return content ? `<section class="report-section"><${heading}>${escapeHtml(title)}</${heading}>${content}</section>` : "";
 }
 
-function subject(name, subtitle, content) {
+export function subject(name, subtitle, content) {
   return `<section class="report-subject">
     <header class="report-subject-header">
       <h2>${escapeHtml(name)}</h2>
@@ -23,7 +23,7 @@ function subject(name, subtitle, content) {
   </section>`;
 }
 
-function table(title, columns, rows, amountColumn = false) {
+export function table(title, columns, rows, amountColumn = false) {
   if (!rows.length) return "";
   return `<table class="report-table${amountColumn ? " report-table--amount" : ""}" aria-label="${escapeHtml(title)}">
     <thead><tr>${columns.map(column => `<th scope="col">${escapeHtml(column)}</th>`).join("")}</tr></thead>
@@ -31,10 +31,10 @@ function table(title, columns, rows, amountColumn = false) {
   </table>`;
 }
 
-function consentRecord(archive, consent, responses) {
+export function consentRecord(consent, responses, signedAt) {
   const response = responses.length
     ? fields([...responses, ["Signed by", consent?.signer_name || "Not recorded"],
-      ["Signed at", archive.consentSignedAt(consent)]])
+      ["Signed at", signedAt]])
     : "<p>Consent record not available for this visit.</p>";
   const signature = consent?.signature_image;
   return `<section class="report-section report-consent">
@@ -93,10 +93,10 @@ function groomingRecord(archive) {
       ["Customer note", archive.groomingText(booking.specialNotes), null, true],
       ["Internal staff note", archive.groomingText(booking.internalStaffNote), null, true],
     ])),
-    consentRecord(archive, archive.signedConsent, [
+    consentRecord(archive.signedConsent, [
       ["Grooming consent", archive.consentLabel("grooming")],
       ["Sedation consent", archive.consentLabel("sedation")],
-    ]),
+    ], archive.consentSignedAt(archive.signedConsent)),
     section("Payment Summary", fields([
       ...(products.length ? [["Grooming services", archive.formatServicesAvailedTotal(booking)],
         ["Product add-ons", archive.formatPeso(archive.productAddonsTotal(booking))]] : []),
@@ -181,22 +181,25 @@ function clinicRecord(archive) {
         ["Visit date and time", archive.formatClinicVisit(visit, "")]] : []),
     ])),
     ...patients.map(patient => clinicPatientRecord(archive, patient, !!session, sessionDay)),
-    consentRecord(archive, consent, consent ? [["Clinic agreement", consent.clinic_consent ? "Agreed" : "Not agreed"]] : []),
+    consentRecord(consent, consent ? [["Clinic agreement", consent.clinic_consent ? "Agreed" : "Not agreed"]] : [],
+      consent ? archive.consentSignedAt(consent) : ""),
     section("Payment Summary", session
       ? fields([["Total paid", session.paid_at ? archive.clinicMoney(session.total_amount) : ""]])
       : clinicPaymentFields(archive, visit, false)),
   ].join("");
 }
 
-export async function printHistoryRecord(type, archive, stillOpen, trigger) {
+export function printHistoryRecord(type, archive, stillOpen, trigger) {
+  return printVisitReport(type, type === "grooming" ? groomingRecord(archive) : clinicRecord(archive), stillOpen, trigger);
+}
+
+export async function printVisitReport(type, content, stillOpen, trigger) {
   if (document.querySelector("[data-history-print]")) return;
   const record = document.createElement("article");
   record.className = "history-print print-report";
   record.dataset.historyPrint = "";
-  const grooming = type === "grooming";
-  const title = grooming ? "GROOMING VISIT RECORD" : "CLINIC VISIT RECORD";
-  record.innerHTML = bethlehemPrintHeader(title) + (grooming ? groomingRecord(archive) : clinicRecord(archive));
-
+  const title = type === "grooming" ? "GROOMING VISIT RECORD" : "CLINIC VISIT RECORD";
+  record.innerHTML = bethlehemPrintHeader(title) + content;
 
   await Promise.all([...record.querySelectorAll("img")].map(image => image.decode().catch(() => {})));
   if (!stillOpen()) return;
