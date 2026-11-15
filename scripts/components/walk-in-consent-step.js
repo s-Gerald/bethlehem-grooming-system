@@ -172,7 +172,7 @@ async function handleSubmit(event) {
     }
     consent.setBusy(true);
     elements.submitBookingButton.setAttribute("aria-busy", "true");
-    elements.submitBookingButton.textContent = "Submitting…";
+    elements.submitBookingButton.textContent = "Checking in…";
     const owner        = getStoredData(WALK_IN_OWNER_STORAGE_KEY);
     submittedOwner = owner;
     const reviewPayload = state.reviewPayload || getStoredData(WALK_IN_REVIEW_STORAGE_KEY);

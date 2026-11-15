@@ -1,0 +1,39 @@
+{
+  "version": "clinic-v1",
+  "title": "Clinic Care Agreement",
+  "acknowledgment": "I have read and agree to the Clinic Care Agreement.",
+  "clauses": [
+    {
+      "heading": "Authorization for care",
+      "text": "I authorize Bethlehem Animal Clinic and its veterinary staff to examine and provide care reasonably necessary for my pet’s health, safety, and well-being. I understand that specific treatments, diagnostic procedures, or changes in the treatment plan may require further discussion and consent."
+    },
+    {
+      "heading": "Treatment risks",
+      "text": "I understand that veterinary care may involve side effects, complications, or unexpected events despite appropriate care and precautions."
+    },
+    {
+      "heading": "Safety and loss",
+      "text": "The clinic is not responsible for loss resulting from fire, theft, or escape when reasonable precautions have been taken."
+    },
+    {
+      "heading": "Visiting hours",
+      "text": "If my pet is confined, I understand that pet visits are allowed during the clinic’s current operating hours: {operating_hours}."
+    },
+    {
+      "heading": "Laboratory, medication, and confinement costs",
+      "text": "I am responsible for applicable laboratory, medication, and confinement costs and related clinic charges."
+    },
+    {
+      "heading": "Payment before discharge",
+      "text": "I agree to settle applicable clinic charges before my pet is discharged or released, in accordance with Bethlehem’s billing procedures."
+    },
+    {
+      "heading": "Release and collection responsibilities",
+      "text": "If I do not collect my pet within five days after notice for release, Bethlehem may consider my pet abandoned and act according to clinic policy. If my pet dies, I am responsible for collecting my pet’s body within 24 hours after death."
+    },
+    {
+      "heading": "Outstanding balances",
+      "text": "Abandoning my pet does not remove my obligation to pay accumulated charges."
+    }
+  ]
+}

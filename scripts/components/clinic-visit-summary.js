@@ -1,3 +1,4 @@
+import { mountClinicConsent } from "./clinic-consent.js?v=20261115";
 import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&urls=20261103";
 import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?owner-session=20261111";
 import { readReviewedServiceDay, registrationDayNotice } from "../services/registration-service-day.js?v=rolling-20261027-v1&registration-rollover=20261027-v3";
@@ -18,6 +19,14 @@ const elements = {
   submit: document.getElementById("submitClinicVisitBtn"),
 };
 
+let consent;
+let available = false;
+let submitting = false;
+
+function syncSubmitButton() {
+  elements.submit.disabled = submitting || !available || !consent?.valid();
+}
+
 function showError(message) {
   elements.status.textContent = message;
   elements.status.className =
@@ -26,18 +35,21 @@ function showError(message) {
 
 async function submitClinicVisit(draft) {
   const serviceDay = readReviewedServiceDay("clinic");
-  if (!serviceDay) return;
-  elements.submit.disabled = true;
+  if (submitting || !available || !serviceDay || !consent.validate()) return;
+  submitting = true;
+  syncSubmitButton();
   elements.submit.textContent = "Submitting...";
 
   try {
     const response = await API.submitClinicPreRegistration({
       service_day: serviceDay,
+      ...consent.payload(),
       patients: draft.patients.map(({ pet, chiefComplaint, commonConcerns }) => ({
         pet_id: Number(pet.id), chief_complaint: chiefComplaint, common_concerns: commonConcerns,
       })),
     });
 
+    consent.clearDraft();
     sessionStorage.setItem(
       CLINIC_VISIT_CONFIRMATION_KEY,
       JSON.stringify(response.session),
@@ -46,22 +58,25 @@ async function submitClinicVisit(draft) {
     sessionStorage.removeItem(CLINIC_VISIT_PETS_KEY);
     window.location.href = "/account/registration/clinic/confirmed";
   } catch (error) {
-    elements.submit.disabled = false;
-    elements.submit.textContent = "Submit Queue Registration";
+    elements.status.textContent = "";
+    elements.status.className = "hidden";
     if (registrationDayNotice(error, "clinic")) {
-      elements.status.textContent = "";
-      elements.status.className = "hidden";
       await refreshAvailability();
-    } else {
+    } else if (!await consent.handleError(error)) {
       showError(clinicRegistrationError(error, draft.patients) || "Clinic queue registration could not be submitted. Please try again.");
     }
+    submitting = false;
+    elements.submit.textContent = "Submit Queue Registration";
+    syncSubmitButton();
   }
 }
 
 async function refreshAvailability() {
-  elements.submit.disabled = true;
+  available = false;
+  syncSubmitButton();
   const availability = await renderRegistrationQueueInformation(document.getElementById("clinicQueueInformation"), "clinic");
-  elements.submit.disabled = !availability?.registration_available;
+  available = availability?.registration_available === true;
+  syncSubmitButton();
 }
 
 async function init() {
@@ -86,11 +101,18 @@ async function init() {
     + draft.patients.map(({ pet, commonConcerns, chiefComplaint }) => getClinicVisitSummaryMarkup({
       pet, concerns: commonConcerns, details: chiefComplaint,
     })).join("");
+  consent = mountClinicConsent({
+    host: document.getElementById("clinicConsentFields"),
+    storageKey: "clinicVisitConsent",
+    scope: JSON.stringify(draft.patients.map(({ pet, commonConcerns, chiefComplaint }) => [pet.id, commonConcerns, chiefComplaint])),
+    onChange: syncSubmitButton,
+  });
   API.getMe?.().then(({ user }) => {
     const owner = document.getElementById("clinicReviewOwner");
     const name = [user?.first_name, user?.last_name].filter(Boolean).join(" ");
     owner.textContent = name;
     owner.hidden = !name;
+    consent.prefill(name);
   }).catch(() => {});
   await refreshAvailability();
   elements.submit.addEventListener("click", () => submitClinicVisit(draft));

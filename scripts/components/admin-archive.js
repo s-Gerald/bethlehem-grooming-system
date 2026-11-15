@@ -34,6 +34,10 @@ function adminArchive() {
     clinicDetailsModalOpen: false,
     detailsClinicRecord: null,
     detailsClinicSession: null, clinicPatientLoading: false, _clinicPatientRequest: 0,
+    clinicSignedConsent: null,
+    clinicConsentLoading: false,
+    clinicConsentError: '',
+    _clinicConsentRequest: 0,
     clinicCare: null,
     clinicCareLoading: false,
     clinicCareError: "",
@@ -409,8 +413,8 @@ function adminArchive() {
       return 'Not recorded';
     },
 
-    consentSignedAt() {
-      const value = this.signedConsent?.signed_at;
+    consentSignedAt(consent = this.signedConsent) {
+      const value = consent?.signed_at;
       if (!value || !Number.isFinite(Date.parse(value))) return 'Not recorded';
       const date = new Date(value);
       const options = { timeZone: 'Asia/Manila' };
@@ -508,6 +512,25 @@ function adminArchive() {
         this.$refs.clinicVisitClose.focus({preventScroll: true});
       });
       this.loadClinicCare();
+      this.loadClinicSignedConsent();
+    },
+
+    async loadClinicSignedConsent() {
+      const request = ++this._clinicConsentRequest;
+      const record = this.detailsClinicRecord;
+      this.clinicSignedConsent = null;
+      this.clinicConsentError = '';
+      this.clinicConsentLoading = !!record?.clinic_visit_group_id;
+      if (!this.clinicConsentLoading) return;
+
+      try {
+        const { consent } = await API.getClinicSignedConsent(record.id);
+        if (request === this._clinicConsentRequest) this.clinicSignedConsent = consent;
+      } catch {
+        if (request === this._clinicConsentRequest) this.clinicConsentError = 'Unable to load consent.';
+      } finally {
+        if (request === this._clinicConsentRequest) this.clinicConsentLoading = false;
+      }
     },
 
     async viewClinicPatient(patient) {
@@ -557,6 +580,9 @@ function adminArchive() {
       if (!this.clinicDetailsModalOpen) return;
       ++this._clinicRequest;
       ++this._clinicPatientRequest;
+      ++this._clinicConsentRequest;
+      this.clinicSignedConsent = null;
+      this.clinicConsentLoading = false;
       this.clinicPatientLoading = false;
       this.detailsClinicSession = null;
       this.clinicDetailsModalOpen = false;
@@ -569,7 +595,7 @@ function adminArchive() {
     },
 
     trapClinicFocus(event) {
-      const targets = [...this.$refs.clinicVisitDialog.querySelectorAll('button, a[href], [tabindex="0"]')]
+      const targets = [...this.$refs.clinicVisitDialog.querySelectorAll('button, a[href], summary, [tabindex="0"]')]
         .filter(element => !element.disabled && element.getClientRects().length);
       const first = targets[0], last = targets[targets.length - 1];
       if (event.shiftKey && event.target === first) {

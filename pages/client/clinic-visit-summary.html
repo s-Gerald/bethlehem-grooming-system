@@ -40,6 +40,7 @@
         <div id="clinicVisitSummaryDetails"></div>
 
         <section id="clinicQueueInformation" class="mb-6 rounded-2xl border border-slate-200 bg-white p-5" aria-live="polite"></section>
+        <div id="clinicConsentFields" class="mb-6"></div>
         <p id="clinicVisitSubmitStatus" class="hidden" role="alert"></p>
 
         <div class="registration-actions">
@@ -51,8 +52,8 @@
           </a>
           <button
             id="submitClinicVisitBtn"
-            type="button"
-            class="inline-flex items-center justify-center rounded-xl bg-[#315b7e] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#274a67]"
+            type="button" disabled
+            class="inline-flex items-center justify-center rounded-xl bg-[#315b7e] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#274a67] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Submit Queue Registration
           </button>
@@ -60,7 +61,7 @@
       </section>
     </main>
 
-    <script src="/scripts/api.js?auth-reliability=20261107&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103&owner-session=20261111"></script>
-    <script type="module" src="/scripts/components/clinic-visit-summary.js?registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&remember=20261029&urls=20261103&queue-copy=20261103-v1&short-notes=500-20261110&owner-session=20261111"></script>
+    <script src="/scripts/api.js?auth-reliability=20261107&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103&owner-session=20261111&clinic-consent=20261115"></script>
+    <script type="module" src="/scripts/components/clinic-visit-summary.js?registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&remember=20261029&urls=20261103&queue-copy=20261103-v1&short-notes=500-20261110&owner-session=20261111&clinic-consent=20261115"></script>
   </body>
 </html>

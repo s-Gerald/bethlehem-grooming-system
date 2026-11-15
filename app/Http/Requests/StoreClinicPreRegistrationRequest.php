@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\ClinicVisitGroup;
+use App\Services\ClinicConsentCapture;
 use App\Support\ClinicConcerns;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -32,7 +33,7 @@ class StoreClinicPreRegistrationRequest extends FormRequest
                 }
             }
 
-            return $rules;
+            return $rules + ClinicConsentCapture::rules();
         }
 
         return [
@@ -47,12 +48,14 @@ class StoreClinicPreRegistrationRequest extends FormRequest
                 ),
             ],
             ...ClinicConcerns::rules(),
+            ...ClinicConsentCapture::rules(),
         ];
     }
 
     public function messages(): array
     {
         return [
+            ...ClinicConsentCapture::messages(),
             'pet_id.exists' => 'Select one of your active pets before continuing.',
             'common_concerns.required' => 'Select at least one common concern.',
             'common_concerns.min' => 'Select at least one common concern.',

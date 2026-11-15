@@ -20,6 +20,7 @@ use App\Rules\ValidPetColor;
 use App\Rules\ValidPetBirthdate;
 use App\Services\AvailabilityTimeWindowService;
 use App\Services\ClinicAppointmentSequence;
+use App\Services\ClinicConsentCapture;
 use App\Services\CustomerPreRegistrationAccessService;
 use App\Support\ClinicConcerns;
 use App\Support\PetWeightSize;
@@ -31,6 +32,16 @@ use Illuminate\Validation\ValidationException;
 
 class ClinicWalkinController extends Controller
 {
+    public function careAgreement()
+    {
+        $agreement = ClinicConsentCapture::agreement();
+
+        return response()->json([
+            'agreement' => $agreement,
+            'agreement_hash' => ClinicConsentCapture::hash($agreement),
+        ])->header('Cache-Control', 'no-store');
+    }
+
     public function customerRegistration(Request $request, int $id)
     {
         app(\App\Services\PreRegistrationExpiry::class)->expire($request->user()->user_id);
@@ -205,6 +216,7 @@ class ClinicWalkinController extends Controller
                 'source' => 'pre_registered',
                 'service_day' => $appointmentDate,
             ]);
+            ClinicConsentCapture::capture($group, $data);
             $appointments = $this->createPatients($group, $patients, $pets, $clinicSequence, [
                 'registration_closes_at' => $days->closingDeadline('clinic', $appointmentDate),
                 'window_id' => null,
@@ -287,7 +299,7 @@ class ClinicWalkinController extends Controller
                 'email' => $owner['email'],
                 'phone' => $owner['phone'],
                 'sedation_consent' => false,
-                'terms_agreed' => $data['terms_agreed'],
+                'terms_agreed' => true,
                 'user_id' => $user?->user_id,
                 ...($unregisteredCustomer ? ['unregistered_customer_id' => $unregisteredCustomer->id] : []),
                 'appointment_type' => 'clinic',
@@ -299,6 +311,7 @@ class ClinicWalkinController extends Controller
                 'source' => 'walk_in',
                 'service_day' => $day,
             ]);
+            ClinicConsentCapture::capture($group, $data);
             $appointments = $this->createPatients($group, $patients, $pets, $clinicSequence);
             $ownerName = trim("{$walkin->fname} {$walkin->lname}");
             $owner = ['name' => $ownerName, 'email' => $walkin->email, 'phone' => $walkin->phone];

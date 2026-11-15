@@ -30,6 +30,7 @@ const WALK_IN_FLOW_STORAGE_KEYS = [
   "walkInBookingConfirmation",
   "walkInSubmissionKey",
   "walkInClinicComplaint",
+  "walkInClinicConsent",
   "walkInClinicConfirmation",
   "clinicPreselectedPetId",
 ];

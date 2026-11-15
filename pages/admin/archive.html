@@ -204,7 +204,7 @@
     <link rel="stylesheet" href="/css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="/css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="/scripts/components/admin-loading.js?v=universal-20261018&urls=20261103"></script>
-    <link rel="preload" as="script" href="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&owner-session=20261111" />
+    <link rel="preload" as="script" href="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&owner-session=20261111&clinic-consent=20261115" />
     <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110" />
     <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
     <link rel="stylesheet" href="/css/short-notes.css" />
@@ -323,7 +323,7 @@
           </button>
         </div>
       </aside>
-      <script src="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&owner-session=20261111"></script>
+      <script src="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&owner-session=20261111&clinic-consent=20261115"></script>
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-policy-20261110"></script>
       <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110"></script>
 
@@ -755,6 +755,40 @@
                     </div>
                   </div>
                 </section>
+                <section class="clinic-visit-section" aria-labelledby="clinic-history-consent-title">
+                  <h5 id="clinic-history-consent-title">Consent &amp; Signature</h5>
+                  <admin-loader x-cloak x-show="clinicConsentLoading"></admin-loader>
+                  <div x-show="clinicConsentError">
+                    <p x-text="clinicConsentError" role="alert" class="text-sm text-red-600"></p>
+                    <button type="button" class="history-details-button" @click="loadClinicSignedConsent()">Retry</button>
+                  </div>
+                  <p x-show="!clinicConsentLoading && !clinicConsentError && !clinicSignedConsent" class="clinic-visit-muted">Consent record not available for this visit.</p>
+                  <template x-if="clinicSignedConsent">
+                    <div>
+                      <dl class="history-record-fields">
+                        <div><dt>Clinic agreement</dt><dd><span class="history-record-type" x-text="clinicSignedConsent.clinic_consent ? 'Agreed' : 'Not agreed'"></span></dd></div>
+                        <div><dt>Signed by</dt><dd x-text="clinicSignedConsent.signer_name"></dd></div>
+                        <div><dt>Signed at</dt><dd x-text="consentSignedAt(clinicSignedConsent)"></dd></div>
+                      </dl>
+                      <p class="history-label history-signature-label">Signature</p>
+                      <img class="history-signature" :src="clinicSignedConsent.signature_image" alt="Customer signature" width="230" height="72" />
+                      <details class="history-signed-agreement">
+                        <summary>View signed agreement</summary>
+                        <p class="history-label" x-text="'Version ' + clinicSignedConsent.consent_version"></p>
+                        <p class="font-semibold" x-text="clinicSignedConsent.agreement_snapshot.title"></p>
+                        <div class="mt-3 space-y-4">
+                          <template x-for="(clause, index) in clinicSignedConsent.agreement_snapshot.clauses" :key="index">
+                            <div class="max-w-[65ch]">
+                              <h6 x-text="clause.heading"></h6>
+                              <div x-text="clause.text"></div>
+                            </div>
+                          </template>
+                        </div>
+                        <p x-text="clinicSignedConsent.agreement_snapshot.acknowledgment"></p>
+                      </details>
+                    </div>
+                  </template>
+                </section>
                 <section class="clinic-visit-section" x-show="clinicVitals.length" aria-labelledby="clinic-vitals-title">
                   <h5 id="clinic-vitals-title">Vitals</h5>
                   <dl class="clinic-visit-vitals"><template x-for="field in clinicVitals" :key="field.label"><div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div></template></dl>
@@ -832,7 +866,7 @@
 
     <script src="/scripts/components/clinic-attachments.js?v=20261015"></script>
     <script src="/scripts/components/recorded-product-pricing.js?v=20261029"></script>
-    <script src="/scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261110&invoice-products=20261029&urls=20261103&queue-copy=20261103-admin-v1&pet-history=20261110&service-history=20261111&history-link=20261111&owner-session=20261111"></script>
+    <script src="/scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261110&invoice-products=20261029&urls=20261103&queue-copy=20261103-admin-v1&pet-history=20261110&service-history=20261111&history-link=20261111&owner-session=20261111&clinic-consent=20261115"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261111&urls=20261103&inventory-expiry=20261111"></script>
   </body>

@@ -547,6 +547,7 @@ var API = (() => {
     "bethlehem.bookingFormLock",
     "bookingPets",
     "clinicVisitDraft",
+    "clinicVisitConsent",
     "clinicVisitPets",
     "clinicVisitConfirmation",
   ];
@@ -2817,9 +2818,12 @@ var API = (() => {
     }, getCustomerToken());
   }
 
+  async function getClinicCareAgreement({ staff = false } = {}) {
+    return request("GET", "/clinic/care-agreement", null, staff ? getAdminToken() : getCustomerToken());
+  }
+
   async function submitClinicPreRegistration(payload) {
     // POST /api/clinic/pre-register (protected — customer token)
-    // payload: { appointment_date, window_id, pet_id, common_concerns, chief_complaint? }
     return request(
       "POST",
       "/clinic/pre-register",
@@ -3530,8 +3534,11 @@ var API = (() => {
 
   async function submitClinicWalkIn(payload) {
     // POST /api/admin/clinic-walk-in  (protected — admin token)
-    // payload: { owner_record_type, customer_user_id?, unregistered_customer_id?, pet_id?, pet_name, species, breed?, gender?, birthdate?, is_neutered?, neutered_date?, fur_type?, weight?, size?, color?, medical_conditions?, common_concerns, chief_complaint?, terms_agreed }
     return request("POST", "/admin/clinic-walk-in", payload, getAdminToken());
+  }
+
+  async function getClinicSignedConsent(id) {
+    return request("GET", `/admin/clinic-appointments/${id}/signed-consent`, null, getAdminToken());
   }
 
   async function getClinicRecords(page = 1) {
@@ -3860,6 +3867,7 @@ var API = (() => {
     getGroomingCapacity,
     cancelBooking,
     rescheduleBooking,
+    getClinicCareAgreement,
     submitClinicPreRegistration,
     // Admin bookings
     getAdminBookings,
@@ -3974,6 +3982,7 @@ var API = (() => {
     updateGroomingPricing,
     submitWalkIn,
     submitClinicWalkIn,
+    getClinicSignedConsent,
     getClinicRecords,
     getActiveClinicCases,
     getClinicCase,

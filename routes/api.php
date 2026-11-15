@@ -147,6 +147,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     Route::post('/booking/reschedule', [BookingController::class, 'reschedule']);
 
     // Customer — Clinic visit pre-registration
+    Route::get('/clinic/care-agreement', [ClinicWalkinController::class, 'careAgreement'])->middleware('role:customer,admin,staff');
     Route::get('/clinic/registrations/{id}', [ClinicWalkinController::class, 'customerRegistration'])->whereNumber('id');
     Route::post('/clinic/registrations/{id}/cancel', [ClinicWalkinController::class, 'cancelCustomerRegistration'])
         ->whereNumber('id')->middleware('role:customer');
@@ -304,6 +305,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::patch('/admin/clinic-cases/{id}/charges/{chargeId}', [ClinicBillingController::class, 'update'])->middleware('clinic:billing_edit');
 
         Route::get('/admin/clinic-appointments', [AdminClinicController::class, 'index']);
+        Route::get('/admin/clinic-appointments/{id}/signed-consent', [AdminClinicController::class, 'signedConsent'])->whereNumber('id');
         Route::get('/admin/clinic-appointments/archived', [AdminClinicController::class, 'archivedIndex']);
         Route::post('/admin/clinic-appointments/{id}/check-in', [AdminClinicController::class, 'checkIn'])->middleware('clinic:intake');
         Route::post('/admin/clinic-appointments/{id}/start-consultation', [AdminClinicController::class, 'startConsultation'])->middleware('clinic:clinical');

@@ -133,6 +133,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         });
 
         (require database_path('migrations/2026_11_11_000001_create_clinic_visit_groups.php'))->up();
+        (require database_path('migrations/2026_11_15_000002_create_clinic_consents.php'))->up();
 
         Schema::create('clinic_records', function (Blueprint $table) {
             $table->id();
@@ -306,6 +307,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         Schema::dropIfExists('clinic_records');
         (require base_path('database/migrations/2026_10_10_000001_create_clinic_charges_table.php'))->down();
         Schema::dropIfExists('clinic_appointments');
+        Schema::dropIfExists('clinic_consents');
         Schema::dropIfExists('clinic_visit_groups');
         Schema::dropIfExists('walkins');
         Schema::dropIfExists('pets');
@@ -1103,7 +1105,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
     {
         $this->authenticateAs('customer', 10);
         DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Helio', 'species' => 'cat', 'body_condition' => 'obese']);
-        $id = $this->postJson('/api/clinic/pre-register', ['service_day' => now()->toDateString(),
+        $id = $this->postSignedClinicRegistration(['service_day' => now()->toDateString(),
             'pet_id' => 101, 'common_concerns' => ['Routine check-up']])->assertCreated()->json('appointment.appointment_id');
         $registered = \App\Models\ClinicAppointment::findOrFail($id)->pet_profile_snapshot;
         $this->assertSame('Helio', $registered['registration']['pet_name']);
@@ -1124,7 +1126,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('total', 1)->assertJsonPath('archived.0.pet.name', 'Arrival name');
 
         $this->authenticateAs('customer', 10);
-        $pending = $this->postJson('/api/clinic/pre-register', ['service_day' => now()->toDateString(),
+        $pending = $this->postSignedClinicRegistration(['service_day' => now()->toDateString(),
             'pet_id' => 101, 'common_concerns' => ['Routine check-up']])->assertCreated()->json('appointment.appointment_id');
         DB::table('clinic_appointments')->where('id', $pending)->update(['status' => 'no_show']);
         DB::table('pets')->where('pet_id', 101)->update(['pet_name' => 'Later name']);
@@ -1138,7 +1140,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
     public function test_clinic_walkin_uses_shared_decimal_size(string $species, mixed $weight, string $size): void
     {
         $this->authenticateAs('staff');
-        $this->postJson('/api/admin/clinic-walk-in', [
+        $this->postSignedClinicWalkIn([
             'common_concerns' => ['Routine check-up'], 'fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567',
             'pet_name' => 'Decimal pet', 'species' => $species, 'weight' => $weight,
             'size' => $size === 'small' ? 'medium' : 'small', 'terms_agreed' => true,
@@ -1158,11 +1160,11 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         foreach (['admin', 'staff'] as $role) {
             $this->authenticateAs($role);
             foreach ([['color', 'Brown123'], ['color', '456White'], ['color', '12.5'], ['color', '---'], ['medical_conditions', str_repeat('x', 501)]] as [$field, $value]) {
-                $this->postJson('/api/admin/clinic-walk-in', [...$payload, $field => $value])->assertUnprocessable()->assertJsonValidationErrors($field);
+                $this->postSignedClinicWalkIn([...$payload, $field => $value])->assertUnprocessable()->assertJsonValidationErrors($field);
             }
         }
         $this->assertDatabaseCount('pets', 0);
-        $this->postJson('/api/admin/clinic-walk-in', [...$payload, 'color' => '  Brown/White  ', 'medical_conditions' => 'Sensitive skin'])->assertCreated();
+        $this->postSignedClinicWalkIn([...$payload, 'color' => '  Brown/White  ', 'medical_conditions' => 'Sensitive skin'])->assertCreated();
         $this->assertDatabaseHas('pets', ['pet_name' => 'Coat color', 'color' => 'Brown/White', 'medical_conditions' => 'Sensitive skin']);
     }
 
@@ -1180,7 +1182,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Andrew',
             'species' => 'Dog', 'weight' => 12, 'size' => 'small', 'clinic_verified_fields' => json_encode(['size']), 'is_archived' => false]);
         $this->authenticateAs('staff');
-        $this->postJson('/api/admin/clinic-walk-in', ['common_concerns' => ['Routine check-up'],
+        $this->postSignedClinicWalkIn(['common_concerns' => ['Routine check-up'],
             'fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567',
             'owner_record_type' => 'registered', 'customer_user_id' => 10,
             'pet_id' => 101, 'pet_name' => 'Andrew', 'species' => 'Dog', 'weight' => $weight, 'terms_agreed' => true])->assertCreated();
@@ -1204,7 +1206,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         foreach (['admin', 'staff'] as $role) {
             $this->authenticateAs($role);
             foreach ($invalid as $weight) {
-                $this->postJson('/api/admin/clinic-walk-in', ['common_concerns' => ['Routine check-up'],
+                $this->postSignedClinicWalkIn(['common_concerns' => ['Routine check-up'],
                     'fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567',
                     'pet_name' => 'Invalid decimal', 'species' => 'Dog', 'weight' => $weight, 'terms_agreed' => true])
                     ->assertUnprocessable()->assertJsonValidationErrors('weight');
@@ -1222,7 +1224,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Historical dog',
             'species' => 'Dog', 'weight' => 10.999, 'size' => 'small', 'color' => 'Brown123', 'medical_conditions' => 'Historical diagnosis', 'is_archived' => false]);
         $this->authenticateAs('staff');
-        $this->postJson('/api/admin/clinic-walk-in', ['common_concerns' => ['Routine check-up'],
+        $this->postSignedClinicWalkIn(['common_concerns' => ['Routine check-up'],
             'fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567',
             'owner_record_type' => 'registered', 'customer_user_id' => 10,
             'pet_id' => 101, 'color' => $color, 'pet_name' => 'Historical dog', 'species' => 'Dog',
@@ -1264,12 +1266,12 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'owner_record_type' => 'registered', 'customer_user_id' => 50,
             'pet_name' => 'Buddy', 'species' => 'Dog', 'common_concerns' => ['Routine check-up'], 'terms_agreed' => true,
         ];
-        $this->postJson('/api/admin/clinic-walk-in', $payload)->assertUnprocessable()->assertJsonValidationErrors('phone');
+        $this->postSignedClinicWalkIn($payload)->assertUnprocessable()->assertJsonValidationErrors('phone');
         foreach (['56775675767', '09031234567', '08979998888', '08131234567', '08171234567'] as $phone) {
-            $this->postJson('/api/admin/clinic-walk-in', [...$payload, 'phone' => $phone])->assertUnprocessable()->assertJsonValidationErrors('phone');
+            $this->postSignedClinicWalkIn([...$payload, 'phone' => $phone])->assertUnprocessable()->assertJsonValidationErrors('phone');
         }
         $payload['phone'] = '+63 976-999-8888';
-        $this->postJson('/api/admin/clinic-walk-in', $payload)->assertCreated();
+        $this->postSignedClinicWalkIn($payload)->assertCreated();
         $this->assertDatabaseHas('walkins', ['user_id' => 50, 'phone' => '09769998888']);
         $this->assertDatabaseHas('users', ['user_id' => 50, 'phone' => null]);
         $this->assertDatabaseHas('pets', ['pet_name' => 'Buddy', 'user_id' => 50]);
@@ -1283,12 +1285,12 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'email' => 'owner@gmail.com', 'phone' => '09171111111', 'role' => 'customer', 'is_active' => true]);
         $payload = ['common_concerns' => ['Routine check-up'], 'fname' => 'Different', 'lname' => 'Owner',
             'phone' => '09171234567', 'email' => 'owner@gmail.com', 'pet_name' => 'New Pet', 'species' => 'dog', 'terms_agreed' => true];
-        $this->postJson('/api/admin/clinic-walk-in', $payload)->assertUnprocessable()->assertJsonValidationErrors('email');
+        $this->postSignedClinicWalkIn($payload)->assertUnprocessable()->assertJsonValidationErrors('email');
         $this->assertDatabaseCount('walkins', 0);
         $this->assertDatabaseCount('pets', 0);
-        $this->postJson('/api/admin/clinic-walk-in', [...$payload, 'email' => '123@123.com'])
+        $this->postSignedClinicWalkIn([...$payload, 'email' => '123@123.com'])
             ->assertUnprocessable()->assertJsonValidationErrors('email');
-        $this->postJson('/api/admin/clinic-walk-in', [...$payload, 'email' => 'visitor@gmail.com'])
+        $this->postSignedClinicWalkIn([...$payload, 'email' => 'visitor@gmail.com'])
             ->assertCreated()->assertJsonPath('returning_customer', false);
         $this->assertDatabaseHas('walkins', ['email' => 'visitor@gmail.com', 'user_id' => null]);
         \Illuminate\Support\Facades\Notification::assertNothingSent();
@@ -1298,7 +1300,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
     {
         $this->authenticateAs('staff');
 
-        $this->postJson('/api/admin/clinic-walk-in', [
+        $this->postSignedClinicWalkIn([
             'common_concerns' => ['Routine check-up', 'Vaccination'],
             'fname' => 'Maria',
             'lname' => 'Santos',
@@ -1374,7 +1376,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $payload = ['common_concerns' => ['Routine check-up'], 'fname' => 'Ana', 'lname' => 'Santos',
             'phone' => '09171234567', 'pet_name' => 'Mochi', 'species' => 'cat', 'terms_agreed' => true,
             'owner_record_type' => 'unregistered', 'unregistered_customer_id' => 10];
-        $first = $this->postJson('/api/admin/clinic-walk-in', $payload)->assertCreated()
+        $first = $this->postSignedClinicWalkIn($payload)->assertCreated()
             ->assertJsonPath('status', 'checked_in')->assertJsonPath('queue_number', 1);
         $id = $first->json('appointment_id');
         $this->assertNotEmpty($first->json('checked_in_at'));
@@ -1382,14 +1384,14 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->assertSame('Mochi', $snapshot['registration']['pet_name']);
         $this->assertSame('Mochi', $snapshot['intake']['pet_name']);
         $this->assertDatabaseHas('clinic_appointments', ['id' => $id, 'consultation_started_at' => null]);
-        $this->postJson('/api/admin/clinic-walk-in', [...$payload, 'pet_name' => 'Bantay'])
+        $this->postSignedClinicWalkIn([...$payload, 'pet_name' => 'Bantay'])
             ->assertCreated()->assertJsonPath('queue_number', 2);
         $petId = DB::table('clinic_appointments')->where('id', $id)->value('pet_id');
         $ownerId = DB::table('pets')->where('pet_id', $petId)->value('unregistered_customer_id');
         $duplicate = [...$payload, 'owner_record_type' => 'unregistered', 'unregistered_customer_id' => $ownerId, 'pet_id' => $petId];
         foreach (['checked_in', 'in_consultation', 'for_payment', 'waiting_to_arrive'] as $status) {
             DB::table('clinic_appointments')->where('id', $id)->update(['status' => $status]);
-            $this->postJson('/api/admin/clinic-walk-in', $duplicate)->assertConflict();
+            $this->postSignedClinicWalkIn($duplicate)->assertConflict();
             $this->assertDatabaseCount('clinic_appointments', 2);
             $this->assertDatabaseCount('walkins', 2);
         }
@@ -1493,13 +1495,13 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'terms_agreed' => true,
         ];
 
-        $this->postJson('/api/admin/clinic-walk-in', $payload)
+        $this->postSignedClinicWalkIn($payload)
             ->assertUnprocessable()
             ->assertJsonValidationErrors('common_concerns');
-        $this->postJson('/api/admin/clinic-walk-in', $payload + ['common_concerns' => ['Other', 'Other']])
+        $this->postSignedClinicWalkIn($payload + ['common_concerns' => ['Other', 'Other']])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('common_concerns.0');
-        $this->postJson('/api/admin/clinic-walk-in', $payload + ['common_concerns' => ['Unknown']])
+        $this->postSignedClinicWalkIn($payload + ['common_concerns' => ['Unknown']])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('common_concerns.0');
 
@@ -1565,7 +1567,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         Carbon::setTestNow('2026-10-19 08:30:00');
         $this->authenticateAs('customer', 10);
         DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Mochi', 'species' => 'cat']);
-        $id = $this->postJson('/api/clinic/pre-register', [
+        $id = $this->postSignedClinicRegistration([
             'service_day' => now('Asia/Manila')->toDateString(),
             'common_concerns' => ['Routine check-up'], 'chief_complaint' => 'Annual exam',
             'appointment_date' => now()->toDateString(), 'window_id' => 1, 'pet_id' => 101,
@@ -1604,7 +1606,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         Carbon::setTestNow('2026-10-19 17:00:00');
         $this->authenticateAs('customer', 10);
         DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Mochi', 'species' => 'cat']);
-        $this->postJson('/api/clinic/pre-register', [
+        $this->postSignedClinicRegistration([
             'service_day' => now('Asia/Manila')->toDateString(),
             'service_day' => '2026-10-19', 'pet_id' => 101, 'common_concerns' => ['Routine check-up'],
         ])->assertStatus(409)->assertJsonPath('code', 'service_day_changed')
@@ -1844,7 +1846,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'owner_record_type' => 'registered', 'customer_user_id' => 10, 'pet_name' => 'Bantay',
             'species' => 'Dog', 'birthdate' => $date, 'common_concerns' => ['Routine check-up'], 'terms_agreed' => true];
         if ($saved) $payload['pet_id'] = 101;
-        $response = $this->postJson('/api/admin/clinic-walk-in', $payload);
+        $response = $this->postSignedClinicWalkIn($payload);
         if ($error) {
             $response->assertUnprocessable()->assertJsonValidationErrors('birthdate');
             $this->assertSame([$error], $response->json('errors.birthdate'));
@@ -1891,7 +1893,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'is_archived' => false,
         ]);
 
-        $this->postJson('/api/admin/clinic-walk-in', [
+        $this->postSignedClinicWalkIn([
             'common_concerns' => ['Routine check-up'],
             'fname' => 'Maria',
             'lname' => 'Santos',
@@ -1945,7 +1947,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'is_archived' => false,
         ]);
 
-        $this->postJson('/api/admin/clinic-walk-in', [
+        $this->postSignedClinicWalkIn([
             'common_concerns' => ['Routine check-up'],
             'fname' => 'Ana',
             'lname' => 'Reyes',
@@ -1990,7 +1992,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'role' => 'customer',
         ]);
 
-        $this->postJson('/api/admin/clinic-walk-in', [
+        $this->postSignedClinicWalkIn([
             'common_concerns' => ['Routine check-up'],
             'fname' => 'Jose',
             'lname' => 'Cruz',
@@ -2007,7 +2009,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['breed']);
 
-        $this->postJson('/api/admin/clinic-walk-in', [
+        $this->postSignedClinicWalkIn([
             'common_concerns' => ['Routine check-up'],
             'fname' => 'Jose',
             'lname' => 'Cruz',
@@ -2059,18 +2061,18 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'fname' => 'Jane', 'lname' => 'Reyes', 'phone' => '09171234567',
             'terms_agreed' => true, 'patients' => $patients,
         ];
-        $this->postJson('/api/admin/clinic-walk-in', $payload)->assertUnprocessable()->assertJsonValidationErrors('patients');
+        $this->postSignedClinicWalkIn($payload)->assertUnprocessable()->assertJsonValidationErrors('patients');
         array_pop($payload['patients']);
         $invalid = $payload;
         $invalid['patients'][12]['chief_complaint'] = str_repeat('x', 501);
-        $this->postJson('/api/admin/clinic-walk-in', $invalid)->assertUnprocessable()->assertJsonValidationErrors('patients.12.chief_complaint');
+        $this->postSignedClinicWalkIn($invalid)->assertUnprocessable()->assertJsonValidationErrors('patients.12.chief_complaint');
         $invalid = $payload;
         $invalid['patients'][12]['pet_id'] = 999;
-        $this->postJson('/api/admin/clinic-walk-in', $invalid)->assertUnprocessable()->assertJsonValidationErrors('patients.12.pet_id');
+        $this->postSignedClinicWalkIn($invalid)->assertUnprocessable()->assertJsonValidationErrors('patients.12.pet_id');
         $this->assertDatabaseCount('pets', 0);
         $this->assertDatabaseCount('walkins', 0);
 
-        $this->postJson('/api/admin/clinic-walk-in', $payload)->assertCreated()->assertJsonCount(13, 'session.patients');
+        $this->postSignedClinicWalkIn($payload)->assertCreated()->assertJsonCount(13, 'session.patients');
         $appointments = DB::table('clinic_appointments')->orderBy('id')->get();
         $this->assertEquals(range(1, 13), $appointments->pluck('queue_number')->all());
         $this->assertCount(13, $appointments->pluck('appointment_reference')->unique());
@@ -2093,20 +2095,20 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         }
         $payload = ['service_day' => now('Asia/Manila')->toDateString(), 'patients' => $patients];
 
-        $this->postJson('/api/clinic/pre-register', $payload)->assertUnprocessable()->assertJsonValidationErrors('patients');
+        $this->postSignedClinicRegistration($payload)->assertUnprocessable()->assertJsonValidationErrors('patients');
         array_pop($payload['patients']);
         $duplicate = $payload;
         $duplicate['patients'][12]['pet_id'] = 101;
-        $this->postJson('/api/clinic/pre-register', $duplicate)->assertUnprocessable()->assertJsonValidationErrors('patients.12.pet_id');
+        $this->postSignedClinicRegistration($duplicate)->assertUnprocessable()->assertJsonValidationErrors('patients.12.pet_id');
         $missingReason = $payload;
         unset($missingReason['patients'][12]['common_concerns']);
-        $this->postJson('/api/clinic/pre-register', $missingReason)->assertUnprocessable()->assertJsonValidationErrors('patients.12.common_concerns');
+        $this->postSignedClinicRegistration($missingReason)->assertUnprocessable()->assertJsonValidationErrors('patients.12.common_concerns');
         DB::table('pets')->where('pet_id', 113)->update(['is_archived' => true]);
-        $this->postJson('/api/clinic/pre-register', $payload)->assertUnprocessable()->assertJsonValidationErrors('patients.12.pet_id');
+        $this->postSignedClinicRegistration($payload)->assertUnprocessable()->assertJsonValidationErrors('patients.12.pet_id');
         DB::table('pets')->where('pet_id', 113)->update(['is_archived' => false]);
         $this->assertDatabaseCount('clinic_appointments', 0);
 
-        $visit = $this->postJson('/api/clinic/pre-register', $payload)->assertCreated()->assertJsonCount(13, 'session.patients');
+        $visit = $this->postSignedClinicRegistration($payload)->assertCreated()->assertJsonCount(13, 'session.patients');
         $appointments = DB::table('clinic_appointments')->orderBy('id')->get();
         $this->assertCount(13, $appointments->pluck('appointment_reference')->unique());
         $this->assertSame([$visit->json('session.id')], $appointments->pluck('clinic_visit_group_id')->unique()->values()->all());
@@ -2123,6 +2125,135 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('visit.pet.pet_name', 'Patient 113')->assertJsonCount(13, 'visit.patients');
         $this->postJson('/api/clinic/registrations/'.$appointments->last()->id.'/cancel')->assertOk();
         $this->assertSame(13, DB::table('clinic_appointments')->where('status', 'cancelled')->count());
+    }
+
+    public function test_clinic_consent_is_required_for_online_and_walk_in_registration(): void
+    {
+        $this->authenticateAs('customer', 10);
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Mochi', 'species' => 'cat']);
+        $online = ['service_day' => now('Asia/Manila')->toDateString(), 'pet_id' => 101, 'common_concerns' => ['Routine check-up']];
+        $this->postJson('/api/clinic/pre-register', $online)->assertUnprocessable()
+            ->assertJsonValidationErrors(['terms_agreed', 'signer_name', 'signature_strokes', 'consent_version', 'agreement_hash']);
+
+        $this->authenticateAs('staff');
+        $walkIn = [
+            'fname' => 'Ana', 'lname' => 'Cruz', 'phone' => '09171234567',
+            'pet_name' => 'Mochi', 'species' => 'cat', 'common_concerns' => ['Routine check-up'],
+        ];
+        $this->postJson('/api/admin/clinic-walk-in', $walkIn)->assertUnprocessable()
+            ->assertJsonValidationErrors(['terms_agreed', 'signer_name', 'signature_strokes', 'consent_version', 'agreement_hash']);
+        $this->assertDatabaseCount('clinic_appointments', 0);
+    }
+
+    public function test_clinic_online_consent_is_shared_and_preserves_hours_in_history(): void
+    {
+        $this->authenticateAs('customer', 10);
+        $patients = [];
+        foreach ([101, 102, 103] as $id) {
+            DB::table('pets')->insert(['pet_id' => $id, 'user_id' => 10, 'pet_name' => "Pet {$id}", 'species' => 'cat']);
+            $patients[] = ['pet_id' => $id, 'common_concerns' => ['Routine check-up']];
+        }
+        $signed = $this->signedClinicPayload();
+        $this->getJson('/api/clinic/care-agreement')->assertOk()->assertJsonPath('agreement.operating_hours', '8:00 AM – 5:00 PM');
+        $payload = ['service_day' => now('Asia/Manila')->toDateString(), 'patients' => $patients] + $signed;
+        foreach (['terms_agreed', 'signer_name', 'signature_strokes'] as $field) {
+            $this->postJson('/api/clinic/pre-register', array_diff_key($payload, [$field => true]))
+                ->assertUnprocessable()->assertJsonValidationErrors($field);
+        }
+        foreach ([
+            'terms_agreed' => false,
+            'signer_name' => '   ',
+            'consent_version' => 'obsolete',
+            'agreement_hash' => str_repeat('a', 64),
+            'signature_strokes' => [[[10, 10], [10, 10]]],
+        ] as $field => $invalid) {
+            $this->postJson('/api/clinic/pre-register', [...$payload, $field => $invalid])
+                ->assertUnprocessable()->assertJsonValidationErrors($field);
+        }
+        $this->postJson('/api/clinic/pre-register', [...$payload, 'signer_name' => str_repeat('a', 201)])
+            ->assertUnprocessable()->assertJsonValidationErrors('signer_name');
+        foreach ([[[[10, 10], ['x' => 100, 'y' => 150]]], [array_fill(0, 1001, [10, 10])], array_fill(0, 101, [[0, 0], [4, 4]])] as $strokes) {
+            $this->postJson('/api/clinic/pre-register', [...$payload, 'signature_strokes' => $strokes])->assertUnprocessable();
+        }
+
+        DB::table('clinic_settings')->where('id', 1)->update(['clinic_open_time' => '09:00:00', 'clinic_close_time' => '16:00:00']);
+        $this->postJson('/api/clinic/pre-register', $payload)->assertUnprocessable()
+            ->assertJsonPath('code', 'clinic_agreement_changed')->assertJsonValidationErrors('agreement_hash');
+        $this->assertDatabaseCount('clinic_visit_groups', 0);
+
+        $this->getJson('/api/clinic/care-agreement')->assertOk()->assertJsonPath('agreement.operating_hours', '9:00 AM – 4:00 PM');
+        $this->postJson('/api/clinic/pre-register', $this->signedClinicPayload() + $payload + ['agreement_snapshot' => ['operating_hours' => 'fake']])
+            ->assertCreated()->assertJsonCount(3, 'session.patients');
+        $this->assertDatabaseCount('clinic_visit_groups', 1);
+        $this->assertDatabaseCount('clinic_appointments', 3);
+        $this->assertDatabaseCount('clinic_consents', 1);
+
+        DB::table('clinic_settings')->where('id', 1)->update(['clinic_open_time' => '08:00:00', 'clinic_close_time' => '17:00:00']);
+        $this->getJson('/api/clinic/care-agreement')->assertOk()->assertJsonPath('agreement.operating_hours', '8:00 AM – 5:00 PM');
+        $ids = DB::table('clinic_appointments')->pluck('id');
+        $this->getJson('/api/admin/clinic-appointments/'.$ids[0].'/signed-consent')->assertForbidden();
+        DB::table('clinic_appointments')->update(['status' => 'completed']);
+        $this->authenticateAs('staff');
+        $consentId = DB::table('clinic_consents')->value('id');
+        foreach ($ids as $id) {
+            $consent = $this->getJson("/api/admin/clinic-appointments/{$id}/signed-consent")->assertOk()
+                ->assertJsonPath('consent.id', $consentId)
+                ->assertJsonPath('consent.clinic_consent', true)
+                ->assertJsonPath('consent.signer_name', 'Ana Cruz')
+                ->assertJsonPath('consent.agreement_snapshot.operating_hours', '9:00 AM – 4:00 PM')
+                ->assertJsonCount(8, 'consent.agreement_snapshot.clauses')
+                ->assertJsonMissingPath('consent.signature_strokes')->json('consent');
+            $this->assertStringContainsString('9:00 AM – 4:00 PM', $consent['agreement_snapshot']['clauses'][3]['text']);
+            $this->assertStringStartsWith('data:image/svg+xml;base64,', $consent['signature_image']);
+            $this->assertNotEmpty($consent['signed_at']);
+        }
+        $this->getJson('/api/admin/clinic-appointments/archived')->assertOk()
+            ->assertJsonCount(1, 'archived')->assertJsonMissingPath('archived.0.consent');
+        $this->authenticateAs('admin');
+        $this->getJson('/api/admin/clinic-appointments/'.$ids[0].'/signed-consent')->assertOk()->assertJsonPath('consent.id', $consentId);
+        DB::table('clinic_consents')->delete();
+        $this->getJson('/api/admin/clinic-appointments/'.$ids[0].'/signed-consent')->assertOk()->assertJsonPath('consent', null);
+    }
+
+    public function test_clinic_walk_in_stores_one_signed_agreement_and_the_legacy_flag(): void
+    {
+        $this->authenticateAs('staff');
+        $payload = $this->signedClinicPayload() + [
+            'fname' => 'Ana', 'lname' => 'Cruz', 'phone' => '09171234567',
+            'patients' => array_map(fn ($name) => ['pet_name' => $name, 'species' => 'cat', 'common_concerns' => ['Routine check-up']], ['Mochi', 'Max', 'Luna']),
+        ];
+        $this->postJson('/api/admin/clinic-walk-in', [...$payload, 'agreement_hash' => str_repeat('a', 64)])
+            ->assertUnprocessable()->assertJsonPath('code', 'clinic_agreement_changed');
+        $this->assertDatabaseCount('walkins', 0);
+        $this->assertDatabaseCount('clinic_visit_groups', 0);
+        $this->assertDatabaseCount('clinic_consents', 0);
+
+        $this->postJson('/api/admin/clinic-walk-in', $payload)->assertCreated()->assertJsonCount(3, 'session.patients');
+        $this->assertDatabaseCount('clinic_consents', 1);
+        $this->assertDatabaseHas('clinic_consents', ['clinic_visit_group_id' => DB::table('clinic_visit_groups')->value('id')]);
+        $this->assertDatabaseHas('walkins', ['terms_agreed' => true]);
+    }
+
+    private function postSignedClinicWalkIn(array $payload): \Illuminate\Testing\TestResponse
+    {
+        return $this->postJson('/api/admin/clinic-walk-in', $payload + $this->signedClinicPayload());
+    }
+
+    private function postSignedClinicRegistration(array $payload): \Illuminate\Testing\TestResponse
+    {
+        return $this->postJson('/api/clinic/pre-register', $payload + $this->signedClinicPayload());
+    }
+
+    private function signedClinicPayload(): array
+    {
+        $review = $this->getJson('/api/clinic/care-agreement')->assertOk()->json();
+        return [
+            'terms_agreed' => true,
+            'signer_name' => 'Ana Cruz',
+            'signature_strokes' => [[[10, 10], [50, 80]]],
+            'consent_version' => $review['agreement']['version'],
+            'agreement_hash' => $review['agreement_hash'],
+        ];
     }
 
     #[DataProvider('phoneEnforcementModes')]
@@ -2145,7 +2276,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'is_archived' => false,
         ]);
 
-        $response = $this->postJson('/api/clinic/pre-register', [
+        $response = $this->postSignedClinicRegistration([
             'service_day' => now('Asia/Manila')->toDateString(),
             'common_concerns' => ['Routine check-up', 'Vomiting'],
             'pet_id' => 101,
@@ -2424,16 +2555,16 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'pet_id' => 101,
         ];
 
-        $this->postJson('/api/clinic/pre-register', $payload)
+        $this->postSignedClinicRegistration($payload)
             ->assertUnprocessable()
             ->assertJsonValidationErrors('common_concerns');
-        $this->postJson('/api/clinic/pre-register', $payload + ['common_concerns' => ['Unknown']])
+        $this->postSignedClinicRegistration($payload + ['common_concerns' => ['Unknown']])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('common_concerns.0');
-        $this->postJson('/api/clinic/pre-register', $payload + [
+        $this->postSignedClinicRegistration($payload + [
             'common_concerns' => ['Routine check-up'], 'chief_complaint' => str_repeat('x', 501),
         ])->assertUnprocessable()->assertJsonValidationErrors('chief_complaint');
-        $this->postJson('/api/clinic/pre-register', $payload + [
+        $this->postSignedClinicRegistration($payload + [
             'common_concerns' => ['Routine check-up', 'Vaccination'],
         ])
             ->assertCreated()
@@ -2466,7 +2597,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         DB::table('pets')->insert(['pet_id' => 102, 'user_id' => 10, 'pet_name' => 'Bella', 'species' => 'cat', 'is_archived' => false]);
         DB::table('booking_pets')->insert(['booking_id' => DB::table('bookings')->value('booking_id'), 'pet_id' => $samePet ? 101 : 102]);
 
-        $response = $this->postJson('/api/clinic/pre-register', [
+        $response = $this->postSignedClinicRegistration([
             'service_day' => now('Asia/Manila')->toDateString(),
             'common_concerns' => ['Routine check-up'],
             'appointment_date' => now()->addDay()->toDateString(),
@@ -2524,16 +2655,16 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             DB::table('pets')->insert(['pet_id' => $id, 'user_id' => 10, 'pet_name' => "Pet {$id}", 'species' => 'cat', 'is_archived' => false]);
         }
         $payload = ['service_day' => now('Asia/Manila')->toDateString(), 'pet_id' => 101, 'common_concerns' => ['Routine check-up']];
-        $id = $this->postJson('/api/clinic/pre-register', $payload)->assertCreated()->json('appointment.appointment_id');
+        $id = $this->postSignedClinicRegistration($payload)->assertCreated()->json('appointment.appointment_id');
         $payload['pet_id'] = 102;
         foreach ([now()->toDateString(), now()->addDay()->toDateString()] as $day) {
-            $this->postJson('/api/clinic/pre-register', [...$payload, 'service_day' => $day])
+            $this->postSignedClinicRegistration([...$payload, 'service_day' => $day])
                 ->assertConflict()->assertJsonPath('ongoing.type', 'clinic');
         }
         $this->assertDatabaseCount('clinic_appointments', 1);
         foreach (['completed', 'cancelled', 'no_show', 'expired', 'archived'] as $status) {
             DB::table('clinic_appointments')->where('id', $id)->update(['status' => $status]);
-            $id = $this->postJson('/api/clinic/pre-register', $payload)->assertCreated()->json('appointment.appointment_id');
+            $id = $this->postSignedClinicRegistration($payload)->assertCreated()->json('appointment.appointment_id');
         }
         $this->assertDatabaseCount('clinic_appointments', 6);
     }
@@ -2549,7 +2680,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'is_archived' => false,
         ]);
 
-        $this->postJson('/api/clinic/pre-register', [
+        $this->postSignedClinicRegistration([
             'service_day' => now('Asia/Manila')->toDateString(),
             'common_concerns' => ['Routine check-up'],
             'appointment_date' => now()->addDay()->toDateString(),
@@ -2584,7 +2715,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->postJson('/api/clinic/pre-register', [
+        $this->postSignedClinicRegistration([
             'service_day' => now('Asia/Manila')->addDay()->toDateString(),
             'common_concerns' => ['Routine check-up'],
             'appointment_date' => $appointmentDate,
@@ -2644,7 +2775,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertJsonMissingPath('windows.0.recommended')
             ->assertJsonPath('windows.0.is_closed', false);
 
-        $this->postJson('/api/clinic/pre-register', [
+        $this->postSignedClinicRegistration([
             'service_day' => now('Asia/Manila')->toDateString(),
             'common_concerns' => ['Routine check-up'],
             'appointment_date' => $appointmentDate,
@@ -3023,7 +3154,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $availability->assertJsonMissingPath('cutoff_passed')
             ->assertJsonPath('windows.0.is_past', $date === '2026-10-09' && $time >= '20:00:00')
             ->assertJsonPath('windows.0.is_closed', in_array($restriction, ['blocked_date', 'stop_today'], true));
-        $response = $this->postJson('/api/clinic/pre-register', [
+        $response = $this->postSignedClinicRegistration([
             'service_day' => in_array($restriction, ['blocked_date', 'stop_today'], true) || $time >= '22:00:00' ? '2026-10-10' : '2026-10-09',
             'appointment_date' => $date, 'window_id' => 1, 'pet_id' => 101, 'common_concerns' => ['Routine check-up'],
         ]);
@@ -3065,7 +3196,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         DB::table('time_windows')->where('window_id', 1)->update([
             'start_time' => '15:00:00', 'end_time' => '16:00:00', 'window_label' => '3:00 PM - 4:00 PM',
         ]);
-        $this->postJson('/api/clinic/pre-register', [
+        $this->postSignedClinicRegistration([
             'service_day' => now('Asia/Manila')->toDateString(),
             'common_concerns' => ['Routine check-up'],
             'appointment_date' => '2026-07-23',
@@ -3448,6 +3579,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ['GET', 'api/admin/clinic-cases/{id}/charges', 'role:admin,staff'],
             ['PATCH', 'api/admin/clinic-cases/{id}/charges/{chargeId}', 'role:admin,staff'],
             ['GET', 'api/admin/clinic-appointments', 'role:admin,staff'],
+            ['GET', 'api/admin/clinic-appointments/{id}/signed-consent', 'role:admin,staff'],
             ['GET', 'api/admin/clinic-appointments/archived', 'role:admin,staff'],
             ['POST', 'api/admin/clinic-appointments/{id}/check-in', 'role:admin,staff'],
             ['POST', 'api/admin/clinic-appointments/{id}/start-consultation', 'role:admin,staff'],
@@ -3495,7 +3627,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             fn (RoutingRoute $route) => str_starts_with($route->getActionName(), AdminClinicController::class.'@'),
         );
 
-        $this->assertCount(21, $adminClinicRoutes);
+        $this->assertCount(22, $adminClinicRoutes);
         $adminClinicRoutes->each(function (RoutingRoute $route): void {
             $this->assertContains('role:admin,staff', $route->gatherMiddleware());
             $this->assertContains('clinic:access', $route->gatherMiddleware());

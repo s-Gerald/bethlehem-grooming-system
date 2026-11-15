@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\ClinicVisitGroup;
+use App\Services\ClinicConsentCapture;
 use App\Rules\ValidBreedCoat;
 use App\Rules\ValidPetColor;
 use App\Rules\ValidPetBirthdate;
@@ -64,7 +65,7 @@ class StoreClinicWalkinRequest extends FormRequest
             ] : $this->patientRules($this->all(), legacy: true)),
 
             'clinic_quick_entry' => ['sometimes', 'boolean'],
-            'terms_agreed' => ['required', 'boolean', 'accepted'],
+            ...ClinicConsentCapture::rules(),
         ];
     }
 
@@ -144,7 +145,7 @@ class StoreClinicWalkinRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'terms_agreed.accepted' => 'The customer must agree to the terms before registration.',
+            ...ClinicConsentCapture::messages(),
             'common_concerns.required' => 'Select at least one common concern.',
             'common_concerns.min' => 'Select at least one common concern.',
             'common_concerns.*.in' => 'Select a valid common concern.',

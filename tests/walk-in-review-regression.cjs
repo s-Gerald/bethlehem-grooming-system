@@ -122,6 +122,13 @@ async function main() {
   submission.signature = signature; submission.button = button; submission.message = message;
   vm.runInContext('consent = signature; elements = { submitBookingButton: button, consentStatusMessage: message };', submission);
   const event = { preventDefault() {} };
+  const cancelled = submission.handleSubmit(event);
+  confirmations.shift()(false);
+  await cancelled;
+  assert.equal(sent.length, 0, 'Cancelling confirmation sends no check-in request');
+  assert.equal(button.textContent, 'Check In');
+  assert.equal(button.disabled, false);
+
   const first = submission.handleSubmit(event);
   const second = submission.handleSubmit(event);
   assert.equal(confirmations.length, 1, 'Rapid submits must open only one confirmation');
@@ -129,8 +136,11 @@ async function main() {
   await flush();
   assert.equal(sent.length, 1, 'Rapid submissions must share one pending request');
   assert.equal(button.disabled, true);
+  assert.equal(button.textContent, 'Checking in…');
   rejectRequest(new Error('Connection lost. Please try again.'));
   await Promise.all([first, second]);
+  assert.equal(button.textContent, 'Check In');
+  assert.equal(button.disabled, false);
   assert.equal(draft.get('walkInConsentStep'), originalDraft, 'Failure preserves the captured signature');
   assert.equal(signature.valid, true);
   assert.match(message.textContent, /Connection lost/);

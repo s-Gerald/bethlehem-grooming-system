@@ -26,6 +26,11 @@ class ClinicVisitGroup extends Model
         return $this->hasMany(ClinicAppointment::class);
     }
 
+    public function consent(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(ClinicConsent::class);
+    }
+
     public function gatewayPayment()
     {
         return $this->belongsTo(GatewayPayment::class);

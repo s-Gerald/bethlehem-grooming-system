@@ -339,6 +339,14 @@ class AdminClinicController extends Controller
         return response()->json(['success' => true, 'case' => $this->formatAppointment($case->fresh())]);
     }
 
+    public function signedConsent(int $id)
+    {
+        $appointment = ClinicAppointment::findOrFail($id);
+        $consent = $appointment->visitGroup?->consent;
+
+        return response()->json(['consent' => $consent])->header('Cache-Control', 'no-store');
+    }
+
     public function archivedIndex(Request $request)
     {
         $request->validate(['page' => 'nullable|integer|min:1']);
