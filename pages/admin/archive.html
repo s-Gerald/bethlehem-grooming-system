@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>History | Bethlehem Animal Clinic</title>
     <link rel="stylesheet" href="/css/output.css?v=grooming-record-20260926&availability=20261027&auth-hardening=20261030" />
-    <link rel="stylesheet" href="/css/custom.css?grooming-cancellation=20261016&v=history-typography-20261003&release=20261001&intake=20261019&grooming=actual-20261026" />
+    <link rel="stylesheet" href="/css/custom.css?grooming-cancellation=20261016&v=history-typography-20261003&release=20261001&intake=20261019&grooming=actual-20261026&image-preview=20261115" />
     <style>
       /* Grooming history follows the existing Bethlehem palette and typography. */
       .grooming-history {
@@ -768,7 +768,7 @@
                         <p class="clinic-visit-muted" style="margin-top: 1rem">Medical Record Attachments</p>
                         <div class="clinic-attachments">
                           <template x-for="file in clinicMedicalAttachments(patient.visit, patient.care)" :key="file.id">
-                            <button type="button" class="clinic-attachment" @click="openClinicAttachment(file)" :disabled="clinicAttachmentBusyId === file.id" :aria-label="'Open attachment ' + file.file_name + ' in a new tab'">
+                            <button type="button" class="clinic-attachment" @click="openClinicAttachment(file, $event.currentTarget)" :disabled="clinicAttachmentBusyId === file.id" :aria-label="'Open attachment ' + file.file_name">
                               <svg class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#file-image"></use></svg><span x-text="file.file_name"></span><span x-show="clinicAttachmentBusyId === file.id">Opening…</span>
                             </button>
                           </template>
@@ -837,7 +837,7 @@
                                 <td><strong x-text="clinicServiceName(entry)"></strong><p class="clinic-visit-muted" x-show="Number(entry.quantity) > 1" x-text="'Quantity: ' + Number(entry.quantity)"></p>
                                   <div class="clinic-attachments" x-show="clinicServiceAttachments(entry, patient.visit).length">
                                     <template x-for="file in clinicServiceAttachments(entry, patient.visit)" :key="file.id">
-                                      <button type="button" class="clinic-attachment" @click="openClinicAttachment(file)" :disabled="clinicAttachmentBusyId === file.id" :aria-label="'Open attachment ' + file.file_name + ' in a new tab'"><svg class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#file-image"></use></svg><span x-text="file.file_name"></span><span x-show="clinicAttachmentBusyId === file.id">Opening…</span></button>
+                                      <button type="button" class="clinic-attachment" @click="openClinicAttachment(file, $event.currentTarget)" :disabled="clinicAttachmentBusyId === file.id" :aria-label="'Open attachment ' + file.file_name"><svg class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#file-image"></use></svg><span x-text="file.file_name"></span><span x-show="clinicAttachmentBusyId === file.id">Opening…</span></button>
                                     </template>
                                   </div>
                                 </td>
@@ -893,9 +893,9 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
 
-    <script src="/scripts/components/clinic-attachments.js?v=20261015"></script>
+    <script src="/scripts/components/clinic-attachments.js?v=image-preview-20261115"></script>
     <script src="/scripts/components/recorded-product-pricing.js?v=20261029"></script>
-    <script src="/scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261110&invoice-products=20261029&urls=20261103&queue-copy=20261103-admin-v1&pet-history=20261110&service-history=20261111&history-link=20261111&owner-session=20261111&clinic-consent=20261115&history-print=20261115&print=report-20261115"></script>
+    <script src="/scripts/components/admin-archive.js?image-preview=20261115&v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261110&invoice-products=20261029&urls=20261103&queue-copy=20261103-admin-v1&pet-history=20261110&service-history=20261111&history-link=20261111&owner-session=20261111&clinic-consent=20261115&history-print=20261115&print=report-20261115"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261111&urls=20261103&inventory-expiry=20261111"></script>
   </body>

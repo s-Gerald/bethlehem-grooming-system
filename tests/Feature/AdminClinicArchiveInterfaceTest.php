@@ -22,7 +22,7 @@ class AdminClinicArchiveInterfaceTest extends TestCase
         $page = file_get_contents(base_path('pages/admin/archive.html'));
         $modal = substr($page, strpos($page, '<!-- Read-only historical encounter -->'));
         foreach (['role="dialog"', 'aria-modal="true"', 'aria-labelledby="clinic-visit-title"', 'Clinic Record', 'Visit Summary', 'Vitals',
-            'Care Provided', 'Clinic Services', 'Medical Record Attachments', 'openClinicAttachment(file)',
+            'Care Provided', 'Clinic Services', 'Medical Record Attachments', 'openClinicAttachment(file, $event.currentTarget)',
             'Follow-up &amp; Discharge', 'clinicHasPayment(patient.visit)', 'trapClinicFocus($event)'] as $content) {
             $this->assertStringContainsString($content, $modal);
         }

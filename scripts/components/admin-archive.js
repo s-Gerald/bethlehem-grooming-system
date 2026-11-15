@@ -707,13 +707,13 @@ function adminArchive() {
         .filter(file => !file.clinic_case_service_id || !serviceIds.has(String(file.clinic_case_service_id)));
     },
 
-    async openClinicAttachment(file) {
+    async openClinicAttachment(file, trigger) {
       const request = this._clinicRequest;
       const record = this.detailsClinicRecord;
       this.clinicAttachmentBusyId = file.id;
       this.clinicAttachmentError = '';
       try {
-        await viewClinicAttachment(record.id, file);
+        await viewClinicAttachment(record.id, file, trigger);
       } catch (error) {
         if (request === this._clinicRequest) this.clinicAttachmentError = error.message || 'Could not open attachment. Try again.';
       } finally {

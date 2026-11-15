@@ -61,6 +61,7 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
         return route.fulfill({contentType: 'text/html', body: `<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${styles}</head>
           <body>${adminContent}
           <script src="/scripts/components/admin-loading.js"></script>
+          <script src="/scripts/components/clinic-attachments.js"></script>
           <script src="/scripts/components/recorded-product-pricing.js"></script><script src="/scripts/components/admin-archive.js"></script>
           <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script></body></html>`});
       }
@@ -101,7 +102,9 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
           primary_veterinarian_name: 'Dr. Bethlehem',
           prescriptions: [{medicine: `Prescription ${id}`, instructions: `Instructions ${id}`}],
           diagnostics: [{diagnostic: `Diagnostic ${id}`, result: `Result ${id}`}],
-          attachments: [{id, file_name: `record-${id}.png`}, {id: id + 100, file_name: `service-${id}.pdf`, clinic_case_service_id: id}],
+          attachments: [{id, file_name: `record-${id}.png`},
+            {id: id + 100, file_name: `service-${id}.pdf`, clinic_case_service_id: id},
+            {id: id + 200, file_name: `imaging-${id}.png`, clinic_case_service_id: id, file_type: 'image/png'}],
           follow_up_notes: `Follow up for ${id}`},
         treatment_count: 1, service_count: 1,
       }));
@@ -132,6 +135,13 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
               grooming_conditions: ['Recorded grooming clause']}}});
         },
         getBookingHistory: async () => ({history: [grooming]}),
+        clinicDownloadAttachment: async (visitId, fileId) => {
+          (window.attachmentRequests ||= []).push([visitId, fileId]);
+          if (window.failAttachment) throw new Error('Could not fetch the attachment');
+          const canvas = Object.assign(document.createElement('canvas'), {width: 120, height: 60});
+          const image = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+          return {blob: new Blob([image], {type: 'application/octet-stream'})};
+        },
         getArchivedClinicSessionDetails: async id => {
           (window.clinicSessionCalls ||= []).push(id);
           return {session: group, consent: {clinic_consent: true, signer_name: 'Clinic Signer',
@@ -282,6 +292,27 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
     assert.match(await clinicDialog.innerText(), /Sibling findings/);
     assert.doesNotMatch(await clinicDialog.innerText(), /First patient findings/);
     assert.match(await clinicDialog.innerText(), /Total paid.*3,000/);
+    for (const file of ['imaging-82.png', 'record-82.png']) {
+      const trigger = clinicDialog.getByRole('button', {name: 'Open attachment ' + file, exact: true});
+      await trigger.click();
+      const preview = page.getByRole('dialog', {name: file, exact: true});
+      await preview.getByRole('img', {name: file}).waitFor({timeout: 3000});
+      await page.keyboard.press('Escape');
+      await preview.waitFor({state: 'hidden'});
+      await page.waitForFunction(name => document.activeElement.getAttribute('aria-label') === 'Open attachment ' + name, file);
+      assert.equal(await clinicDialog.isVisible(), true);
+    }
+    await page.evaluate(() => { window.failAttachment = true; });
+    await clinicDialog.getByRole('button', {name: 'Open attachment imaging-82.png', exact: true}).click();
+    const errorPreview = page.getByRole('dialog', {name: 'imaging-82.png', exact: true});
+    await errorPreview.getByText('Could not load this image.').waitFor();
+    await page.keyboard.press('Escape');
+    assert.equal(await clinicDialog.isVisible(), true);
+    assert.deepEqual(await page.evaluate(() => window.attachmentRequests), [[82, 282], [82, 82], [82, 282]]);
+    await clinicDialog.getByRole('button', {name: 'Clinic pet · CL-81'}).click();
+    await clinicDialog.getByRole('heading', {name: 'Clinic pet', exact: true}).waitFor();
+    await clinicDialog.getByRole('button', {name: 'Clinic sibling · CL-82'}).click();
+    await clinicDialog.getByRole('heading', {name: 'Clinic sibling', exact: true}).waitFor();
     await clinicDialog.getByText('View signed agreement', {exact: true}).click();
     assert.match(await clinicDialog.innerText(), /Clinic v4[\s\S]*Clinic consent text/);
     const clinicPrint = await printRecord(clinicDialog, 'CLINIC VISIT RECORD');

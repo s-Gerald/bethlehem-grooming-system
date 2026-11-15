@@ -1931,3 +1931,38 @@ input.grooming-pricing-control { padding-left: 28px; }
 @media (max-width: 639px) {
   .customer-header-heading { padding-left: 62px; }
 }
+
+.clinic-image-preview {
+  width: min(72rem, calc(100% - 2rem));
+  height: calc(100dvh - 2rem);
+  max-width: none;
+  max-height: none;
+}
+.clinic-image-preview::backdrop { background: rgb(15 23 42 / 60%); }
+.clinic-image-preview-layout {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+}
+#clinic-image-preview-title { overflow-wrap: anywhere; }
+.clinic-image-preview-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+}
+.clinic-image-preview-stage img {
+  min-height: 0;
+  max-height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+}
+.clinic-image-preview button:focus-visible {
+  outline: 2px solid #315b7e;
+  outline-offset: 2px;
+}
+@media print {
+  .clinic-image-preview { display: none; }
+}

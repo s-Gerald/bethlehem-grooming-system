@@ -504,11 +504,11 @@ function adminClinicModal() {
       window.dispatchEvent(new CustomEvent('clinic-record-closed'));
     },
 
-    async viewAttachment(attachment) {
+    async viewAttachment(attachment, trigger) {
       this.attachmentBusyId = attachment.id;
       this.attachmentError = "";
       try {
-        await viewClinicAttachment(this.apptId, attachment);
+        await viewClinicAttachment(this.apptId, attachment, trigger);
       } catch (error) {
         this.attachmentError = error.message || "Failed to open attachment.";
       } finally {
