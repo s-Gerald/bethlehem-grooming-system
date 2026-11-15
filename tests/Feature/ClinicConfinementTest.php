@@ -19,6 +19,8 @@ use Tests\TestCase;
 
 class ClinicConfinementTest extends TestCase
 {
+    use \Tests\Support\CreatesRegistrationAvailability;
+
     public function test_clinic_activity_counts_distinct_current_patients_and_excludes_terminal_cases(): void
     {
         $response = $this->getJson('/api/admin/clinic/activity')->assertOk()->assertExactJson(['activeClinicCount' => 1]);
@@ -55,6 +57,8 @@ class ClinicConfinementTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->createRegistrationAvailability();
+        Schema::table('clinic_settings', fn (Blueprint $table) => $table->unsignedSmallInteger('grooming_cage_capacity')->default(20));
         Carbon::setTestNow('2026-10-13 10:00:00');
         Schema::create('users', function (Blueprint $table) {
             $table->increments('user_id'); $table->string('role'); $table->string('staff_type')->nullable();
@@ -175,6 +179,7 @@ class ClinicConfinementTest extends TestCase
         $this->postJson('/api/admin/clinic-cases/1/confinement/undo-admission', $payload)->assertOk()
             ->assertJsonPath('data', null)->assertJsonPath('case.status', 'in_consultation')->assertJsonPath('case.total_amount', 1200);
         $this->assertDatabaseCount('clinic_confinements', 0);
+        $this->assertSame(0, app(\App\Services\OperationalCapacity::class)->snapshot()['confined']);
         $this->assertDatabaseCount('clinic_confinement_charges', 0);
         $this->assertDatabaseCount('clinic_charges', 2);
         $this->assertDatabaseHas('clinic_charges', ['id' => $lab->id, 'amount' => 700]);
@@ -462,7 +467,9 @@ class ClinicConfinementTest extends TestCase
 
     public function test_admission_links_one_ordered_service_to_the_same_case_and_retries_are_idempotent(): void
     {
+        \App\Models\ClinicSetting::current()->update(['grooming_cage_capacity' => 1]);
         $payload = $this->admit();
+        $this->assertTrue(app(\App\Services\OperationalCapacity::class)->snapshot()['is_full']);
         $this->postJson('/api/admin/clinic-cases/1/confinement', $payload)->assertOk();
         $this->postJson('/api/admin/clinic-cases/1/confinement', [...$payload, 'request_key' => (string) Str::uuid()])->assertUnprocessable();
         $this->assertDatabaseCount('clinic_appointments', 1); $this->assertDatabaseCount('clinic_confinements', 1);
@@ -470,6 +477,24 @@ class ClinicConfinementTest extends TestCase
         $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'in_consultation']);
         $this->assertDatabaseHas('clinic_case_services', ['status' => 'ordered']);
         $this->getJson('/api/admin/clinic-cases/1/confinement')->assertOk()->assertJsonPath('data.attending_veterinarian_name', 'Attending Vet');
+    }
+
+    public function test_new_admission_cannot_take_an_occupied_cage(): void
+    {
+        \App\Models\ClinicSetting::current()->update(['grooming_cage_capacity' => 1]);
+        $this->admit();
+        DB::table('pets')->insert(['pet_id' => 2, 'pet_name' => 'Coco', 'species' => 'dog', 'weight' => 5]);
+        $case = ClinicAppointment::findOrFail(1)->replicate();
+        $case->forceFill(['appointment_reference' => 'CL-2', 'pet_id' => 2])->save();
+        DB::table('clinic_records')->insert(['clinic_appointment_id' => $case->id,
+            'primary_veterinarian_id' => 1, 'primary_veterinarian_name' => 'Attending Vet']);
+        DB::table('clinic_vitals')->insert(['clinic_appointment_id' => $case->id, 'weight_kg' => 5]);
+        $this->postJson("/api/admin/clinic-cases/{$case->id}/confinement", [
+            'request_key' => (string) Str::uuid(), 'reason' => 'Observation',
+        ])->assertUnprocessable()->assertJsonValidationErrors('confinement')
+            ->assertJsonPath('message', 'Cage capacity is full. Discharge or release a pet before admitting another confinement patient.');
+        $this->assertDatabaseCount('clinic_confinements', 1);
+        $this->assertDatabaseCount('clinic_case_services', 1);
     }
 
     public function test_admission_requires_ongoing_case_primary_veterinarian_and_appropriate_catalogue_configuration(): void
@@ -1049,6 +1074,7 @@ class ClinicConfinementTest extends TestCase
     public function test_confined_list_and_count_use_active_episodes_and_discharge_retains_viewable_history(): void
     {
         $this->admit();
+        $this->assertSame(1, app(\App\Services\OperationalCapacity::class)->snapshot()['confined']);
         foreach ([now()->toDateString(), now()->subDay()->toDateString()] as $date) {
             ClinicAppointment::find(1)->update(['appointment_date' => $date]);
             $before = ClinicAppointment::find(1)->getAttributes();
@@ -1066,6 +1092,7 @@ class ClinicConfinementTest extends TestCase
         $this->assertDatabaseCount('clinic_vitals', 1);
         $this->assertDatabaseHas('clinic_case_services', ['clinic_appointment_id' => 1, 'status' => 'ordered']);
         $this->postJson('/api/admin/clinic-cases/1/confinement/discharge')->assertOk();
+        $this->assertSame(0, app(\App\Services\OperationalCapacity::class)->snapshot()['confined']);
         $this->getJson('/api/admin/clinic-confinements')->assertOk()->assertJsonPath('total', 0);
         $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonPath('confined_count', 0)->assertJsonPath('cases.0.status', 'for_payment');
         $this->signIn('clinic_receptionist');

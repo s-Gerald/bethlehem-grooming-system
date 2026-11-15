@@ -350,6 +350,7 @@ function adminDashboard() {
     dashboardQueuePreview: [],
     clinicOnly: false,
     inConsultation: 0,
+    confinedNow: 0,
     activeTodayCount: null,
     _bookingRequest: null,
     _bookingRequestDate: null,
@@ -379,6 +380,8 @@ function adminDashboard() {
     _dashboardAccessRevision: 0,
     waitingNow: 0,
     currentCapacity: 0,
+    groomingOccupancy: 0,
+    confinedOccupancy: 0,
     maxCapacity: 0,
     remainingCapacity: 0,
     utilizationPercent: 0,
@@ -700,6 +703,14 @@ function adminDashboard() {
         };
         window.addEventListener('admin-navigation:invalidated', this._dashboardAccessInvalidated);
         window.addEventListener('admin-navigation:updated', this._dashboardIdentityUpdated);
+        this._dashboardDataInvalidated = event => {
+          const groups = event.detail?.groups;
+          if (!groups?.includes('dashboard') || !groups.includes('availability')) return;
+          void Promise.resolve(this._summaryRequest).then(() => {
+            if (!API.isSessionLocked?.()) return this.loadDashboardSummary({ force: true });
+          });
+        };
+        window.addEventListener('admin-data:invalidated', this._dashboardDataInvalidated);
       }
     },
 
@@ -727,6 +738,7 @@ function adminDashboard() {
       window.removeEventListener('admin-session:unlocked', this._sessionResumeListener);
       window.removeEventListener('admin-navigation:invalidated', this._dashboardAccessInvalidated);
       window.removeEventListener('admin-navigation:updated', this._dashboardIdentityUpdated);
+      window.removeEventListener('admin-data:invalidated', this._dashboardDataInvalidated);
       this.stopOnlinePaymentPoll();
       this.closePaymentScanner();
     },
@@ -744,6 +756,7 @@ function adminDashboard() {
         this.canViewRevenue = data.canViewRevenue === true;
         this.clinicOnly = data.clinicOnly === true;
         this.inConsultation = Number(data.summary?.inConsultation) || 0;
+        this.confinedNow = this.clinicOnly ? Number(data.summary?.confinedNow) || 0 : 0;
         if (!this.canViewRevenue) this.revenueToday = this.revenuePaymentCount = 0;
         this.dashboardQueuePreview = data.queuePreview || [];
         this.applyDashboardData(data);
@@ -1653,6 +1666,8 @@ function adminDashboard() {
 
       if ("remainingCapacity" in nextPayload) this.remainingCapacity = nextPayload.remainingCapacity;
       if ("utilizationPercent" in nextPayload) this.utilizationPercent = nextPayload.utilizationPercent;
+      if ("groomingOccupancy" in nextPayload) this.groomingOccupancy = nextPayload.groomingOccupancy;
+      if ("confinedOccupancy" in nextPayload) this.confinedOccupancy = nextPayload.confinedOccupancy;
 
       if ("maxCapacity" in nextPayload) {
         this.maxCapacity = nextPayload.maxCapacity;
@@ -1787,6 +1802,8 @@ function adminDashboard() {
 
       if (this.hasValue(payload.remainingCapacity) || this.hasValue(capacity.remaining)) nextPayload.remainingCapacity = this.toNumber(payload.remainingCapacity ?? capacity.remaining, 0);
       if (this.hasValue(payload.utilizationPercent) || this.hasValue(capacity.percent)) nextPayload.utilizationPercent = this.toNumber(payload.utilizationPercent ?? capacity.percent, 0);
+      if (this.hasValue(payload.groomingOccupancy) || this.hasValue(capacity.grooming)) nextPayload.groomingOccupancy = this.toNumber(payload.groomingOccupancy ?? capacity.grooming, 0);
+      if (this.hasValue(payload.confinedOccupancy) || this.hasValue(capacity.confined)) nextPayload.confinedOccupancy = this.toNumber(payload.confinedOccupancy ?? capacity.confined, 0);
 
       if (this.hasValue(payload.maxCapacity) || this.hasValue(capacity.max)) {
         nextPayload.maxCapacity = this.toNumber(
@@ -2418,6 +2435,8 @@ function adminDashboard() {
         revenuePaymentCount: this.revenuePaymentCount,
         waitingNow: this.waitingNow,
         currentCapacity: this.currentCapacity,
+        groomingOccupancy: this.groomingOccupancy,
+        confinedOccupancy: this.confinedOccupancy,
         maxCapacity: this.maxCapacity,
         remainingCapacity: this.remainingCapacity,
         utilizationPercent: this.utilizationPercent,

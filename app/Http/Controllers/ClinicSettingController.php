@@ -47,13 +47,14 @@ class ClinicSettingController extends Controller
 
         return app(DailyPetQueue::class)->runForDate(now('Asia/Manila')->toDateString(), function () use ($data) {
             $settings = ClinicSetting::current(lockForUpdate: true);
-            $capacity = app(OperationalCapacity::class);
-            if ($data['maximum'] < $capacity->snapshot($settings)['used']) {
+            $settings->fill(['grooming_cage_capacity' => (int) $data['maximum']]);
+            $capacity = app(OperationalCapacity::class)->snapshot($settings);
+            if ($capacity['max'] < $capacity['used']) {
                 throw ValidationException::withMessages(['maximum' => 'Capacity cannot be below the number of pets currently on site.']);
             }
-            $settings->update(['grooming_cage_capacity' => (int) $data['maximum']]);
+            $settings->save();
 
-            return response()->json(['success' => true, 'message' => 'Grooming cage capacity saved.', 'capacity' => $capacity->snapshot($settings)]);
+            return response()->json(['success' => true, 'message' => 'Capacity saved.', 'capacity' => $capacity]);
         });
     }
 

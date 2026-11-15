@@ -116,7 +116,7 @@ class ClinicConfinementService
             'clinic_service_id' => 'prohibited', 'quantity' => 'prohibited', 'applied_price' => 'prohibited',
             'admitted_at' => 'prohibited', 'attending_veterinarian_id' => 'prohibited', 'pet_size' => 'prohibited',
         ])->validate();
-        return DB::transaction(function () use ($appointmentId, $data, $actor) {
+        return app(DailyPetQueue::class)->runForDate(now('Asia/Manila')->toDateString(), function () use ($appointmentId, $data, $actor) {
             $case = ClinicAppointment::whereKey($appointmentId)->lockForUpdate()->firstOrFail();
             $existing = $case->confinement()->with('caseService')->first();
             if ($existing) {
@@ -128,6 +128,11 @@ class ClinicConfinementService
             if (! $record?->primary_veterinarian_id) {
                 throw ValidationException::withMessages(['primary_veterinarian_id' => 'Complete the Primary Attending Veterinarian in the Medical Record before admission.']);
             }
+            app(OperationalCapacity::class)->assertCagesAvailable(
+                1,
+                'confinement',
+                'Cage capacity is full. Discharge or release a pet before admitting another confinement patient.',
+            );
             $service = $this->baseService();
             $pricing = app(ClinicServicePriceResolver::class)->resolve($service, $case);
             $entry = app(ClinicCaseServiceRecorder::class)->save($case->id, [

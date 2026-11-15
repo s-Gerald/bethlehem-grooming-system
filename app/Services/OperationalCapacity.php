@@ -6,6 +6,7 @@ use App\Models\BookingPet;
 use App\Models\ClinicAppointment;
 use App\Models\ClinicSetting;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
@@ -42,10 +43,27 @@ class OperationalCapacity
 
     public function snapshot(?ClinicSetting $settings = null): array
     {
-        $used = Schema::hasTable('booking_pets') ? $this->onSiteGroomingPets()->count() : 0;
         $maximum = ($settings ?? ClinicSetting::current())->grooming_cage_capacity ?? ClinicSetting::DEFAULT_CAGE_CAPACITY;
+        $confined = Schema::hasTable('clinic_appointments') && Schema::hasTable('clinic_confinements')
+            ? ClinicAppointment::confined() : null;
+        $grooming = Schema::hasTable('booking_pets') ? $this->onSiteGroomingPets() : null;
+
+        if ($grooming && $confined) {
+            $grooming->whereNotExists((clone $confined)->selectRaw('1')
+                ->whereColumn('clinic_appointments.pet_id', 'booking_pets.pet_id'));
+        }
+
+        // Count known pets once and retain occupancy for legacy rows without a pet ID.
+        $countPets = 'COUNT(DISTINCT pet_id) + COUNT(*) - COUNT(pet_id)';
+        $counts = DB::query()
+            ->selectSub($grooming?->selectRaw($countPets) ?? DB::query()->selectRaw('0'), 'grooming')
+            ->selectSub($confined?->selectRaw($countPets) ?? DB::query()->selectRaw('0'), 'confined')
+            ->first();
+        $used = (int) $counts->grooming + (int) $counts->confined;
 
         return [
+            'grooming' => (int) $counts->grooming,
+            'confined' => (int) $counts->confined,
             'current' => $used,
             'used' => $used,
             'max' => $maximum,
@@ -75,11 +93,16 @@ class OperationalCapacity
             ]);
         }
 
-        $capacity = $service === 'grooming' ? $this->snapshot() : null;
-        if ($capacity && $capacity['used'] + $pets > $capacity['max']) {
-            throw ValidationException::withMessages([
-                'check_in' => 'Grooming capacity is full or cannot accommodate all these pets. Please wait until space is available.',
-            ]);
+        if ($service === 'grooming') {
+            $this->assertCagesAvailable($pets, 'check_in', 'There is not enough cage space for this check-in. Please wait until space is available.');
+        }
+    }
+
+    /** Call under the shared intake lock before creating physical occupancy. */
+    public function assertCagesAvailable(int $pets, string $field, string $message): void
+    {
+        if ($pets > $this->snapshot()['remaining']) {
+            throw ValidationException::withMessages([$field => $message]);
         }
     }
 }

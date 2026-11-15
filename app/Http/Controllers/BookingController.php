@@ -607,7 +607,8 @@ class BookingController extends Controller
     public function groomingCapacity(Request $request)
     {
         $today = Carbon::today()->toDateString();
-        $activeGroomingPets = app(\App\Services\OperationalCapacity::class)->groomingPets();
+        $operations = app(\App\Services\OperationalCapacity::class);
+        $activeGroomingPets = $operations->groomingPets();
 
         $queued = (clone $activeGroomingPets)
             ->where('grooming_state', BookingPet::GROOMING_STATE_NOT_STARTED)
@@ -629,10 +630,13 @@ class BookingController extends Controller
             ->whereNotIn('status', ['cancelled', 'no_show', 'expired'])
             ->count();
 
+        $capacity = $operations->snapshot();
+        unset($capacity['confined']);
+
         return response()->json([
             'success' => true,
             'date' => $today,
-            'capacity' => app(\App\Services\OperationalCapacity::class)->snapshot(),
+            'capacity' => $capacity,
             'queue' => [
                 'active' => $queued + $inProgress,
                 'queued' => $queued,

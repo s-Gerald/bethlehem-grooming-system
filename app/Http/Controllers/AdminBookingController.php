@@ -285,6 +285,7 @@ class AdminBookingController extends Controller
             'clinicOnly' => true, 'canViewRevenue' => false,
             'summary' => ['waitingNow' => (int) ($counts?->waiting ?? 0),
                 'inConsultation' => (int) ($counts?->consulting ?? 0),
+                'confinedNow' => $hasClinic && Schema::hasTable('clinic_confinements') ? ClinicAppointment::confined()->count() : 0,
                 'completedToday' => app(\App\Services\DashboardCompletionMetrics::class)->today(clinicOnly: true)],
             'queuePreview' => $queue,
         ])->header('Cache-Control', 'no-store, private');

@@ -32,13 +32,25 @@ async function dedicatedDataAndConfirmation() {
   assert.equal(e.calls.some(x => ['/clinic/status', '/admin/clinic/blocked-dates'].includes(x.endpoint)), false, 'One operational response supplies the workspace');
   await e.ui.openIntakeConfirmation('stop'); assert.equal(e.ui.intakeModal.open, true);
   assert.equal(e.mutations().length, 0, 'Explicit confirmation is required');
-  e.ui.intakeModal.service = 'clinic';
+  assert.equal(e.ui.intakeModal.service, 'clinic');
   const wait = deferred(); e.holdMutation(wait); const action = e.ui.executeIntakeAction();
   e.ui.closeIntakeConfirmation(); assert.equal(e.ui.intakeModal.open, true);
   const duplicate = e.ui.executeIntakeAction(); wait.resolve(); await Promise.all([action, duplicate]);
   assert.equal(e.mutations().length, 1); assert.equal(e.ui.intakeStopped.clinic, true); assert.equal(e.ui.intakeStopped.grooming, false);
   await e.ui.openIntakeConfirmation('reopen'); assert.equal(e.ui.intakeModal.service, 'clinic');
   await e.ui.executeIntakeAction(); assert.equal(e.ui.intakeStopped.clinic, false);
+  e.ui.selectAvailabilityService('grooming');
+  assert.equal(e.ui.activeAvailability.open_time, '09:00');
+  assert.equal(e.ui.capacity.remaining, 12);
+  await e.ui.openIntakeConfirmation('stop');
+  assert.equal(e.ui.intakeModal.service, 'grooming');
+  assert.match(e.ui.intakeDescription(), /Stop new Grooming intake.*Clinic will remain open/);
+  await e.ui.executeIntakeAction();
+  assert.equal(e.ui.intakeStopped.grooming, true); assert.equal(e.ui.intakeStopped.clinic, false);
+  await e.ui.openIntakeConfirmation('reopen');
+  assert.equal(e.ui.intakeModal.service, 'grooming');
+  await e.ui.executeIntakeAction();
+  assert.equal(e.ui.intakeStopped.grooming, false); assert.equal(e.ui.intakeStopped.clinic, false);
 }
 async function veterinarianAndIdentityInvalidation() {
   const e = setup('staff', false); await e.ui.init(); assert.equal(e.ui.canManage, false); assert.equal(e.ui.availabilityLoaded, true);
@@ -74,9 +86,9 @@ async function staleRefreshCannotOverwriteSavedCapacity() {
 async function confirmationRestoresAVisibleAction() {
   const e = setup(); await e.ui.init(); let focused = '';
   e.ui._intakeOpener = {offsetParent: null, focus() {focused = 'hidden';}};
-  e.ui.$refs = {reopenIntake: {focus() {focused = 'reopen';}}};
+  e.ui.$refs = {intakeAction: {focus() {focused = 'intake action';}}};
   e.ui.intakeStopped = {clinic: true, grooming: true}; e.ui.intakeModal.open = true;
-  e.ui.closeIntakeConfirmation(); assert.equal(focused, 'reopen');
+  e.ui.closeIntakeConfirmation(); assert.equal(focused, 'intake action');
 }
 async function confirmationErrorAndRetry() {
   const e = setup(); await e.ui.init(); await e.ui.openIntakeConfirmation('stop');

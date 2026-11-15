@@ -14,11 +14,12 @@ function adminAvailability() {
     _request: null, _revision: 0, _identityRevision: 0, _destroyed: false,
     get activeAvailability() { return this.availability[this.availabilityService]; },
     get activeAvailabilityLabel() { return this.availabilityService === 'clinic' ? 'Clinic' : 'Grooming'; },
-    get intakeChoices() { return ['clinic', 'grooming'].filter(service => this.intakeStopped[service] === (this.intakeModal.action === 'reopen')); },
+    get activeIntakeStopped() { return this.intakeStopped[this.availabilityService]; },
+    get intakeServiceLabel() { return this.intakeModal.service === 'clinic' ? 'Clinic' : 'Grooming'; },
     get busy() { return this.intakeModal.busy || this.capacitySaving || this.availabilitySaving || this.groomersOnDutySaving || this.blockForm.busy; },
     todayDate() { return new Intl.DateTimeFormat('en-CA', {timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date()); },
     intakeDescription() {
-      const service = this.intakeModal.service === 'clinic' ? 'Clinic' : 'Grooming';
+      const service = this.intakeServiceLabel;
       const other = this.intakeModal.service === 'clinic' ? 'Grooming' : 'Clinic';
       if (this.intakeModal.action === 'reopen') return `Reopen ${service} intake for today. ${other} will remain ${this.intakeStopped[other.toLowerCase()] ? 'stopped' : 'open'}.`;
       return `Stop new ${service} intake for today. ${other} will remain ${this.intakeStopped[other.toLowerCase()] ? 'stopped' : 'open'}.`;
@@ -95,26 +96,26 @@ function adminAvailability() {
     },
     async openIntakeConfirmation(action, opener = null) {
       if (!this.canManage || this.busy || this.intakeModal.open || !['stop', 'reopen'].includes(action)) return;
-      if (!await this.loadAvailability() || !this.canManage) return;
-      this.intakeModal = {open: false, action, service: '', busy: false, error: ''};
-      this.intakeModal.service = this.intakeChoices[0] || '';
-      if (!this.intakeModal.service) return;
-      this._intakeOpener = opener; this.intakeModal.open = true;
+      const service = this.availabilityService;
+      if (!await this.loadAvailability() || !this.canManage || this.intakeModal.open
+          || this.availabilityService !== service || this.activeIntakeStopped !== (action === 'reopen')) return;
+      this._intakeOpener = opener;
+      this.intakeModal = {open: true, action, service, busy: false, error: ''};
       this.$nextTick?.(() => this.$refs?.intakeCancel?.focus());
     },
     closeIntakeConfirmation() {
       if (this.intakeModal.busy) return;
       this.intakeModal.open = false;
       this.$nextTick?.(() => {
-        const fallback = this.intakeStopped.clinic || this.intakeStopped.grooming ? this.$refs?.reopenIntake : this.$refs?.stopIntake;
         const opener = this._intakeOpener;
-        (opener && opener.offsetParent !== null ? opener : fallback)?.focus();
+        (opener && opener.offsetParent !== null ? opener : this.$refs?.intakeAction)?.focus();
       });
     },
     async executeIntakeAction() {
-      if (!this.canManage || !this.intakeModal.open || this.intakeModal.busy || !this.intakeChoices.includes(this.intakeModal.service)) return;
-      this.intakeModal.busy = true; this.intakeModal.error = '';
       const identity = this._identityRevision, {service, action} = this.intakeModal;
+      if (!this.canManage || !this.intakeModal.open || this.intakeModal.busy
+          || this.intakeStopped[service] !== (action === 'reopen')) return;
+      this.intakeModal.busy = true; this.intakeModal.error = '';
       ++this._revision; this._request = null; this.availabilityLoading = false;
       try {
         const data = action === 'stop' ? await API.adminStopToday(service) : await API.adminReopenToday(service);

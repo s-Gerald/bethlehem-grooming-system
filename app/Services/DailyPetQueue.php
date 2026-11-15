@@ -12,7 +12,7 @@ use RuntimeException;
 class DailyPetQueue
 {
     /**
-     * Serialize Clinic and Grooming intake, including across midnight.
+     * Serialize Clinic and Grooming intake and changes that claim cage space, including across midnight.
      */
     public function runForDate(string $queueDate, Closure $callback): mixed
     {

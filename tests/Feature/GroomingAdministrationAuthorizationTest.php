@@ -2996,34 +2996,52 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             ->assertJsonMissingPath('windows.0.is_full')->assertJsonMissingPath('windows.0.recommended');
     }
 
-    public function test_grooming_multi_pet_intake_respects_on_site_capacity_ignores_clinic_and_preferred_time(): void
+    public function test_grooming_multi_pet_intake_is_atomic_against_shared_cage_capacity(): void
     {
+        Schema::create('clinic_confinements', function (Blueprint $table) {
+            $table->unsignedBigInteger('clinic_appointment_id')->unique();
+            $table->timestamp('discharged_at')->nullable();
+        });
         foreach (range(1, 19) as $pet) {
-            DB::table('clinic_appointments')->insert([
+            $caseId = DB::table('clinic_appointments')->insertGetId([
                 'appointment_reference' => 'CV-20260724-'.str_pad($pet, 4, '0', STR_PAD_LEFT),
-                'status' => 'in_consultation',
+                'status' => 'in_consultation', 'pet_id' => 100 + $pet,
             ]);
+            if ($pet === 1) DB::table('clinic_confinements')->insert(['clinic_appointment_id' => $caseId]);
         }
         $this->seedMultiPetBooking();
-        DB::table('bookings')->insert(['booking_id' => 99, 'booking_reference' => 'ON-SITE-19',
-            'booking_date' => now()->toDateString(), 'number_of_pets' => 19, 'status' => 'released']);
-        foreach (range(1, 19) as $pet) {
+        DB::table('bookings')->insert(['booking_id' => 99, 'booking_reference' => 'ON-SITE-18',
+            'booking_date' => now()->toDateString(), 'number_of_pets' => 18, 'status' => 'released']);
+        foreach (range(1, 18) as $pet) {
             DB::table('booking_pets')->insert(['booking_id' => 99, 'grooming_state' => 'finished', 'grooming_end_time' => now()]);
         }
         DB::table('bookings')->where('booking_id', 1)->update(['status' => 'waiting_to_arrive', 'queue_number' => null, 'dropped_off_at' => null]);
         DB::table('booking_pets')->update(['pet_queue_number' => null, 'pet_queue_date' => null]);
+        $this->authenticateAs('admin');
+        $this->getJson('/api/admin/clinic/settings/availability')->assertOk()
+            ->assertJsonPath('capacity.grooming', 18)->assertJsonPath('capacity.confined', 1)
+            ->assertJsonPath('capacity.used', 19)->assertJsonPath('capacity.remaining', 1);
+        $this->patchJson('/api/admin/clinic/settings/capacity', ['maximum' => 18])
+            ->assertUnprocessable()->assertJsonValidationErrors('maximum');
+        $this->patchJson('/api/admin/clinic/settings/capacity', ['maximum' => 19])->assertOk()
+            ->assertJsonPath('capacity.is_full', true)->assertJsonPath('capacity.percent', 100);
+        $this->patchJson('/api/admin/clinic/settings/capacity', ['maximum' => 20])->assertOk();
+        $this->getJson('/api/booking/grooming-capacity')->assertOk()
+            ->assertJsonMissingPath('capacity.confined')->assertJsonPath('capacity.grooming', 18)
+            ->assertJsonPath('capacity.remaining', 1);
         $this->authenticateAs('staff');
         $this->postJson('/api/admin/bookings/1/check-in', ['pet_sizes' => [
             ['booking_pet_id' => 1, 'size' => 'small'], ['booking_pet_id' => 2, 'size' => 'small'],
-        ]])->assertUnprocessable();
+        ]])->assertUnprocessable()->assertJsonValidationErrors('check_in');
         $this->assertDatabaseHas('bookings', ['booking_id' => 1, 'status' => 'waiting_to_arrive', 'queue_number' => null]);
+        $this->assertSame(0, DB::table('booking_pets')->whereNotNull('pet_queue_number')->count());
         DB::table('bookings')->where('booking_id', 99)->update(['status' => 'archived']);
         Carbon::setTestNow(now()->setTime(16, 30));
         $this->postJson('/api/admin/bookings/1/check-in', ['pet_sizes' => [
             ['booking_pet_id' => 1, 'size' => 'small'], ['booking_pet_id' => 2, 'size' => 'small'],
         ]])->assertOk()->assertJsonPath('queue_number', 1);
         $this->getJson('/api/admin/bookings')->assertOk()
-            ->assertJsonPath('capacity.current', 2)->assertJsonPath('summary.waitingNow', 2);
+            ->assertJsonPath('capacity.current', 3)->assertJsonPath('summary.waitingNow', 2);
     }
 
     #[DataProvider('packageFacialSelections')]
@@ -3832,6 +3850,8 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $table->json('common_concerns')->nullable(); $table->timestamps();
         });
         Schema::table('customer_notifications', fn (Blueprint $table) => $table->unsignedBigInteger('clinic_appointment_id')->nullable());
+        $visitGroups = require database_path('migrations/2026_11_11_000001_create_clinic_visit_groups.php');
+        $visitGroups->up();
         $directory = \Tests\Support\capacityRunDirectory();
         $run = function (array $owners, array $payloads, string|array $action) use ($directory): array {
             $environment = ['DB_CONNECTION' => 'mysql', 'DB_DATABASE' => DB::connection()->getDatabaseName(), 'DB_URL' => '',
@@ -3901,11 +3921,15 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $pet = (array) DB::table('booking_pets')->where('booking_id', $template['booking_id'])->first();
             unset($template['booking_id'], $pet['booking_pet_id']);
             $pending = [];
-            foreach (['capacity-a', 'capacity-b'] as $reference) {
+            foreach ([201 => 'capacity-a', 202 => 'capacity-b'] as $petId => $reference) {
+                DB::table('pets')->insert([
+                    'pet_id' => $petId, 'pet_name' => $reference, 'species' => 'dog', 'size' => 'large', 'weight' => 15,
+                ]);
                 $id = DB::table('bookings')->insertGetId(array_replace($template, [
                     'booking_reference' => $reference, 'status' => 'waiting_to_arrive', 'queue_number' => null, 'dropped_off_at' => null,
                 ]), 'booking_id');
-                DB::table('booking_pets')->insert(array_replace($pet, ['booking_id' => $id, 'pet_queue_number' => null, 'pet_queue_date' => null]));
+                DB::table('booking_pets')->insert(array_replace($pet, ['booking_id' => $id, 'pet_id' => $petId,
+                    'pet_queue_number' => null, 'pet_queue_date' => null]));
                 $pending[] = $id;
             }
             \App\Models\ClinicSetting::current()->update(['grooming_cage_capacity' => 3]);
@@ -3985,6 +4009,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $this->assertSame([201, 409], [$a['status'], $b['status']]);
             $this->assertSame('same_service_pet_conflict', $b['body']['code']);
             $this->assertDatabaseCount('bookings', $before + 1);
+            $this->assertConfinementAndGroomingShareTheFinalCage($run, $pending);
             file_put_contents($directory.'/verification.json', json_encode([
                 'driver' => DB::getDriverName(), 'database' => DB::connection()->getDatabaseName(),
                 'overlap_observed' => true, 'grooming_submissions' => 2, 'clinic_submissions' => 2,
@@ -3992,9 +4017,71 @@ class GroomingAdministrationAuthorizationTest extends TestCase
                 'grooming_check_in_numbers' => [1, 2], 'clinic_check_in_numbers' => [1, 2],
                 'premature_queue_numbers' => 0, 'retries_preserved_records' => true,
                 'walkin_unique_references' => 3, 'overlapping_walkin_retry_created_one_visit' => true,
+                'final_cage_race_has_one_winner_in_both_orders' => true,
             ], JSON_THROW_ON_ERROR));
         } finally {
+            $visitGroups->down();
             Schema::dropIfExists('clinic_vitals'); Schema::dropIfExists('clinic_records');
+        }
+    }
+
+    private function assertConfinementAndGroomingShareTheFinalCage(\Closure $run, array $pending): void
+    {
+        // This fixture already has the payment columns added by the clinic charges migration.
+        Schema::table('clinic_appointments', function (Blueprint $table) {
+            $table->dropColumn(['payment_method', 'paid_by_user_id', 'paid_at']);
+            $table->timestamp('archived_at')->nullable();
+        });
+        Schema::table('clinic_records', function (Blueprint $table) {
+            $table->unsignedInteger('primary_veterinarian_id')->nullable();
+            $table->string('primary_veterinarian_name')->nullable();
+        });
+        Schema::table('clinic_vitals', fn (Blueprint $table) => $table->decimal('weight_kg', 5, 2)->nullable());
+        $migrations = array_map(fn ($name) => require database_path('migrations/'.$name), [
+            '2026_10_10_000001_create_clinic_charges_table.php',
+            '2026_10_13_000001_create_clinic_services_table.php',
+            '2026_10_13_000002_create_clinic_case_services_table.php',
+            '2026_10_13_000004_create_clinic_confinements.php',
+            '2026_10_14_000002_configure_confinement_charges.php',
+        ]);
+        $applied = [];
+        try {
+            foreach ($migrations as $migration) {
+                $migration->up();
+                $applied[] = $migration;
+            }
+            DB::table('users')->insert(['user_id' => 108, 'role' => 'admin', 'first_name' => 'Clinic', 'last_name' => 'Admin']);
+            $caseId = DB::table('clinic_appointments')->where('pet_id', 103)->value('id');
+            DB::table('clinic_appointments')->where('id', $caseId)->update(['status' => 'in_consultation']);
+            DB::table('clinic_records')->insert(['clinic_appointment_id' => $caseId,
+                'primary_veterinarian_id' => 108, 'primary_veterinarian_name' => 'Clinic Admin']);
+            DB::table('clinic_vitals')->insert(['clinic_appointment_id' => $caseId, 'weight_kg' => 4]);
+            \App\Models\ClinicService::create([
+                'name' => 'Confinement', 'category_id' => 6, 'identity_key' => hash('sha256', 'Confinement'),
+                'charge_behavior' => 'base_confinement', 'pricing_method' => 'tiered', 'tier_basis' => 'weight_kg',
+                'billing_unit' => 'day', 'is_active' => true,
+                'tiers' => array_map(fn ($size, $max) => ['size' => $size, 'price' => 500, 'max_weight_kg' => $max],
+                    ['small', 'medium', 'large', 'extra_large'], [10, 25, 40, null]),
+            ]);
+            $capacity = app(\App\Services\OperationalCapacity::class);
+            $maximum = $capacity->snapshot()['used'] + 1;
+            \App\Models\ClinicSetting::current()->update(['grooming_cage_capacity' => $maximum]);
+            $admission = ['id' => $caseId, 'request_key' => (string) \Illuminate\Support\Str::uuid(), 'reason' => 'Observation'];
+
+            [$a, $b] = $run([101, 108], [['id' => $pending[0]], $admission], ['grooming-check-in', 'confinement-admit']);
+            $this->assertSame([200, 422], [$a['status'], $b['status']]);
+            $this->assertArrayHasKey('confinement', $b['body']['errors']);
+            $this->assertDatabaseCount('clinic_confinements', 0);
+            $this->assertSame($maximum, $capacity->snapshot()['used']);
+
+            DB::table('bookings')->where('booking_id', $pending[0])->update(['status' => 'archived']);
+            [$a, $b] = $run([108, 102], [$admission, ['id' => $pending[1]]], ['confinement-admit', 'grooming-check-in']);
+            $this->assertSame([201, 422], [$a['status'], $b['status']]);
+            $this->assertArrayHasKey('check_in', $b['body']['errors']);
+            $this->assertDatabaseCount('clinic_confinements', 1);
+            $this->assertSame($maximum, $capacity->snapshot()['used']);
+        } finally {
+            foreach (array_reverse($applied) as $migration) $migration->down();
         }
     }
 

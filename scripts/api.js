@@ -286,6 +286,7 @@ var API = (() => {
       if (/\/(pay|finish|finish-consultation|services|treatments|bulk-treatments|vaccinations)(?:\/|$)/.test(path)) groups.push('inventory');
       if (/\/(check-in|cancel|finish|finish-consultation|pay)$/.test(path) || path === "/admin/clinic-walk-in") groups.push("notifications");
       if (/\/confinement(?:\/|$)/.test(path)) groups.push("clinic-confined");
+      if (/\/confinement(?:\/(?:discharge|undo-admission))?$/.test(path)) groups.push("availability");
       if (path === "/admin/clinic-walk-in" || path === "/admin/clinic-cases") groups.push("customers", "clinic-records");
     } else if (/^\/(?:settings\/availability|admin\/clinic\/settings\/(?:availability|capacity|groomers-on-duty)|admin\/pet-groomers|admin\/grooming\/services)/.test(path)) {
       groups = ["grooming", "dashboard", "availability", "clinic-status"];

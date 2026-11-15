@@ -874,8 +874,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
     groomingQueueDetailsEl?.classList.add("flex");
     const capacity = data?.capacity || {};
     const queue = data?.queue || {};
-    const max = toNumber(capacity.max);
-    const used = toNumber(capacity.used);
+    const grooming = toNumber(capacity.grooming);
     const remaining = toNumber(capacity.remaining);
     const percent = toNumber(capacity.percent);
     const queued = toNumber(queue.queued);
@@ -895,9 +894,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
     groomingQueueSummaryEl.textContent = active
       ? `${active} pet${active === 1 ? "" : "s"} currently in the grooming queue`
       : "No pets in the grooming queue right now";
-    groomingCapacityTextEl.textContent = isFull
-      ? "Grooming capacity is currently full."
-      : `${used}/${max} Grooming pets on-site. ${remaining} space${remaining === 1 ? "" : "s"} available now.`;
+    groomingCapacityTextEl.textContent = `${grooming} Grooming pet${grooming === 1 ? "" : "s"} on-site. ${remaining} space${remaining === 1 ? "" : "s"} available now.`;
     groomingCapacityBadgeEl.textContent = isFull ? "Full" : isBusy ? "Nearly Full" : "Open";
     groomingCapacityBadgeEl.className = `inline-flex self-start rounded-full px-3 py-1 text-xs font-semibold ${isFull
       ? "bg-portal-danger-soft text-portal-danger"

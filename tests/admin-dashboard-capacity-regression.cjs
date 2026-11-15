@@ -11,8 +11,10 @@ ui.refreshIcons = () => {};
 ui.dispatchDashboardEvent = () => {};
 ui.applyDashboardData({
   summary: { today: 7, waitingNow: 3, revenueToday: 1200, revenuePaymentCount: 2 },
-  capacity: { current: 6, max: 20, remaining: 14, percent: 30 },
+  capacity: { grooming: 5, confined: 1, current: 6, max: 20, remaining: 14, percent: 30 },
 });
+assert.equal(ui.groomingOccupancy, 5);
+assert.equal(ui.confinedOccupancy, 1);
 assert.equal(ui.currentCapacity, 6);
 assert.equal(ui.availableCapacity, 14);
 assert.equal(ui.capacityPercent, 30);
@@ -20,8 +22,8 @@ assert.equal(ui.waitingNow, 3, 'Waiting pets remain separate from active capacit
 assert.equal(ui.todayCount, 7);
 const restored = ui.normalizeDashboardPayload(ui.getState());
 assert.equal(restored.currentCapacity, 6);
-assert.equal('clinicCapacity' in restored, false);
-assert.equal('groomingCapacity' in restored, false);
+assert.equal(restored.groomingOccupancy, 5);
+assert.equal(restored.confinedOccupancy, 1);
 assert.equal(restored.waitingNow, 3);
 ui.applyDashboardData({ capacity: { current: 20, max: 20, remaining: 0, percent: 100 } });
 assert.equal(ui.availableCapacity, 0);
@@ -44,20 +46,21 @@ assert.equal(ui.queuedList[0].appointmentTime, '8:00 AM - 9:00 AM', 'Preferred t
 
 const page = fs.readFileSync(path.join(__dirname, '../pages/admin/dashboard.html'), 'utf8');
 const cards = page.slice(page.indexOf('<!-- Summary cards -->'), page.indexOf('<!-- Queue and activity preview -->')).match(/<article[\s\S]*?<\/article>/g);
-assert.equal(cards.length, 4);
-['Grooming capacity', 'Waiting now', 'Completed today', 'Revenue today'].forEach((title, index) => assert.ok(cards[index].includes(title)));
+assert.equal(cards.length, 5);
+['Capacity', 'Waiting now', 'Confined', 'Completed today', 'Revenue today'].forEach((title, index) => assert.ok(cards[index].includes(title)));
 ui.clinicOnly = true;
 assert.equal(ui.queuePreviewStatusLabel('in-progress'), 'In Consultation');
 assert.equal(ui.queuePreviewStatusLabel('queued'), 'Waiting');
 assert.ok(cards[0].includes("clinicOnly ? 'Waiting Now'"));
 assert.ok(cards[1].includes("clinicOnly ? 'In Consultation'"));
-assert.doesNotMatch(cards[2], /[Cc]apacity/);
+assert.doesNotMatch(cards[2], /[Cc]apacity|Grooming/);
 assert.doesNotMatch(cards.join(''), /This week|[Ss]hared [Cc]apacity/);
 assert.match(cards[0], /role="progressbar"/);
-assert.doesNotMatch(cards[0], /clinicCapacity|groomingCapacity|Clinic|by_service/);
+assert.match(cards[0], /aria-label="Capacity in use"/);
 const availability = fs.readFileSync(path.join(__dirname, '../resources/views/admin/availability.html'), 'utf8');
-assert.match(availability, />Grooming Cage Capacity<\/h4>/);
+assert.match(availability, />Capacity<\/h4>/);
 assert.match(availability, /capacity\.used/);
 assert.match(availability, /capacity\.max/);
 assert.doesNotMatch(availability, /Advance Pre-register Window|Clinic and Grooming share/);
+assert.doesNotMatch(availability, /intake-service|Select service/);
 console.log('Dashboard capacity, waiting metrics, KPI hierarchy, and check-in preview regression checks passed.');

@@ -168,20 +168,46 @@
             <p x-cloak x-show="availabilityError" class="admin-load-error" role="alert"><span x-text="availabilityError"></span><button type="button" @click="identityReady ? loadAvailability() : verifyIdentity()">Retry</button></p>
             <div x-cloak x-show="availabilityLoaded" class="space-y-6">
               <section class="rounded-[24px] border border-[#d7e3ef] bg-white p-5 shadow-sm lg:p-6">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                  <h3 class="text-xl font-bold text-[#1f3850]">Today's Intake</h3>
-                  <div x-show="canManage" class="flex flex-wrap gap-2">
-                    <button x-ref="stopIntake" x-show="!intakeStopped.clinic || !intakeStopped.grooming" type="button" @click="openIntakeConfirmation('stop', $event.currentTarget)" :disabled="availabilityLoading || busy" class="min-h-11 whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#284b69] disabled:opacity-50">Stop Intake</button>
-                    <button x-ref="reopenIntake" x-show="intakeStopped.clinic || intakeStopped.grooming" type="button" @click="openIntakeConfirmation('reopen', $event.currentTarget)" :disabled="availabilityLoading || busy" class="min-h-11 whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#284b69] disabled:opacity-50">Reopen Intake</button>
+                <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+                  <h3 class="text-xl font-bold text-[#1f3850]">Service Hours</h3>
+                  <div class="inline-flex rounded-xl border border-[#cfe0ee] bg-[#eef5fb] p-1" role="group" aria-label="Service Hours and Today's Intake">
+                    <template x-for="service in ['clinic', 'grooming']" :key="service"><button type="button" @click="selectAvailabilityService(service)" :disabled="availabilitySaving" :aria-pressed="availabilityService === service" class="min-h-10 flex-1 rounded-lg px-4 py-2 text-sm font-semibold" :class="availabilityService === service ? 'bg-[#315b7e] text-white' : 'text-[#315b7e] hover:bg-white'" x-text="service === 'clinic' ? 'Clinic' : 'Grooming'"></button></template>
                   </div>
                 </div>
-                <div class="mt-4 grid gap-3 sm:grid-cols-2" role="status">
-                  <template x-for="service in ['clinic', 'grooming']" :key="service">
-                    <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#d7e3ef] px-4 py-3">
-                      <span class="font-semibold text-[#1f3850]" x-text="service === 'clinic' ? 'Clinic' : 'Grooming'"></span>
-                      <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="intakeStopped[service] ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-700'" x-text="intakeStopped[service] ? 'Intake Stopped' : 'Accepting Customers'"></span>
-                    </div>
-                  </template>
+                <template x-if="canManage"><form @submit.prevent="saveAvailability()" class="mt-5">
+                  <div class="grid gap-4 sm:grid-cols-2">
+                    <label class="block text-sm font-semibold text-[#5c7690]">Opening Time<input type="time" required x-model="activeAvailability.open_time" :disabled="availabilitySaving" class="w-full min-w-0 rounded-xl border border-[#d7e3ef] bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 mt-2" /></label>
+                    <label class="block text-sm font-semibold text-[#5c7690]">Closing Time<input type="time" required x-model="activeAvailability.close_time" :disabled="availabilitySaving" class="w-full min-w-0 rounded-xl border border-[#d7e3ef] bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 mt-2" /></label>
+                  </div>
+                  <div class="mt-4 flex flex-wrap justify-end gap-2"><button type="button" @click="resetAvailability()" :disabled="availabilitySaving" class="min-h-11 rounded-xl border border-[#d7e3ef] px-4 py-2 text-sm font-semibold text-[#315b7e]">Reset</button><button type="submit" :disabled="availabilitySaving" class="min-h-11 whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#284b69] disabled:opacity-50" x-text="availabilitySaving ? 'Saving…' : 'Save Hours'"></button></div>
+                </form></template>
+                  <p class="mt-3 text-xs text-slate-500">Midday break: 12:00 PM – 1:00 PM.</p>
+
+                <dl x-show="!canManage" class="mt-5 grid grid-cols-2 gap-4 text-sm"><div><dt class="text-slate-500">Opening Time</dt><dd class="mt-1 font-semibold" x-text="activeAvailability.open_time"></dd></div><div><dt class="text-slate-500">Closing Time</dt><dd class="mt-1 font-semibold" x-text="activeAvailability.close_time"></dd></div></dl>
+                <p x-show="availabilitySuccess" role="status" class="mt-3 text-sm text-emerald-700" x-text="availabilitySuccess"></p>
+                <section class="mt-5 border-t border-[#d7e3ef] pt-5">
+                  <h4 class="font-bold text-[#1f3850]">Capacity</h4>
+                  <dl class="mt-3 grid grid-cols-2 gap-4">
+                    <div class="flex flex-col"><dt class="order-last text-sm font-medium text-[#5c7690]">Grooming</dt><dd class="text-3xl font-semibold tabular-nums text-[#1f3850]" x-text="capacity?.grooming ?? '—'"></dd></div>
+                    <div class="flex flex-col"><dt class="order-last text-sm font-medium text-[#5c7690]">Confined</dt><dd class="text-3xl font-semibold tabular-nums text-[#1f3850]" x-text="capacity?.confined ?? '—'"></dd></div>
+                  </dl>
+                  <p x-show="capacity" class="mt-3 flex flex-wrap justify-between gap-x-2 text-sm font-medium text-[#355674]">
+                    <span x-text="capacity ? capacity.used + ' / ' + capacity.max + ' total' : ''"></span>
+                    <span x-text="capacity ? capacity.remaining + (capacity.remaining === 1 ? ' space available' : ' spaces available') : ''"></span>
+                  </p>
+                  <div role="progressbar" aria-label="Capacity in use" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="capacity?.percent ?? 0" class="mt-2 h-2 overflow-hidden rounded-full bg-[#eef5fb]"><div class="h-full rounded-full bg-[#315b7e]" :style="{width: (capacity?.percent ?? 0) + '%'}"></div></div>
+                  <template x-if="canManage"><form @submit.prevent="saveCapacity()" class="mt-4 flex flex-col items-start gap-3 sm:flex-row sm:items-end"><label class="block w-full text-sm font-semibold text-[#5c7690] sm:w-auto">Maximum Cage Capacity<input type="number" min="1" max="500" step="1" required x-model="capacityMaximum" :disabled="capacitySaving" class="w-full min-w-0 rounded-xl border border-[#d7e3ef] bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 mt-2" /></label><button type="submit" :disabled="capacitySaving" class="min-h-11 whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#284b69] disabled:opacity-50" x-text="capacitySaving ? 'Saving…' : 'Save Capacity'"></button></form></template>
+                  <p x-show="capacityError" role="alert" class="mt-3 text-sm text-red-600" x-text="capacityError"></p><p x-show="capacitySuccess" role="status" class="mt-3 text-sm text-emerald-700" x-text="capacitySuccess"></p>
+                </section>
+              </section>
+              <section class="rounded-[24px] border border-[#d7e3ef] bg-white p-5 shadow-sm lg:p-6">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <h3 class="text-xl font-bold text-[#1f3850]">Today's Intake</h3>
+                  <button x-ref="intakeAction" x-show="canManage" type="button" @click="openIntakeConfirmation(activeIntakeStopped ? 'reopen' : 'stop', $event.currentTarget)" :disabled="availabilityLoading || busy" class="min-h-11 whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#284b69] disabled:opacity-50" x-text="(activeIntakeStopped ? 'Reopen ' : 'Stop ') + activeAvailabilityLabel + ' Intake'"></button>
+                </div>
+                <div class="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#d7e3ef] px-4 py-3" role="status">
+                  <span class="font-semibold text-[#1f3850]" x-text="activeAvailabilityLabel"></span>
+                  <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="activeIntakeStopped ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-700'" x-text="activeIntakeStopped ? 'Intake Stopped' : 'Accepting Customers'"></span>
                 </div>
               </section>
               <div x-cloak class="rounded-[24px] border border-[#d7e3ef] bg-white p-5 shadow-sm lg:p-6">
@@ -219,36 +245,6 @@
               </div>
 
 
-              <section class="rounded-[24px] border border-[#d7e3ef] bg-white p-5 shadow-sm lg:p-6">
-                <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                  <h3 class="text-xl font-bold text-[#1f3850]">Service Hours</h3>
-                  <div class="inline-flex rounded-xl border border-[#cfe0ee] bg-[#eef5fb] p-1" role="group" aria-label="Service hours">
-                    <template x-for="service in ['clinic', 'grooming']" :key="service"><button type="button" @click="selectAvailabilityService(service)" :disabled="availabilitySaving" :aria-pressed="availabilityService === service" class="min-h-10 flex-1 rounded-lg px-4 py-2 text-sm font-semibold" :class="availabilityService === service ? 'bg-[#315b7e] text-white' : 'text-[#315b7e] hover:bg-white'" x-text="service === 'clinic' ? 'Clinic' : 'Grooming'"></button></template>
-                  </div>
-                </div>
-                <template x-if="canManage"><form @submit.prevent="saveAvailability()" class="mt-5">
-                  <div class="grid gap-4 sm:grid-cols-2">
-                    <label class="block text-sm font-semibold text-[#5c7690]">Opening Time<input type="time" required x-model="activeAvailability.open_time" :disabled="availabilitySaving" class="w-full min-w-0 rounded-xl border border-[#d7e3ef] bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 mt-2" /></label>
-                    <label class="block text-sm font-semibold text-[#5c7690]">Closing Time<input type="time" required x-model="activeAvailability.close_time" :disabled="availabilitySaving" class="w-full min-w-0 rounded-xl border border-[#d7e3ef] bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 mt-2" /></label>
-                  </div>
-                  <div class="mt-4 flex flex-wrap justify-end gap-2"><button type="button" @click="resetAvailability()" :disabled="availabilitySaving" class="min-h-11 rounded-xl border border-[#d7e3ef] px-4 py-2 text-sm font-semibold text-[#315b7e]">Reset</button><button type="submit" :disabled="availabilitySaving" class="min-h-11 whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#284b69] disabled:opacity-50" x-text="availabilitySaving ? 'Saving…' : 'Save Hours'"></button></div>
-                </form></template>
-                  <p class="mt-3 text-xs text-slate-500">Midday break: 12:00 PM – 1:00 PM.</p>
-
-                <dl x-show="!canManage" class="mt-5 grid grid-cols-2 gap-4 text-sm"><div><dt class="text-slate-500">Opening Time</dt><dd class="mt-1 font-semibold" x-text="activeAvailability.open_time"></dd></div><div><dt class="text-slate-500">Closing Time</dt><dd class="mt-1 font-semibold" x-text="activeAvailability.close_time"></dd></div></dl>
-                <p x-show="availabilitySuccess" role="status" class="mt-3 text-sm text-emerald-700" x-text="availabilitySuccess"></p>
-                <section x-show="availabilityService === 'grooming'" class="mt-5 border-t border-[#d7e3ef] pt-5">
-                  <h4 class="font-bold text-[#1f3850]">Grooming Cage Capacity</h4>
-                  <dl class="mt-4 grid gap-4 sm:grid-cols-3 text-sm">
-                    <div><dt class="text-slate-500">Current Capacity</dt><dd class="mt-1 text-lg font-bold text-[#1f3850]" x-text="capacity ? capacity.used + ' / ' + capacity.max + ' pets' : '—'"></dd></div>
-                    <div><dt class="text-slate-500">Maximum Capacity</dt><dd class="mt-1 text-lg font-bold text-[#1f3850]" x-text="capacity?.max ?? '—'"></dd></div>
-                    <div><dt class="text-slate-500">Available Spaces</dt><dd class="mt-1 text-lg font-bold text-[#1f3850]" x-text="capacity?.remaining ?? '—'"></dd></div>
-                  </dl>
-                  <div role="progressbar" aria-label="Grooming cage utilization" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="capacity?.percent ?? 0" class="mt-3 h-2 overflow-hidden rounded-full bg-[#eef5fb]"><div class="h-full rounded-full bg-[#315b7e]" :style="{width: (capacity?.percent ?? 0) + '%'}"></div></div>
-                  <template x-if="canManage"><form @submit.prevent="saveCapacity()" class="mt-4 flex flex-col items-start gap-3 sm:flex-row sm:items-end"><label class="block w-full text-sm font-semibold text-[#5c7690] sm:w-auto">Maximum Cage Capacity<input type="number" min="1" max="500" step="1" required x-model="capacityMaximum" :disabled="capacitySaving" class="w-full min-w-0 rounded-xl border border-[#d7e3ef] bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 mt-2" /></label><button type="submit" :disabled="capacitySaving" class="min-h-11 whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#284b69] disabled:opacity-50" x-text="capacitySaving ? 'Saving…' : 'Save Capacity'"></button></form></template>
-                  <p x-show="capacityError" role="alert" class="mt-3 text-sm text-red-600" x-text="capacityError"></p><p x-show="capacitySuccess" role="status" class="mt-3 text-sm text-emerald-700" x-text="capacitySuccess"></p>
-                </section>
-              </section>
               <div class="overflow-hidden rounded-[24px] border border-[#d7e3ef] bg-white shadow-sm">
                 <div class="border-b border-[#e8f0f8] px-5 py-5 lg:px-6">
                   <div class="flex items-start gap-3">
@@ -351,8 +347,7 @@
             </div>
           </div>
           <dialog x-ref="intakeDialog" x-effect="intakeModal.open ? $el.showModal() : $el.close()" @cancel.prevent="closeIntakeConfirmation()" class="admin-intake-dialog rounded-3xl bg-white p-6 text-slate-800 shadow-2xl" aria-labelledby="intake-title" aria-describedby="intake-description" :aria-busy="intakeModal.busy">
-            <h3 id="intake-title" class="text-lg font-bold text-[#1f3850]" x-text="intakeModal.action === 'stop' ? 'Stop Intake for Today?' : 'Reopen Intake?'"></h3>
-            <fieldset class="mt-4" :disabled="intakeModal.busy"><legend class="mb-2 text-sm font-semibold">Select service</legend><div class="flex gap-4"><template x-for="service in intakeChoices" :key="service"><label class="flex items-center gap-2 text-sm"><input type="radio" name="intake-service" :value="service" x-model="intakeModal.service" class="accent-[#315b7e]" /><span x-text="service === 'clinic' ? 'Clinic' : 'Grooming'"></span></label></template></div></fieldset>
+            <h3 id="intake-title" class="text-lg font-bold text-[#1f3850]" x-text="intakeModal.action === 'stop' ? 'Stop ' + intakeServiceLabel + ' Intake for Today?' : 'Reopen ' + intakeServiceLabel + ' Intake?'"></h3>
             <p id="intake-description" class="mt-4 text-sm text-slate-600" x-text="intakeDescription()"></p>
             <p x-show="intakeModal.error" role="alert" class="mt-3 text-sm text-red-600" x-text="intakeModal.error"></p>
             <div class="mt-5 flex flex-wrap justify-end gap-3"><button x-ref="intakeCancel" type="button" @click="closeIntakeConfirmation()" :disabled="intakeModal.busy" class="min-h-11 rounded-xl border border-[#d7e3ef] px-4 py-2 text-sm font-semibold text-[#315b7e]">Cancel</button><button type="button" @click="executeIntakeAction()" :disabled="intakeModal.busy" class="min-h-11 whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#284b69] disabled:opacity-50" x-text="intakeModal.busy ? 'Please wait…' : intakeModal.action === 'stop' ? 'Stop Intake' : 'Reopen Intake'"></button></div>
@@ -366,7 +361,7 @@
 
     <script src="/scripts/components/success-toast.js"></script>
     
-    <script src="/scripts/components/admin-availability.js?v=20261027&names=20261028-v2&name-policy=20261110"></script>
+    <script src="/scripts/components/admin-availability.js?shared-cages=20261115&v=20261027&names=20261028-v2&name-policy=20261110"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261111&urls=20261103&inventory-expiry=20261111"></script>
   </body>

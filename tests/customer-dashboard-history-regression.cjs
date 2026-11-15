@@ -292,15 +292,15 @@ async function testPreviewsAndNearestSchedule() {
 }
 
 async function testQueueStates() {
-  for (const [used, label] of [[1, "Open"], [16, "Nearly Full"], [20, "Full"]]) {
+  for (const [used, label] of [[7, "Open"], [16, "Nearly Full"], [20, "Full"]]) {
     const { element } = await runDashboard(async () => ({ bookings: [], history: [] }), {
-      capacity: { capacity: { max: 20, used, remaining: 20 - used, percent: used * 5, is_full: used >= 20 }, queue: { active: 1 } },
+      capacity: { capacity: { max: 20, grooming: 5, used, remaining: 20 - used, percent: used * 5, is_full: used >= 20 }, queue: { active: 1 } },
     });
     assert.equal(element("groomingCapacityBadge").textContent, label);
     assert.equal(element("dashboardLoadingScreen").classList.contains("hidden"), true);
     assert.equal(element("groomingQueueDetails").classList.contains("flex"), true);
     assert.equal(element("groomingQueueSummary").textContent, "1 pet currently in the grooming queue");
-    assert.match(element("groomingCapacityText").textContent, /Grooming pets on-site|Grooming capacity/);
+    assert.equal(element("groomingCapacityText").textContent, `5 Grooming pets on-site. ${20 - used} spaces available now.`);
     assert.doesNotMatch(element("groomingCapacityText").textContent, /Clinic|grooming slots|daily capacity/);
   }
 }

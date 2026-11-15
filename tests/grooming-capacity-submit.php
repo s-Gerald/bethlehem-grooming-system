@@ -74,6 +74,9 @@ try {
             : $app->call([app(\App\Http\Controllers\AdminClinicController::class), 'checkIn'], ['id' => (int) $request->input('id')]);
     } elseif ($action === 'capacity-update') {
         $response = app(\App\Http\Controllers\ClinicSettingController::class)->updateCapacity($request);
+    } elseif ($action === 'confinement-admit') {
+        $response = $app->call([app(\App\Http\Controllers\ClinicConfinementController::class), 'admit'],
+            ['request' => $request, 'id' => (int) $request->input('id')]);
     } elseif ($action === 'intake-stop') {
         $response = app(\App\Http\Controllers\ClinicClosureController::class)->stopToday($request);
     } else throw new RuntimeException('Unsupported isolated test operation.');

@@ -32,6 +32,7 @@ class AdminDashboardSummaryTest extends TestCase
         \Laravel\Sanctum\Sanctum::actingAs(new User([
             'role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => 'veterinarian', 'is_active' => true,
         ]));
+        $this->createConfinementEpisodes();
         try {
             foreach (['checked_in', 'in_consultation', 'for_payment', 'completed', 'cancelled'] as $i => $status) {
                 DB::table('clinic_appointments')->insert([
@@ -43,12 +44,22 @@ class AdminDashboardSummaryTest extends TestCase
                 ]);
             }
             DB::table('bookings')->insert(['booking_reference' => 'GROOMING', 'booking_date' => '2026-06-24', 'status' => 'checked_in']);
+            DB::table('clinic_appointments')->insert(['id' => 20, 'appointment_reference' => 'CARRY-OVER',
+                'appointment_date' => '2026-06-23', 'status' => 'in_consultation', 'pet_id' => 20]);
+            DB::table('clinic_confinements')->insert([
+                ['clinic_appointment_id' => 20, 'discharged_at' => null],
+                ['clinic_appointment_id' => 3, 'discharged_at' => now()],
+                ['clinic_appointment_id' => 5, 'discharged_at' => null],
+            ]);
             $this->getJson('/api/admin/dashboard/summary')->assertOk()
                 ->assertJsonPath('clinicOnly', true)->assertJsonPath('summary.waitingNow', 1)
+                ->assertJsonPath('summary.confinedNow', 1)
                 ->assertJsonPath('summary.inConsultation', 1)->assertJsonPath('summary.completedToday', ['clinic' => 1])
                 ->assertJsonMissingPath('summary.today')
                 ->assertJsonMissingPath('capacity')->assertJsonMissingPath('summary.revenueToday')
                 ->assertJsonCount(2, 'queuePreview')->assertJsonPath('queuePreview.0.serviceType', 'clinic');
+            DB::table('clinic_confinements')->where('clinic_appointment_id', 20)->update(['discharged_at' => now()]);
+            $this->getJson('/api/admin/dashboard/summary')->assertOk()->assertJsonPath('summary.confinedNow', 0);
             app(\App\Services\ActivityRecorder::class)->record('checked_in', 'clinic', 'clinic_visit', '1', 'Clinic', [], true);
             app(\App\Services\ActivityRecorder::class)->record('grooming_started', 'grooming', 'grooming_visit', '1', 'Grooming', [], true);
             $activity = $this->getJson('/api/admin/dashboard/activity')->assertOk()->json('recentActivity');
@@ -60,6 +71,38 @@ class AdminDashboardSummaryTest extends TestCase
         } finally {
             Schema::dropIfExists('clinic_appointments');
         }
+    }
+
+    public function test_shared_cage_capacity_counts_distinct_pets_with_confinement_precedence(): void
+    {
+        $this->createConfinementEpisodes();
+        DB::table('bookings')->insert(['booking_id' => 1, 'booking_reference' => 'ON-SITE',
+            'booking_date' => '2026-06-24', 'status' => 'released']);
+        foreach ([1, 1, 2, 3, 4, 5, 6] as $petId) {
+            DB::table('booking_pets')->insert(['booking_id' => 1, 'pet_id' => $petId, 'grooming_state' => 'finished']);
+        }
+        foreach ([6, 7] as $petId) {
+            $caseId = DB::table('clinic_appointments')->insertGetId(['appointment_reference' => 'CL-'.$petId,
+                'appointment_date' => '2026-06-23', 'status' => 'in_consultation', 'pet_id' => $petId]);
+            DB::table('clinic_confinements')->insert(['clinic_appointment_id' => $caseId]);
+        }
+        DB::table('clinic_appointments')->insert(['appointment_reference' => 'CL-8',
+            'appointment_date' => '2026-06-24', 'status' => 'checked_in', 'pet_id' => 8]);
+
+        \Laravel\Sanctum\Sanctum::actingAs(new User(['role' => 'admin', 'is_active' => true]));
+        $this->getJson('/api/admin/dashboard/summary')->assertOk()->assertJsonPath('capacity', [
+            'grooming' => 5, 'confined' => 2, 'current' => 7, 'used' => 7, 'max' => 20,
+            'remaining' => 13, 'percent' => 35, 'is_full' => false,
+        ]);
+    }
+
+    private function createConfinementEpisodes(): void
+    {
+        Schema::create('clinic_confinements', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('clinic_appointment_id')->unique();
+            $table->timestamp('discharged_at')->nullable();
+        });
     }
 
     public function test_dashboard_read_access_and_revenue_follow_authenticated_staff_role(): void

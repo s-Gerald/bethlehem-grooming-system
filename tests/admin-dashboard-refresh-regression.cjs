@@ -126,6 +126,29 @@ async function invalidationDoesNotOverlapSummaryRequests() {
   e.respond(() => summary); await e.API.getAdminDashboardSummary();
   assert.equal(e.calls.filter(c => c.endpoint.endsWith('/summary')).length, 2);
 }
+async function confinementMutationsRefreshClinicSummary() {
+  const e = environment(), ui = component(e), timer = polling(e);
+  e.c.window.dispatchEvent = event => {
+    for (const listener of timer.windowListeners.get(event.type) || []) listener(event);
+  };
+  let confinedNow = 0;
+  e.respond(endpoint => endpoint.endsWith('/summary')
+    ? {clinicOnly: true, summary: {confinedNow, completedToday: {clinic: 3}}}
+    : {});
+  await ui.loadDashboardSummary();
+  ui.startContentPolling();
+  await e.API.adminRequest('POST', '/admin/clinic-cases/1/confinement/observations', {});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(e.calls.filter(call => call.endpoint.endsWith('/summary')).length, 1);
+  for (const [suffix, count] of [['', 1], ['/discharge', 0], ['', 1], ['/undo-admission', 0]]) {
+    confinedNow = count;
+    await e.API.adminRequest('POST', '/admin/clinic-cases/1/confinement' + suffix, {});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(ui.confinedNow, count);
+  }
+  assert.equal(e.calls.filter(call => call.endpoint.endsWith('/summary')).length, 5);
+  ui.destroy();
+}
 async function revenueRequiresServerAuthorizationAndClearsOnRoleChange() {
   const e = environment(), ui = component(e), timer = polling(e);
   e.API.setUserRole('admin');
@@ -189,7 +212,7 @@ async function completionBreakdownFollowsServerRoleAndReplacesOldData() {
   let failed = 0;
   for (const test of [retainedFailureIsVisibleAndRetryRecovers, boundedFailuresAndManualRetryShareOneRequest,
     singlePollAndVisibilityLifecycle, navigationRefreshAndSessionOwnership, activityFailuresAlsoRetainAndRecover,
-    invalidationDoesNotOverlapSummaryRequests, revenueRequiresServerAuthorizationAndClearsOnRoleChange,
+    invalidationDoesNotOverlapSummaryRequests, confinementMutationsRefreshClinicSummary, revenueRequiresServerAuthorizationAndClearsOnRoleChange,
     activityFiltersRejectStaleResponsesAndPreserveSummary, completionBreakdownFollowsServerRoleAndReplacesOldData]) {
     try { await test(); console.log(test.name+' passed'); }
     catch (error) { failed++; console.error(test.name, error); }
