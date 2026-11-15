@@ -3541,6 +3541,10 @@ var API = (() => {
     return request("GET", `/admin/clinic-appointments/${id}/signed-consent`, null, getAdminToken());
   }
 
+  function getArchivedClinicSessionDetails(id) {
+    return request("GET", `/admin/clinic-appointments/${encodeURIComponent(id)}/history-session`, null, getAdminToken());
+  }
+
   async function getClinicRecords(page = 1) {
     return request("GET", `/admin/clinic-records?page=${page}`, null, getAdminToken());
   }
@@ -3983,6 +3987,7 @@ var API = (() => {
     submitWalkIn,
     submitClinicWalkIn,
     getClinicSignedConsent,
+    getArchivedClinicSessionDetails,
     getClinicRecords,
     getActiveClinicCases,
     getClinicCase,

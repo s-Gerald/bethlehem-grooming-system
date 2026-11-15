@@ -156,6 +156,14 @@
       .clinic-visit-close { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 40px; height: 40px; border: 1px solid var(--history-border); border-radius: 9px; color: var(--history-accent); }
       .clinic-visit-close:hover, .clinic-attachment:hover { background: var(--history-hover); }
       .clinic-visit-dialog :is(button, a, [tabindex]):focus-visible { outline: 2px solid var(--history-accent); outline-offset: 3px; }
+      .history-record-footer { display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.625rem; padding: 0.875rem 1.5rem; border-top: 1px solid var(--history-border); }
+      .history-record-footer p { flex: 1 0 100%; font-size: 0.875rem; }
+      .history-record-footer .history-details-button { display: inline-flex; align-items: center; gap: 0.5rem; }
+      .history-record-footer .ph-icon { width: 1.125rem; height: 1.125rem; }
+      .history-print-button.history-details-button { color: var(--history-paper); background: var(--history-accent); border-color: var(--history-accent); }
+      .history-print-button.history-details-button:hover:not([aria-disabled="true"]) { background: var(--history-ink); }
+      .history-print-button[aria-disabled="true"] { opacity: 0.65; cursor: default; }
+      .clinic-history-patient { display: flex; flex-direction: column; gap: 1.25rem; }
       .clinic-visit-body { overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 1.25rem; padding: 1.25rem 1.5rem 1.5rem; min-height: 0; }
       .clinic-visit-fields > div { min-width: 0; }
       .history-record-body dt, .history-note-label, .clinic-visit-dialog dt, .clinic-visit-muted { color: var(--history-muted); font-size: 0.75rem; }
@@ -195,7 +203,7 @@
       @media (max-width: 639px) {
         .clinic-visit-overlay { padding: 0.5rem; }
         .clinic-visit-dialog { max-height: 96dvh; border-radius: 14px; }
-        .clinic-visit-heading, .clinic-visit-body { padding: 1rem; }
+        .clinic-visit-heading, .clinic-visit-body, .history-record-footer { padding: 1rem; }
         .clinic-visit-fields, .clinic-treatment .clinic-visit-fields { grid-template-columns: minmax(0, 1fr); }
         .clinic-services :is(th, td) { padding-inline: 0.25rem; }
         .clinic-services :is(th, td):last-child { width: 27%; }
@@ -208,6 +216,8 @@
     <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110" />
     <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
     <link rel="stylesheet" href="/css/short-notes.css" />
+    <link rel="stylesheet" href="/css/components/confirmation.css?v=history-print-20261115" />
+    <link rel="stylesheet" href="/css/components/history-print.css?v=20261115" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -323,7 +333,7 @@
           </button>
         </div>
       </aside>
-      <script src="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&owner-session=20261111&clinic-consent=20261115"></script>
+      <script src="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&owner-session=20261111&clinic-consent=20261115&history-print=20261115"></script>
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-policy-20261110"></script>
       <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110"></script>
 
@@ -615,7 +625,7 @@
                       <div><p class="history-label history-signature-label">Signature</p><img class="history-signature" :src="signedConsent.signature_image" alt="Customer signature" width="230" height="72" /></div>
                     </template>
                     <details x-ref="signedAgreement" x-show="signedConsent?.agreement_snapshot" class="history-signed-agreement">
-                      <summary>View signed agreement</summary>
+                      <summary data-print-label="Signed agreement">View signed agreement</summary>
                       <p class="history-label" x-text="'Version ' + (signedConsent?.consent_version || '')"></p>
                       <p x-text="signedConsent?.agreement_snapshot?.grooming_intro"></p>
                       <ul><template x-for="(condition, index) in (signedConsent?.agreement_snapshot?.grooming_conditions || [])" :key="index"><li x-text="condition"></li></template></ul>
@@ -681,7 +691,7 @@
                   </template>
                 </section>
 
-                <section class="history-record-section" aria-labelledby="history-payment-title">
+                <section class="history-record-section" aria-labelledby="history-payment-title" data-print-payment>
                   <h5 id="history-payment-title">Payment Summary</h5>
                   <dl x-show="detailsBooking?.productAddons?.length" class="history-payment-totals">
                     <div><dt>Grooming Services</dt><dd x-text="formatServicesAvailedTotal(detailsBooking)"></dd></div>
@@ -704,6 +714,14 @@
                   </div>
                 </section>
               </div>
+              <footer class="history-record-footer">
+                <p x-show="recordPrintError" x-text="recordPrintError" role="alert"></p>
+                <button type="button" class="history-details-button" @click="closeDetails()">Close</button>
+                <button type="button" class="history-details-button history-print-button" :aria-disabled="consentLoading || !!consentError || printingRecord" @click="printGroomingRecord()">
+                  <svg class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#printer"></use></svg>
+                  Print Record
+                </button>
+              </footer>
             </div>
           </div>
 
@@ -735,34 +753,33 @@
                   <p x-show="detailsClinicSession?.paid_at" x-text="'Total paid ' + clinicMoney(detailsClinicSession?.total_amount)"></p>
                   <div class="mt-2 flex flex-wrap gap-2">
                     <template x-for="patient in detailsClinicSession?.patients || []" :key="patient.id">
-                      <button type="button" @click="viewClinicPatient(patient)" :disabled="clinicPatientLoading" :aria-pressed="patient.id === detailsClinicRecord?.id" class="history-details-button" x-text="(patient.pet?.name || 'Patient') + ' · ' + patient.appointment_reference"></button>
+                      <button type="button" @click="viewClinicPatient(patient)" :disabled="!clinicSessionPatients" :aria-pressed="patient.id === detailsClinicRecord?.id" class="history-details-button" x-text="(patient.pet?.name || 'Patient') + ' · ' + patient.appointment_reference"></button>
                     </template>
                   </div>
                 </section>
-                <section class="clinic-visit-section" x-show="clinicSummaryFields.length || clinicMedicalAttachments.length" aria-labelledby="clinic-summary-title">
-                  <h5 id="clinic-summary-title">Visit Summary</h5>
-                  <dl class="clinic-visit-fields">
-                    <template x-for="field in clinicSummaryFields" :key="field.label"><div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div></template>
-                  </dl>
-                  <div x-show="clinicMedicalAttachments.length">
-                    <p class="clinic-visit-muted" style="margin-top: 1rem">Medical Record Attachments</p>
-                    <div class="clinic-attachments">
-                      <template x-for="file in clinicMedicalAttachments" :key="file.id">
-                        <button type="button" class="clinic-attachment" @click="openClinicAttachment(file)" :disabled="clinicAttachmentBusyId === file.id" :aria-label="'Open attachment ' + file.file_name + ' in a new tab'">
-                          <svg class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#file-image"></use></svg><span x-text="file.file_name"></span><span x-show="clinicAttachmentBusyId === file.id">Opening…</span>
-                        </button>
-                      </template>
-                    </div>
+                <template x-for="patient in clinicDetailPatients" :key="patient.visit.id">
+                  <div class="clinic-history-patient" x-show="patient.visit.id === detailsClinicRecord?.id" :data-clinic-history-patient="patient.visit.id">
+                    <section class="clinic-visit-section" x-show="clinicSummaryFields(patient.visit).length || clinicMedicalAttachments(patient.visit, patient.care).length" :aria-labelledby="'clinic-summary-title-' + patient.visit.id">
+                      <h5 :id="'clinic-summary-title-' + patient.visit.id">Visit Summary</h5>
+                      <dl class="clinic-visit-fields">
+                        <template x-for="field in clinicSummaryFields(patient.visit)" :key="field.label"><div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div></template>
+                      </dl>
+                      <div x-show="clinicMedicalAttachments(patient.visit, patient.care).length">
+                        <p class="clinic-visit-muted" style="margin-top: 1rem">Medical Record Attachments</p>
+                        <div class="clinic-attachments">
+                          <template x-for="file in clinicMedicalAttachments(patient.visit, patient.care)" :key="file.id">
+                            <button type="button" class="clinic-attachment" @click="openClinicAttachment(file)" :disabled="clinicAttachmentBusyId === file.id" :aria-label="'Open attachment ' + file.file_name + ' in a new tab'">
+                              <svg class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#file-image"></use></svg><span data-print-filename x-text="file.file_name"></span><span x-show="clinicAttachmentBusyId === file.id">Opening…</span>
+                            </button>
+                          </template>
+                        </div>
+                      </div>
+                    </section>
                   </div>
-                </section>
-                <section class="clinic-visit-section" aria-labelledby="clinic-history-consent-title">
+                </template>
+                <section class="clinic-visit-section" x-ref="clinicRecordConsent" aria-labelledby="clinic-history-consent-title">
                   <h5 id="clinic-history-consent-title">Consent &amp; Signature</h5>
-                  <admin-loader x-cloak x-show="clinicConsentLoading"></admin-loader>
-                  <div x-show="clinicConsentError">
-                    <p x-text="clinicConsentError" role="alert" class="text-sm text-red-600"></p>
-                    <button type="button" class="history-details-button" @click="loadClinicSignedConsent()">Retry</button>
-                  </div>
-                  <p x-show="!clinicConsentLoading && !clinicConsentError && !clinicSignedConsent" class="clinic-visit-muted">Consent record not available for this visit.</p>
+                  <p x-show="!clinicCareLoading && !clinicCareError && !clinicSignedConsent" class="clinic-visit-muted">Consent record not available for this visit.</p>
                   <template x-if="clinicSignedConsent">
                     <div>
                       <dl class="history-record-fields">
@@ -771,89 +788,101 @@
                         <div><dt>Signed at</dt><dd x-text="consentSignedAt(clinicSignedConsent)"></dd></div>
                       </dl>
                       <p class="history-label history-signature-label">Signature</p>
-                      <img class="history-signature" :src="clinicSignedConsent.signature_image" alt="Customer signature" width="230" height="72" />
-                      <details class="history-signed-agreement">
-                        <summary>View signed agreement</summary>
+                      <img x-show="clinicSignedConsent.signature_image" class="history-signature" :src="clinicSignedConsent.signature_image" alt="Customer signature" width="230" height="72" />
+                      <details x-show="clinicSignedConsent.agreement_snapshot" class="history-signed-agreement">
+                        <summary data-print-label="Signed agreement">View signed agreement</summary>
                         <p class="history-label" x-text="'Version ' + clinicSignedConsent.consent_version"></p>
-                        <p class="font-semibold" x-text="clinicSignedConsent.agreement_snapshot.title"></p>
+                        <p class="font-semibold" x-text="clinicSignedConsent.agreement_snapshot?.title"></p>
                         <div class="mt-3 space-y-4">
-                          <template x-for="(clause, index) in clinicSignedConsent.agreement_snapshot.clauses" :key="index">
+                          <template x-for="(clause, index) in clinicSignedConsent.agreement_snapshot?.clauses || []" :key="index">
                             <div class="max-w-[65ch]">
                               <h6 x-text="clause.heading"></h6>
                               <div x-text="clause.text"></div>
                             </div>
                           </template>
                         </div>
-                        <p x-text="clinicSignedConsent.agreement_snapshot.acknowledgment"></p>
+                        <p x-text="clinicSignedConsent.agreement_snapshot?.acknowledgment"></p>
                       </details>
                     </div>
                   </template>
                 </section>
-                <section class="clinic-visit-section" x-show="clinicVitals.length" aria-labelledby="clinic-vitals-title">
-                  <h5 id="clinic-vitals-title">Vitals</h5>
-                  <dl class="clinic-visit-vitals"><template x-for="field in clinicVitals" :key="field.label"><div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div></template></dl>
-                </section>
                 <admin-loader x-cloak x-show="clinicCareLoading"></admin-loader>
                 <div role="alert" x-show="clinicCareError" style="margin-top: 1rem"><p class="clinic-visit-note" x-text="clinicCareError"></p><button type="button" class="history-details-button" @click="loadClinicCare()">Retry care details</button></div>
-                <section class="clinic-visit-section" x-show="clinicHasCare" aria-labelledby="clinic-care-title">
-                  <h5 id="clinic-care-title">Care Provided</h5>
-                  <div class="clinic-care-block" x-show="clinicCare?.treatments.length || clinicText(detailsClinicRecord?.record?.treatment_given)">
-                    <h6>Treatment</h6>
-                    <p class="note-text clinic-visit-note" x-show="clinicText(detailsClinicRecord?.record?.treatment_given)" x-text="detailsClinicRecord?.record?.treatment_given"></p>
-                    <template x-for="item in clinicCare?.treatments || []" :key="item.id">
-                      <article class="clinic-treatment">
-                        <p class="clinic-visit-note"><strong x-text="item.treatment_name || item.vaccine_name"></strong> <span class="clinic-visit-muted" x-text="item.treatment_type === 'medicine' ? 'Medicine' : 'Vaccine'"></span></p>
-                        <dl class="clinic-visit-fields"><template x-for="field in clinicTreatmentFields(item)" :key="field.label"><div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div></template></dl>
-                      </article>
-                    </template>
-                  </div>
-                  <div class="clinic-care-block" x-show="clinicCare?.services.length">
-                    <h6>Clinic Services</h6>
-                    <table class="clinic-services">
-                      <caption class="sr-only">Services performed during this visit</caption>
-                      <thead><tr><th scope="col">Service</th><th scope="col">Notes</th><th scope="col">Price</th></tr></thead>
-                      <tbody>
-                        <template x-for="entry in clinicCare?.services || []" :key="entry.id">
-                          <tr>
-                            <td><strong x-text="clinicServiceName(entry)"></strong><p class="clinic-visit-muted" x-show="Number(entry.quantity) > 1" x-text="'Quantity: ' + Number(entry.quantity)"></p>
-                              <div class="clinic-attachments" x-show="clinicServiceAttachments(entry).length">
-                                <template x-for="file in clinicServiceAttachments(entry)" :key="file.id">
-                                  <button type="button" class="clinic-attachment" @click="openClinicAttachment(file)" :disabled="clinicAttachmentBusyId === file.id" :aria-label="'Open attachment ' + file.file_name + ' in a new tab'"><svg class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#file-image"></use></svg><span x-text="file.file_name"></span><span x-show="clinicAttachmentBusyId === file.id">Opening…</span></button>
-                                </template>
-                              </div>
-                            </td>
-                            <td class="note-text" x-text="clinicText(entry.notes)"></td><td x-text="clinicServicePrice(entry)"></td>
-                          </tr>
+                <template x-for="patient in clinicDetailPatients" :key="patient.visit.id">
+                  <article class="clinic-history-patient" x-show="patient.visit.id === detailsClinicRecord?.id" :data-clinic-history-patient="patient.visit.id">
+                    <section class="clinic-visit-section" x-show="clinicVitals(patient.visit).length" :aria-labelledby="'clinic-vitals-title-' + patient.visit.id">
+                      <h5 :id="'clinic-vitals-title-' + patient.visit.id">Vitals</h5>
+                      <dl class="clinic-visit-vitals"><template x-for="field in clinicVitals(patient.visit)" :key="field.label"><div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div></template></dl>
+                    </section>
+                    <section class="clinic-visit-section" x-show="clinicHasCare(patient.visit, patient.care)" :aria-labelledby="'clinic-care-title-' + patient.visit.id">
+                      <h5 :id="'clinic-care-title-' + patient.visit.id">Care Provided</h5>
+                      <div class="clinic-care-block" x-show="patient.care?.treatments.length || clinicText(patient.visit.record?.treatment_given)">
+                        <h6>Treatment</h6>
+                        <p class="note-text clinic-visit-note" x-show="clinicText(patient.visit.record?.treatment_given)" x-text="patient.visit.record?.treatment_given"></p>
+                        <template x-for="item in patient.care?.treatments || []" :key="item.id">
+                          <article class="clinic-treatment">
+                            <p class="clinic-visit-note"><strong x-text="item.treatment_name || item.vaccine_name"></strong> <span class="clinic-visit-muted" x-text="item.treatment_type === 'medicine' ? 'Medicine' : 'Vaccine'"></span></p>
+                            <dl class="clinic-visit-fields"><template x-for="field in clinicTreatmentFields(item)" :key="field.label"><div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div></template></dl>
+                          </article>
                         </template>
-                      </tbody>
-                    </table>
-                  </div>
-                  <div class="clinic-care-block" x-show="clinicDiagnostics.length">
-                    <h6>Diagnostics</h6>
-                    <template x-for="(entry, index) in clinicDiagnostics" :key="index"><div class="clinic-prescription"><p class="clinic-visit-note" x-show="clinicText(entry.diagnostic)"><strong x-text="entry.diagnostic"></strong></p><p class="clinic-visit-note" x-show="clinicText(entry.result)" x-text="entry.result"></p><p class="note-text clinic-visit-note" x-show="clinicText(entry.notes)" x-text="entry.notes"></p></div></template>
-                  </div>
-                  <div class="clinic-care-block" x-show="clinicPrescriptions.length">
-                    <h6>Prescriptions</h6>
-                    <template x-for="(entry, index) in clinicPrescriptions" :key="index"><div class="clinic-prescription"><p class="clinic-visit-note"><strong x-text="entry.medicine"></strong></p><p class="note-text clinic-visit-note" x-show="clinicPrescriptionText(entry)" x-text="clinicPrescriptionText(entry)"></p></div></template>
-                  </div>
-                  <div class="clinic-care-block" x-show="clinicCare?.confinement && clinicConfinementFields.length">
-                    <h6>Confinement</h6>
-                    <dl class="clinic-visit-fields"><template x-for="field in clinicConfinementFields" :key="field.label"><div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div></template></dl>
-                  </div>
-                </section>
-                <p role="alert" class="clinic-visit-note" x-show="clinicAttachmentError" x-text="clinicAttachmentError" style="margin-top: 1rem"></p>
-                <section class="clinic-visit-section" x-show="clinicText(detailsClinicRecord?.record?.follow_up_date) || clinicText(detailsClinicRecord?.record?.follow_up_notes)" aria-labelledby="clinic-followup-title">
-                  <h5 id="clinic-followup-title">Follow-up &amp; Discharge</h5>
-                  <dl class="clinic-visit-fields">
-                    <div x-show="clinicText(detailsClinicRecord?.record?.follow_up_date)"><dt>Follow-up date</dt><dd x-text="formatAppointmentDate(detailsClinicRecord?.record?.follow_up_date, '')"></dd></div>
-                    <div x-show="clinicText(detailsClinicRecord?.record?.follow_up_notes)"><dt>Instructions</dt><dd class="note-text" x-text="detailsClinicRecord?.record?.follow_up_notes"></dd></div>
-                  </dl>
-                </section>
-                <section class="clinic-visit-section clinic-visit-payment" x-show="clinicHasPayment(detailsClinicRecord)" aria-labelledby="clinic-payment-title">
-                  <h5 id="clinic-payment-title" x-text="detailsClinicSession ? 'Patient subtotal' : 'Payment'">Payment</h5><p class="history-amount" x-show="clinicMoney(detailsClinicRecord?.total_amount)" x-text="clinicMoney(detailsClinicRecord?.total_amount)"></p><p class="history-label" x-text="detailsClinicRecord?.payment_status_label"></p>
-                  <a x-show="clinicTransactionUrl()" :href="clinicTransactionUrl()" class="history-transaction-link">View Full Transaction →</a>
-                </section>
+                      </div>
+                      <div class="clinic-care-block" x-show="patient.care?.services.length">
+                        <h6>Clinic Services</h6>
+                        <table class="clinic-services">
+                          <caption class="sr-only">Services performed during this visit</caption>
+                          <thead><tr><th scope="col">Service</th><th scope="col">Notes</th><th scope="col">Price</th></tr></thead>
+                          <tbody>
+                            <template x-for="entry in patient.care?.services || []" :key="entry.id">
+                              <tr>
+                                <td><strong x-text="clinicServiceName(entry)"></strong><p class="clinic-visit-muted" x-show="Number(entry.quantity) > 1" x-text="'Quantity: ' + Number(entry.quantity)"></p>
+                                  <div class="clinic-attachments" x-show="clinicServiceAttachments(entry, patient.visit).length">
+                                    <template x-for="file in clinicServiceAttachments(entry, patient.visit)" :key="file.id">
+                                      <button type="button" class="clinic-attachment" @click="openClinicAttachment(file)" :disabled="clinicAttachmentBusyId === file.id" :aria-label="'Open attachment ' + file.file_name + ' in a new tab'"><svg class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#file-image"></use></svg><span data-print-filename x-text="file.file_name"></span><span x-show="clinicAttachmentBusyId === file.id">Opening…</span></button>
+                                    </template>
+                                  </div>
+                                </td>
+                                <td class="note-text" x-text="clinicText(entry.notes)"></td><td x-text="clinicServicePrice(entry)"></td>
+                              </tr>
+                            </template>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div class="clinic-care-block" x-show="clinicDiagnostics(patient.visit).length">
+                        <h6>Diagnostics</h6>
+                        <template x-for="(entry, index) in clinicDiagnostics(patient.visit)" :key="index"><div class="clinic-prescription"><p class="clinic-visit-note" x-show="clinicText(entry.diagnostic)"><strong x-text="entry.diagnostic"></strong></p><p class="clinic-visit-note" x-show="clinicText(entry.result)" x-text="entry.result"></p><p class="note-text clinic-visit-note" x-show="clinicText(entry.notes)" x-text="entry.notes"></p></div></template>
+                      </div>
+                      <div class="clinic-care-block" x-show="clinicPrescriptions(patient.visit).length">
+                        <h6>Prescriptions</h6>
+                        <template x-for="(entry, index) in clinicPrescriptions(patient.visit)" :key="index"><div class="clinic-prescription"><p class="clinic-visit-note"><strong x-text="entry.medicine"></strong></p><p class="note-text clinic-visit-note" x-show="clinicPrescriptionText(entry)" x-text="clinicPrescriptionText(entry)"></p></div></template>
+                      </div>
+                      <div class="clinic-care-block" x-show="patient.care?.confinement && clinicConfinementFields(patient.care?.confinement).length">
+                        <h6>Confinement</h6>
+                        <dl class="clinic-visit-fields"><template x-for="field in clinicConfinementFields(patient.care?.confinement)" :key="field.label"><div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div></template></dl>
+                      </div>
+                    </section>
+                    <section class="clinic-visit-section" x-show="clinicText(patient.visit.record?.follow_up_date) || clinicText(patient.visit.record?.follow_up_notes)" :aria-labelledby="'clinic-followup-title-' + patient.visit.id">
+                      <h5 :id="'clinic-followup-title-' + patient.visit.id">Follow-up &amp; Discharge</h5>
+                      <dl class="clinic-visit-fields">
+                        <div x-show="clinicText(patient.visit.record?.follow_up_date)"><dt>Follow-up date</dt><dd x-text="formatAppointmentDate(patient.visit.record?.follow_up_date, '')"></dd></div>
+                        <div x-show="clinicText(patient.visit.record?.follow_up_notes)"><dt>Instructions</dt><dd class="note-text" x-text="patient.visit.record?.follow_up_notes"></dd></div>
+                      </dl>
+                    </section>
+                    <section class="clinic-visit-section clinic-visit-payment" x-show="clinicHasPayment(patient.visit)" :aria-labelledby="'clinic-payment-title-' + patient.visit.id">
+                      <h5 :id="'clinic-payment-title-' + patient.visit.id" x-text="detailsClinicSession ? 'Patient subtotal' : 'Payment'">Payment</h5><p class="history-amount" x-show="clinicMoney(patient.visit.total_amount)" x-text="clinicMoney(patient.visit.total_amount)"></p><p class="history-label" x-text="patient.visit.payment_status_label"></p>
+                      <a x-show="clinicTransactionUrl(patient.visit)" :href="clinicTransactionUrl(patient.visit)" class="history-transaction-link">View Full Transaction →</a>
+                    </section>
+                  </article>
+                </template>
+                <p role="alert" class="clinic-visit-note" x-show="clinicAttachmentError" x-text="clinicAttachmentError"></p>
               </div>
+              <footer class="history-record-footer">
+                <p x-show="recordPrintError" x-text="recordPrintError" role="alert"></p>
+                <button type="button" class="history-details-button" @click="closeClinicRecord()">Close</button>
+                <button type="button" class="history-details-button history-print-button" :aria-disabled="clinicCareLoading || !!clinicCareError || printingRecord" @click="printClinicRecord()">
+                  <svg class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#printer"></use></svg>
+                  Print Record
+                </button>
+              </footer>
             </div>
           </div>
 
@@ -866,7 +895,7 @@
 
     <script src="/scripts/components/clinic-attachments.js?v=20261015"></script>
     <script src="/scripts/components/recorded-product-pricing.js?v=20261029"></script>
-    <script src="/scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261110&invoice-products=20261029&urls=20261103&queue-copy=20261103-admin-v1&pet-history=20261110&service-history=20261111&history-link=20261111&owner-session=20261111&clinic-consent=20261115"></script>
+    <script src="/scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261110&invoice-products=20261029&urls=20261103&queue-copy=20261103-admin-v1&pet-history=20261110&service-history=20261111&history-link=20261111&owner-session=20261111&clinic-consent=20261115&history-print=20261115"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261111&urls=20261103&inventory-expiry=20261111"></script>
   </body>

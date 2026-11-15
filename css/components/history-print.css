@@ -1,0 +1,72 @@
+.history-print { display: none; }
+
+@media print {
+  html:has(body.history-record-printing), body.history-record-printing {
+    background: white !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+  body.history-record-printing > :not(.history-print) { display: none !important; }
+  body.history-record-printing > .history-print {
+    display: block;
+    --history-border: var(--confirmation-border);
+    --history-accent: var(--confirmation-blue);
+    --history-ink: var(--confirmation-ink);
+    --history-muted: var(--confirmation-muted);
+    overflow-wrap: anywhere;
+    orphans: 3;
+    widows: 3;
+  }
+  .history-print :is(h2, h3, h4, h5, h6) { color: var(--confirmation-heading) !important; break-after: avoid; }
+  .history-print h2 { font-size: 11.5pt; }
+  .history-print :is(h5, .history-pet-heading h6) { font-size: 10.5pt; }
+  .history-print h6 { font-size: 10pt; font-weight: 700; }
+  .history-print p:empty { display: none; }
+  .history-print :is(.confirmation-fields, .history-record-fields, .history-pet-profile, .history-pet-timeline, .clinic-visit-vitals) {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.5mm 5mm;
+    break-inside: avoid;
+  }
+  .history-print .confirmation-fields { margin-block: 2mm; }
+  .history-print dt { break-after: avoid; }
+  .history-print :is(dd, .note-text, .clinic-visit-note, .history-signed-agreement p, .history-signed-agreement li, .history-signed-agreement h6 + div) { white-space: pre-wrap; }
+  .history-print :is(.history-record-section, .clinic-visit-section, .history-print-patient) {
+    display: block;
+    border-top: 0.45pt solid var(--confirmation-border);
+    margin-top: 3mm;
+    padding-top: 2mm !important;
+  }
+  .history-print :is(.history-pet-record, .clinic-treatment, .history-pet-timing, .history-pet-services) { padding-block: 2mm; }
+  .history-print .history-pet-heading { border: 0; padding: 0; margin-bottom: 1.5mm; break-after: avoid; }
+  .history-print .history-pet-body { display: block; }
+  .history-print .history-pet-body > :not(:first-child) { margin-top: 1.5mm; }
+  .history-print :is(.history-record-type, .history-preference-chip) { padding: 0; }
+  .history-print .history-preference-chip { display: block; }
+  .history-print :is(.history-service-line, .history-product-line, .clinic-visit-note, .clinic-services) { font-size: inherit; }
+  .history-print .clinic-visit-note { line-height: inherit; }
+  .history-print .clinic-visit-fields, .history-print .history-notes { display: block; }
+  .history-print :is(.clinic-visit-fields, .history-notes) > div + div { margin-top: 1.25mm; }
+  .history-print .clinic-treatment .clinic-visit-fields {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.5mm 5mm;
+  }
+  .history-print .clinic-treatment .clinic-visit-fields > div { margin: 0; min-width: 0; }
+  .history-print :is(.clinic-care-block, .clinic-treatment, .clinic-attachments) { margin-top: 2mm; }
+  .history-print .clinic-attachments { gap: 1mm 3mm; }
+  .history-print .clinic-care-block:has(> .clinic-services):not(:has(tbody > tr:nth-child(4))) { break-inside: avoid; }
+  .history-print .clinic-services :is(th, td) { padding-block: 1.5mm; }
+  .history-print .clinic-services thead { break-after: avoid; }
+  .history-print .clinic-services tr { break-inside: avoid; }
+  .history-print .history-signature {
+    width: 52mm;
+    height: 17mm;
+    border-radius: 0;
+    break-inside: avoid;
+  }
+  .history-print .history-signature-label { margin-top: 2mm; break-after: avoid; }
+  .history-print .history-signed-agreement { font-size: inherit; line-height: inherit; }
+  .history-print .history-signed-agreement :is(p, ul) { margin-top: 1.25mm; }
+  .history-print .clinic-visit-payment p + p { margin-top: 0.5mm; }
+}

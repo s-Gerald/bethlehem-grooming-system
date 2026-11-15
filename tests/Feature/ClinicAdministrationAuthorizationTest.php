@@ -347,6 +347,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'current clinic case' => ['GET', '/api/admin/pets/1/clinic-case'],
             'appointment listing' => ['GET', '/api/admin/clinic-appointments'],
             'clinic archive listing' => ['GET', '/api/admin/clinic-appointments/archived'],
+            'clinic archive session' => ['GET', '/api/admin/clinic-appointments/1/history-session'],
             'medical record modification' => ['POST', '/api/admin/clinic-appointments/1/record', [
                 'diagnosis' => 'Must not be accepted',
             ]],
@@ -387,6 +388,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'current clinic case' => ['GET', '/api/admin/pets/1/clinic-case'],
             'view appointments and detailed records' => ['GET', '/api/admin/clinic-appointments'],
             'view archived clinic records' => ['GET', '/api/admin/clinic-appointments/archived'],
+            'view archived clinic session' => ['GET', '/api/admin/clinic-appointments/1/history-session'],
             'create clinic walk-in' => ['POST', '/api/admin/clinic-walk-in'],
             'check in appointment' => ['POST', '/api/admin/clinic-appointments/1/check-in'],
             'start consultation' => ['POST', '/api/admin/clinic-appointments/1/start-consultation'],
@@ -478,6 +480,69 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->getJson('/api/admin/clinic-appointments/archived?search=CL-FIRST-PATIENT')
             ->assertOk()->assertJsonCount(1, 'archived')->assertJsonCount(2, 'archived.0.session.patients')
             ->assertJsonPath('archived.0.session.patients.1.appointment_reference', 'CL-SECOND-PATIENT');
+    }
+
+    public function test_archive_session_details_include_each_terminal_patient_in_one_bounded_read(): void
+    {
+        $this->authenticateAs('staff', subrole: 'clinic_receptionist');
+        Schema::create('vaccination_records', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedInteger('pet_id');
+            $table->unsignedBigInteger('clinic_appointment_id');
+            $table->string('vaccine_name');
+            $table->date('administered_date');
+            $table->timestamp('published_at')->nullable();
+            $table->timestamp('voided_at')->nullable();
+        });
+        $group = \App\Models\ClinicVisitGroup::create(['source' => 'walk_in', 'service_day' => '2024-02-10']);
+        foreach ([1 => 'completed', 2 => 'cancelled', 3 => 'in_consultation', 4 => 'completed'] as $id => $status) {
+            $this->insertClinicAppointment($status, $id);
+            DB::table('pets')->insert(['pet_id' => $id, 'pet_name' => "Patient {$id}"]);
+            DB::table('clinic_appointments')->where('id', $id)->update(['pet_id' => $id, 'appointment_date' => '2024-02-10']);
+            DB::table('clinic_records')->insert(['clinic_appointment_id' => $id, 'working_diagnosis' => "Findings {$id}"]);
+            DB::table('clinic_vitals')->insert(['clinic_appointment_id' => $id, 'weight_kg' => $id * 3]);
+            DB::table('vaccination_records')->insert([
+                'clinic_appointment_id' => $id, 'pet_id' => $id, 'vaccine_name' => "Saved treatment {$id}",
+                'administered_date' => '2024-02-10', 'published_at' => '2024-02-10 11:00:00',
+            ]);
+        }
+        foreach ([
+            ['pet_id' => 1, 'vaccine_name' => 'Draft', 'published_at' => null],
+            ['pet_id' => 1, 'vaccine_name' => 'Voided', 'voided_at' => '2024-02-10 11:15:00'],
+            ['pet_id' => 2, 'vaccine_name' => 'Mismatched patient'],
+        ] as $excluded) {
+            DB::table('vaccination_records')->insert($excluded + [
+                'clinic_appointment_id' => 1, 'administered_date' => '2024-02-10', 'published_at' => '2024-02-10 11:00:00',
+            ]);
+        }
+        $this->createAttachment(2, 'clinic/attachments/2/visit-result.pdf', 'Fixture', storeFile: false);
+        DB::table('clinic_appointments')->whereIn('id', [1, 2, 3])->update(['clinic_visit_group_id' => $group->id]);
+        $url = '/api/admin/clinic-appointments/1/history-session';
+        $this->getJson($url)->assertNotFound();
+        DB::table('clinic_appointments')->where('id', 3)->update(['clinic_visit_group_id' => null]);
+        DB::enableQueryLog();
+        $this->getJson($url)->assertOk()->assertHeader('Cache-Control', 'no-store, private')
+            ->assertJsonPath('session.id', $group->id)->assertJsonCount(2, 'patients')
+            ->assertJsonPath('patients.0.visit.record.working_diagnosis', 'Findings 1')
+            ->assertJsonPath('patients.1.visit.record.working_diagnosis', 'Findings 2')
+            ->assertJsonPath('patients.1.visit.vitals.weight_kg', '6.00')
+            ->assertJsonPath('patients.1.visit.record.attachments.0.file_name', 'visit-result.pdf')
+            ->assertJsonCount(1, 'patients.0.care.treatments')
+            ->assertJsonPath('patients.0.care.treatments.0.treatment_name', 'Saved treatment 1')
+            ->assertJsonPath('patients.1.care.treatments.0.treatment_name', 'Saved treatment 2')
+            ->assertJsonMissingPath('patients.0.visit.charges')
+            ->assertJsonPath('consent', null);
+        $dataQueries = fn () => collect(DB::getQueryLog())->filter(fn ($entry) =>
+            ! str_contains($entry['query'], 'sqlite_master') && ! str_contains($entry['query'], 'pragma_table_xinfo'));
+        $twoPatients = $dataQueries()->count();
+        DB::disableQueryLog();
+
+        DB::table('clinic_appointments')->where('id', 4)->update(['clinic_visit_group_id' => $group->id]);
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->getJson($url)->assertOk()->assertJsonCount(3, 'patients');
+        $this->assertSame($twoPatients, $dataQueries()->count());
+        DB::disableQueryLog();
     }
 
     #[DataProvider('receptionistRoles')]
@@ -2209,6 +2274,12 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         }
         $this->getJson('/api/admin/clinic-appointments/archived')->assertOk()
             ->assertJsonCount(1, 'archived')->assertJsonMissingPath('archived.0.consent');
+        $history = $this->getJson("/api/admin/clinic-appointments/{$ids[0]}/history-session")->assertOk()
+            ->assertJsonCount(3, 'patients')
+            ->assertJsonPath('consent.id', $consentId)
+            ->assertJsonPath('consent.agreement_snapshot.operating_hours', '9:00 AM – 4:00 PM')
+            ->assertJsonMissingPath('consent.signature_strokes');
+        $this->assertStringStartsWith('data:image/svg+xml;base64,', $history->json('consent.signature_image'));
         $this->authenticateAs('admin');
         $this->getJson('/api/admin/clinic-appointments/'.$ids[0].'/signed-consent')->assertOk()->assertJsonPath('consent.id', $consentId);
         DB::table('clinic_consents')->delete();
@@ -3581,6 +3652,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ['GET', 'api/admin/clinic-appointments', 'role:admin,staff'],
             ['GET', 'api/admin/clinic-appointments/{id}/signed-consent', 'role:admin,staff'],
             ['GET', 'api/admin/clinic-appointments/archived', 'role:admin,staff'],
+            ['GET', 'api/admin/clinic-appointments/{id}/history-session', 'role:admin,staff'],
             ['POST', 'api/admin/clinic-appointments/{id}/check-in', 'role:admin,staff'],
             ['POST', 'api/admin/clinic-appointments/{id}/start-consultation', 'role:admin,staff'],
             ['POST', 'api/admin/clinic-appointments/{id}/finish-consultation', 'role:admin,staff'],
@@ -3627,7 +3699,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             fn (RoutingRoute $route) => str_starts_with($route->getActionName(), AdminClinicController::class.'@'),
         );
 
-        $this->assertCount(22, $adminClinicRoutes);
+        $this->assertCount(23, $adminClinicRoutes);
         $adminClinicRoutes->each(function (RoutingRoute $route): void {
             $this->assertContains('role:admin,staff', $route->gatherMiddleware());
             $this->assertContains('clinic:access', $route->gatherMiddleware());

@@ -347,6 +347,41 @@ class AdminClinicController extends Controller
         return response()->json(['consent' => $consent])->header('Cache-Control', 'no-store');
     }
 
+    public function archivedSession(int $id, AdminPetProfileController $profile, AdminVaccinationController $treatments)
+    {
+        $anchor = ClinicAppointment::query()->whereIn('status', ClinicAppointment::TERMINAL_STATUSES)
+            ->whereNotNull('clinic_visit_group_id')
+            ->whereDoesntHave('visitGroup.appointments', fn ($patients) => $patients->blocking())
+            ->with('visitGroup.consent')->findOrFail($id);
+        $group = $anchor->visitGroup;
+        abort_unless($group, 404);
+
+        $patients = $group->appointments()
+            ->whereIn('status', ClinicAppointment::TERMINAL_STATUSES)
+            ->with(array_merge($this->appointmentRelations(includeCharges: false), $profile->caseCareRelations(historyView: true)))
+            ->orderBy('id')->get();
+
+        return response()->json([
+            'session' => $this->archivedSessionSummary($group),
+            'consent' => $group->consent,
+            'patients' => $patients->map(fn (ClinicAppointment $patient) => [
+                'visit' => array_diff_key($this->formatAppointment($patient, includeCharges: false), [
+                    'charges' => true, 'cash_received' => true, 'change' => true, 'processed_by' => true, 'payment_method' => true,
+                ]),
+                'care' => $profile->formatCaseCare($patient, $treatments),
+            ])->values(),
+        ])->header('Cache-Control', 'no-store, private');
+    }
+
+    private function archivedSessionSummary(\App\Models\ClinicVisitGroup $group): array
+    {
+        return [
+            'id' => $group->id,
+            'total_amount' => $group->total_amount,
+            'paid_at' => $group->paid_at?->toIso8601String(),
+        ];
+    }
+
     public function archivedIndex(Request $request)
     {
         $request->validate(['page' => 'nullable|integer|min:1']);
@@ -415,12 +450,11 @@ class AdminClinicController extends Controller
         $archived = $page->getCollection()
             ->map(fn (ClinicAppointment $appointment) => [
                 ...$this->formatAppointment($appointment),
+                'pet_id' => $appointment->pet_id,
                 'treatment_count' => $appointment->treatment_count ?? 0,
                 'service_count' => $appointment->service_count ?? 0,
                 'session' => $appointment->clinic_visit_group_id ? [
-                    'id' => $appointment->clinic_visit_group_id,
-                    'total_amount' => $appointment->visitGroup->total_amount,
-                    'paid_at' => $appointment->visitGroup->paid_at?->toIso8601String(),
+                    ...$this->archivedSessionSummary($appointment->visitGroup),
                     'patients' => $patients->get($appointment->clinic_visit_group_id)->map(fn ($patient) => $this->formatAppointment($patient, true))->values(),
                 ] : null,
             ])
@@ -978,9 +1012,9 @@ class AdminClinicController extends Controller
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    public function formatAppointment(ClinicAppointment $a, bool $listOnly = false): array
+    public function formatAppointment(ClinicAppointment $a, bool $listOnly = false, bool $includeCharges = true): array
     {
-        $a->loadMissing($this->appointmentRelations($listOnly));
+        $a->loadMissing($this->appointmentRelations($listOnly, $includeCharges));
         $user = $a->user;
         $walkin = $a->walkin;
         $pet = $a->pet;
@@ -1105,9 +1139,9 @@ class AdminClinicController extends Controller
         return $data;
     }
 
-    private function appointmentRelations(bool $listOnly = false): array
+    private function appointmentRelations(bool $listOnly = false, bool $includeCharges = true): array
     {
-        $key = $listOnly ? 'list' : 'detail';
+        $key = $listOnly ? 'list' : ($includeCharges ? 'detail' : 'history');
         if (isset($this->resolvedAppointmentRelations[$key])) return $this->resolvedAppointmentRelations[$key];
         $this->hasConfinements ??= Schema::hasTable('clinic_confinements');
         $relations = [
@@ -1138,7 +1172,7 @@ class AdminClinicController extends Controller
             }
         }
 
-        if (! $listOnly && ($this->hasClinicCharges ??= Schema::hasTable('clinic_charges'))) {
+        if (! $listOnly && $includeCharges && ($this->hasClinicCharges ??= Schema::hasTable('clinic_charges'))) {
             $relations[] = 'charges';
         }
         if (! $listOnly && $this->hasConfinements) {
@@ -1171,6 +1205,7 @@ class AdminClinicController extends Controller
             'cancelled' => 'Cancelled',
             'no_show' => 'No Show',
             'expired' => 'Expired',
+            'archived' => 'Archived',
             default => 'Data is currently unavailable',
         };
     }

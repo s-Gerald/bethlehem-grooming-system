@@ -61,11 +61,8 @@ export function readConfirmationData(key) {
   catch { return null; }
 }
 
-export function confirmationDocument({
-  message, printTitle, reference, status, walkIn = false, queueNumber, sections, warning = "", showOperational = true,
-}) {
-  return `<article class="confirmation-document" aria-label="Confirmation details">
-      <header class="confirmation-brand-header">
+export function bethlehemPrintHeader(printTitle) {
+  return `<header class="confirmation-brand-header">
         <div class="brand-lockup" role="img" aria-label="Bethlehem Animal Clinic">
           <img src="/assets/images/clinic/Bethlehem_Logo-256.png" alt="" class="brand-lockup__mark" />
           <span class="brand-lockup__divider" aria-hidden="true"></span>
@@ -74,8 +71,15 @@ export function confirmationDocument({
             <span class="brand-lockup__service">ANIMAL CLINIC</span>
           </span>
         </div>
-        <p class="confirmation-print-heading">${escapeHtml(printTitle)}</p>
-      </header>
+        <h1 class="confirmation-print-heading">${escapeHtml(printTitle)}</h1>
+      </header>`;
+}
+
+export function confirmationDocument({
+  message, printTitle, reference, status, walkIn = false, queueNumber, sections, warning = "", showOperational = true,
+}) {
+  return `<article class="confirmation-document" aria-label="Confirmation details">
+      ${bethlehemPrintHeader(printTitle)}
       ${showOperational ? `<div class="confirmation-operational">
         ${walkIn ? `<dl class="confirmation-queue"><dt>Queue number</dt><dd>${escapeHtml(queueNumber ?? "Not assigned")}</dd></dl>` : ""}
         <dl class="confirmation-reference"><dt>Registration reference</dt><dd>${escapeHtml(reference || "Not available")}</dd></dl>

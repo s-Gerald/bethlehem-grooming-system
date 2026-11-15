@@ -307,6 +307,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::get('/admin/clinic-appointments', [AdminClinicController::class, 'index']);
         Route::get('/admin/clinic-appointments/{id}/signed-consent', [AdminClinicController::class, 'signedConsent'])->whereNumber('id');
         Route::get('/admin/clinic-appointments/archived', [AdminClinicController::class, 'archivedIndex']);
+        Route::get('/admin/clinic-appointments/{id}/history-session', [AdminClinicController::class, 'archivedSession'])->whereNumber('id');
         Route::post('/admin/clinic-appointments/{id}/check-in', [AdminClinicController::class, 'checkIn'])->middleware('clinic:intake');
         Route::post('/admin/clinic-appointments/{id}/start-consultation', [AdminClinicController::class, 'startConsultation'])->middleware('clinic:clinical');
         Route::post('/admin/clinic-appointments/{id}/finish-consultation', [AdminClinicController::class, 'finishConsultation'])->middleware('clinic:clinical');

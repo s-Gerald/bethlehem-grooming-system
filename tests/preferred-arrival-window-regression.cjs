@@ -27,6 +27,9 @@ async function main() {
   let clinicPayload;
   const bindings = { CLINIC_MAX_PATIENTS: 13, clinicRegistrationError: error => error.message, CLINIC_VISIT_DRAFT_KEY: 'clinicVisitDraft', CLINIC_VISIT_PETS_KEY: 'clinicVisitPets', CLINIC_VISIT_CONFIRMATION_KEY: 'clinicVisitConfirmation',
     requireCustomerSession: () => true, readClinicVisitDraft: () => clinicDraft,
+    mountClinicConsent: () => ({valid: () => true, validate: () => true,
+      payload: () => ({clinic_consent: true, signer_name: 'Customer', signature_strokes: [[[10, 10], [30, 30]]]}),
+      clearDraft() {}, handleError: async () => false}),
     validateClinicVisitReason: () => '', formatClinicVisitReason: () => 'Vomiting', getClinicVisitSummaryMarkup: () => '<p>Mochi</p>',
     API: { submitClinicPreRegistration: async payload => { clinicPayload = payload; return { session: { patients: [{ appointment_reference: 'CL-1', queue_number: null, created_at: '2026-10-26T09:00:00+08:00' }] } }; } },
   };

@@ -8,6 +8,7 @@ use App\Models\Pet;
 use App\Models\VaccinationRecord;
 use App\Services\PetProfileHistoryService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class AdminPetProfileController extends Controller
 {
@@ -17,21 +18,44 @@ class AdminPetProfileController extends Controller
         $historyView = $request->input('view') === 'history';
         $case = ($historyView ? $history->eligibleClinicalCases($petId) : ClinicAppointment::query()->where('pet_id', $petId))->with([
             'record.attachments', 'vitals',
-            'vaccinationRecords' => fn ($query) => $query->where('pet_id', $petId)
-                ->when($historyView, fn ($query) => $query->published()->notVoided())
-                ->with(AdminVaccinationController::RESPONSE_RELATIONS)->orderByDesc('administered_date')->orderByDesc('id'),
-            'caseServices' => fn ($query) => $query->where('status', 'performed')->with('clinicService')
-                ->orderByDesc('performed_at')->orderByDesc('id'),
-            'confinement.caseService.clinicService',
+            ...$this->caseCareRelations($historyView),
         ])->findOrFail($caseId);
 
         return response()->json([
             'case' => [...$case->only(['id', 'appointment_reference', 'status']), 'appointment_date' => $case->appointment_date?->toDateString()],
             'medical_record' => $case->record ? $history->formatMedicalRecord($case) : null,
-            'treatments' => $case->vaccinationRecords->map(fn ($record) => $treatments->formatRecord($record))->values(),
-            'services' => $case->caseServices,
-            'confinement' => $case->confinement,
+            ...$this->formatCaseCare($case, $treatments),
         ]);
+    }
+
+    public function caseCareRelations(bool $historyView): array
+    {
+        $relations = [];
+        if (Schema::hasTable('vaccination_records')) {
+            $relations['vaccinationRecords'] = fn ($query) => $query
+                ->when($historyView, fn ($query) => $query->published()->notVoided())
+                ->with(AdminVaccinationController::RESPONSE_RELATIONS)->orderByDesc('administered_date')->orderByDesc('id');
+        }
+        if (Schema::hasTable('clinic_case_services')) {
+            $relations['caseServices'] = fn ($query) => $query->where('status', 'performed')->with('clinicService')
+                ->orderByDesc('performed_at')->orderByDesc('id');
+        }
+        if (Schema::hasTable('clinic_confinements')) {
+            $relations[] = 'confinement.caseService.clinicService';
+        }
+
+        return $relations;
+    }
+
+    public function formatCaseCare(ClinicAppointment $case, AdminVaccinationController $treatments): array
+    {
+        return [
+            'treatments' => ($case->getRelations()['vaccinationRecords'] ?? collect())
+                ->where('pet_id', $case->pet_id)
+                ->map(fn ($record) => $treatments->formatRecord($record))->values(),
+            'services' => $case->getRelations()['caseServices'] ?? [],
+            'confinement' => $case->getRelations()['confinement'] ?? null,
+        ];
     }
 
     public function show(

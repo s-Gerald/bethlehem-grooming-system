@@ -42,12 +42,12 @@ assert.equal(formatConfirmationTimestamp("invalid"), "");
 
 let focused = false;
 let printCallback;
-let printed = false;
+let printCalls = 0;
 let restoreTitle;
 globalThis.document = { body: { classList: { add() {} } }, title: "Original" };
 globalThis.window = {
   addEventListener(name, callback) { if (name === "afterprint") restoreTitle = callback; },
-  removeEventListener() {}, print() { printed = true; }, setTimeout() {},
+  removeEventListener() {}, print() { printCalls++; }, setTimeout() {},
 };
 const root = { innerHTML: "", querySelector(selector) {
   return selector === "#confirmationHeading" ? { focus() { focused = true; } } : { addEventListener(name, callback) { printCallback = callback; } };
@@ -69,10 +69,14 @@ assert.match(root.innerHTML, /href="\/admin\/clinic\?tab=active-cases">Go to Act
 assert.equal((root.innerHTML.match(/class="confirmation-button\b/g) || []).length, 2);
 assert.doesNotMatch(root.innerHTML, /Register Another Walk-in|confirmation-another|walk-in-booking\.html/);
 assert.equal(focused, true);
-printCallback();
-assert.equal(printed, true);
-restoreTitle();
-assert.equal(document.title, "Clinic Walk-in Checked In");
+function checkManualPrint(expectedCalls, title) {
+  assert.equal(printCalls, expectedCalls, 'Showing confirmation never opens the print dialog');
+  printCallback();
+  assert.equal(printCalls, expectedCalls + 1);
+  restoreTitle();
+  assert.equal(document.title, title);
+}
+checkManualPrint(0, "Clinic Walk-in Checked In");
 document.body.dataset = {};
 globalThis.sessionStorage = { getItem: () => JSON.stringify({ appointment_reference: 'CL-ONLINE-1',
   status: 'waiting_to_arrive', queue_number: null, appointment_date: '2026-11-03',
@@ -87,9 +91,7 @@ assert.match(root.innerHTML, /Queue number<\/dt><dd>Not assigned/);
 assert.match(root.innerHTML, /Waiting to Arrive/);
 assert.match(root.innerHTML, /Your queue number will be assigned after check-in\./);
 assert.doesNotMatch(root.innerHTML, /Show your registration reference/);
-printCallback();
-restoreTitle();
-assert.equal(document.title, 'Queue Registration Received');
+checkManualPrint(1, 'Queue Registration Received');
 renderConfirmation(root, { title: "Grooming Walk-in Checked In", printTitle: "GROOMING WALK-IN CHECK-IN CONFIRMATION", message: "Checked in", reference: "GR-2", status: "Checked In", walkIn: true, queueNumber: 27, sections: grooming, primaryHref: "./appointments.html", primaryLabel: "Go to Grooming" });
 assert.match(root.innerHTML, /Queue number<\/dt><dd>27/);
 assert.match(root.innerHTML, /href="\.\/appointments\.html">Go to Grooming<\/a>/);
@@ -99,11 +101,24 @@ assert.doesNotMatch(root.innerHTML, /Register Another Walk-in|confirmation-anoth
 sessionStorage.getItem = (key) => key === 'bookingConfirmation' ? JSON.stringify({
   booking_reference: 'GR-ONLINE-1', booking_date: '2026-11-06', status: 'waiting_to_arrive',
   submitted_at: '2026-11-06T02:30:00Z', owner: { name: 'Ana Santos' },
-  pets: [{ petName: 'Mochi', petType: 'cat' }],
+  pets: [{ petName: 'Mochi', petType: 'cat' }, { petName: 'Rigby', petType: 'dog' }],
 }) : null;
 await initBookingConfirmedStep();
 assert.match(root.innerHTML, /Registration reference<\/dt><dd>GR-ONLINE-1/);
 assert.match(root.innerHTML, /Queue number<\/dt><dd>Not assigned/);
 assert.match(root.innerHTML, /Your queue number will be assigned after check-in\./);
 assert.doesNotMatch(root.innerHTML, /Show your registration reference/);
+assert.match(root.innerHTML, /Mochi[\s\S]*Rigby/);
+assert.match(root.innerHTML, /href="\/account">Return to Dashboard/);
+checkManualPrint(2, 'Queue Registration Received');
+
+document.body.dataset.confirmationContext = 'walk-in';
+sessionStorage.getItem = key => key === 'walkInBookingConfirmation' ? JSON.stringify({
+  booking_reference: 'GR-WALKIN-1', queue_number: 27, status: 'checked_in',
+  owner: { name: 'Ana Santos' }, pets: [{ petName: 'Mochi', petType: 'cat' }, { petName: 'Rigby', petType: 'dog' }],
+}) : null;
+await initBookingConfirmedStep();
+assert.match(root.innerHTML, /href="\/admin\/grooming">Go to Grooming/);
+assert.match(root.innerHTML, /Mochi[\s\S]*Rigby/);
+checkManualPrint(3, 'Grooming Walk-in Checked In');
 console.log("Confirmation regression checks passed.");

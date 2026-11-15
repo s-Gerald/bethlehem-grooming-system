@@ -33,11 +33,10 @@ function adminArchive() {
     _consentRequest: 0,
     clinicDetailsModalOpen: false,
     detailsClinicRecord: null,
-    detailsClinicSession: null, clinicPatientLoading: false, _clinicPatientRequest: 0,
+    detailsClinicSession: null, clinicSessionPatients: null,
     clinicSignedConsent: null,
-    clinicConsentLoading: false,
-    clinicConsentError: '',
-    _clinicConsentRequest: 0,
+    printingRecord: false,
+    recordPrintError: "",
     clinicCare: null,
     clinicCareLoading: false,
     clinicCareError: "",
@@ -327,6 +326,7 @@ function adminArchive() {
       }
       this._detailsTrigger = trigger;
       this.detailsBooking = booking;
+      this.recordPrintError = "";
       this.detailsModalOpen = true;
       this.loadSignedConsent(booking.id);
       this.$nextTick(() => {
@@ -500,6 +500,9 @@ function adminArchive() {
       this._clinicTrigger = trigger;
       this.detailsClinicRecord = record;
       this.detailsClinicSession = record.session ?? null;
+      this.clinicSessionPatients = null;
+      this.clinicSignedConsent = null;
+      this.recordPrintError = "";
       this.clinicCare = null;
       this.clinicCareError = "";
       this.clinicAttachmentError = "";
@@ -512,63 +515,58 @@ function adminArchive() {
         this.$refs.clinicVisitClose.focus({preventScroll: true});
       });
       this.loadClinicCare();
-      this.loadClinicSignedConsent();
     },
 
-    async loadClinicSignedConsent() {
-      const request = ++this._clinicConsentRequest;
-      const record = this.detailsClinicRecord;
-      this.clinicSignedConsent = null;
-      this.clinicConsentError = '';
-      this.clinicConsentLoading = !!record?.clinic_visit_group_id;
-      if (!this.clinicConsentLoading) return;
-
-      try {
-        const { consent } = await API.getClinicSignedConsent(record.id);
-        if (request === this._clinicConsentRequest) this.clinicSignedConsent = consent;
-      } catch {
-        if (request === this._clinicConsentRequest) this.clinicConsentError = 'Unable to load consent.';
-      } finally {
-        if (request === this._clinicConsentRequest) this.clinicConsentLoading = false;
-      }
+    get clinicDetailPatients() {
+      if (this.clinicSessionPatients) return this.clinicSessionPatients;
+      return this.detailsClinicRecord ? [{visit: this.detailsClinicRecord, care: this.clinicCare}] : [];
     },
 
-    async viewClinicPatient(patient) {
-      if (this.detailsClinicRecord?.id === patient.id) return;
-      const request = ++this._clinicPatientRequest;
+    viewClinicPatient(patient) {
+      const detail = this.clinicSessionPatients?.find(entry => entry.visit.id === patient.id);
+      if (!detail || this.detailsClinicRecord.id === patient.id) return;
       ++this._clinicRequest;
-      this.clinicPatientLoading = true;
-      this.clinicCareError = "";
-      try {
-        const response = await API.getClinicCase(patient.id);
-        if (!this.clinicDetailsModalOpen || request !== this._clinicPatientRequest) return;
-        this.detailsClinicRecord = response.case;
-        this.clinicCare = null;
-        this.loadClinicCare();
-      } catch (error) {
-        if (request === this._clinicPatientRequest) this.clinicCareError = error.message || "Could not load this patient.";
-      } finally {
-        if (request === this._clinicPatientRequest) this.clinicPatientLoading = false;
-      }
+      this.detailsClinicRecord = detail.visit;
+      this.clinicCare = detail.care;
+      this.clinicAttachmentError = "";
+      this.clinicAttachmentBusyId = null;
+    },
+
+    normalizeClinicCare(data) {
+      return {
+        treatments: (data.treatments || []).filter(item => item.state === 'published' && !item.voided_at),
+        services: (data.services || []).filter(item => item.status === 'performed'),
+        confinement: data.confinement,
+      };
     },
 
     async loadClinicCare() {
       const record = this.detailsClinicRecord, request = ++this._clinicRequest;
-      if (!record?.pet?.id || (record.treatment_count === 0 && record.service_count === 0 && !record.confinement)) {
-        this.clinicCare = {treatments: [], services: [], confinement: null};
+      const grouped = !!this.detailsClinicSession;
+      const petId = record?.pet?.id ?? record?.pet_id;
+      if (!grouped && (!petId || (record.treatment_count === 0 && record.service_count === 0 && !record.confinement))) {
+        this.clinicCare = {treatments: [], services: [], confinement: record?.confinement ?? null};
         this.clinicCareLoading = false;
         return;
       }
       this.clinicCareLoading = true;
       this.clinicCareError = "";
       try {
-        const data = await API.adminGetPetCaseDetails(record.pet.id, record.id);
-        if (request !== this._clinicRequest) return;
-        this.clinicCare = {
-          treatments: (data.treatments || []).filter(item => item.state === 'published' && !item.voided_at),
-          services: (data.services || []).filter(item => item.status === 'performed'),
-          confinement: data.confinement,
-        };
+        if (grouped) {
+          const {session, patients, consent} = await API.getArchivedClinicSessionDetails(record.id);
+          if (request !== this._clinicRequest) return;
+          const details = patients.map(patient => ({visit: patient.visit, care: this.normalizeClinicCare(patient.care)}));
+          const selected = details.find(patient => patient.visit.id === record.id);
+          if (session.id !== this.detailsClinicSession.id || !selected) throw new Error("Could not load this clinic session.");
+          this.clinicSessionPatients = details;
+          this.detailsClinicSession = {...this.detailsClinicSession, ...session};
+          this.clinicSignedConsent = consent;
+          this.detailsClinicRecord = selected.visit;
+          this.clinicCare = selected.care;
+        } else {
+          const data = await API.adminGetPetCaseDetails(petId, record.id);
+          if (request === this._clinicRequest) this.clinicCare = this.normalizeClinicCare(data);
+        }
       } catch (error) {
         if (request === this._clinicRequest) this.clinicCareError = error.message || "Could not load care provided.";
       } finally {
@@ -579,11 +577,8 @@ function adminArchive() {
     closeClinicRecord() {
       if (!this.clinicDetailsModalOpen) return;
       ++this._clinicRequest;
-      ++this._clinicPatientRequest;
-      ++this._clinicConsentRequest;
       this.clinicSignedConsent = null;
-      this.clinicConsentLoading = false;
-      this.clinicPatientLoading = false;
+      this.clinicSessionPatients = null;
       this.detailsClinicSession = null;
       this.clinicDetailsModalOpen = false;
       this.detailsClinicRecord = null;
@@ -602,6 +597,63 @@ function adminArchive() {
         event.preventDefault(); last.focus();
       } else if (!event.shiftKey && event.target === last) {
         event.preventDefault(); first.focus();
+      }
+    },
+
+    printGroomingRecord() {
+      if (!this.detailsBooking || this.consentLoading || this.consentError) return;
+      const booking = this.detailsBooking;
+      const request = this._consentRequest;
+      this.printRecord("grooming", () => this.detailsModalOpen && this._consentRequest === request, {
+        fields: [
+          ["Owner", this.groomingText(booking.ownerName)],
+          ["Status", booking.status === "cancelled" ? "Cancelled" : "Completed"],
+          ["Grooming reference", booking.bookingReference],
+          ["Pets", booking.pets?.length],
+          ["Owner account", booking.ownerAccountDeleted ? "Account deleted" : ""],
+        ],
+        body: this.$refs.groomingRecordBody,
+      });
+    },
+
+    printClinicRecord() {
+      if (!this.detailsClinicRecord || this.clinicCareLoading || this.clinicCareError) return;
+      const request = this._clinicRequest;
+      const session = this.detailsClinicSession;
+      this.printRecord("clinic", () => this.clinicDetailsModalOpen && this._clinicRequest === request, {
+        fields: [
+          ["Owner", this.clinicText(this.detailsClinicRecord.ownerName)],
+          ["Patients", this.clinicDetailPatients.length],
+        ],
+        consent: this.$refs.clinicRecordConsent,
+        patients: this.clinicDetailPatients.map(({visit: record}) => ({
+          name: record.pet?.name || "Patient",
+          fields: [
+            ["Status", record.final_status_label],
+            ["Clinic reference", record.appointment_reference],
+            ["Visit date and time", this.formatClinicVisit(record, "")],
+            ["Species", record.pet?.species],
+            ["Breed", record.pet?.breed],
+            ["Attending veterinarian", this.clinicText(record.record?.primary_veterinarian_name)],
+          ],
+          sections: this.$refs.clinicVisitBody.querySelectorAll(`[data-clinic-history-patient="${record.id}"]`),
+        })),
+        totalPaid: session?.paid_at ? this.clinicMoney(session.total_amount) : "",
+      });
+    },
+
+    async printRecord(type, stillOpen, details) {
+      if (this.printingRecord) return;
+      const trigger = document.activeElement;
+      this.recordPrintError = "";
+      this.printingRecord = true;
+      try {
+        const { printHistoryRecord } = await import("./history-print.js?v=20261115");
+        if (stillOpen()) await printHistoryRecord(type, details, stillOpen, trigger);
+      } catch {
+        if (stillOpen()) this.recordPrintError = "Could not prepare the record for printing. Try again.";
+      } finally {
+        this.printingRecord = false;
       }
     },
 
@@ -641,8 +693,8 @@ function adminArchive() {
       return this.clinicText(value) ? Number(value).toLocaleString('en-PH', {style: 'currency', currency: 'PHP'}) : '';
     },
 
-    get clinicSummaryFields() {
-      const visit = this.detailsClinicRecord, record = visit?.record;
+    clinicSummaryFields(visit) {
+      const record = visit?.record;
       return [
         {label: 'Chief Complaint', value: this.clinicReason(visit)},
         {label: 'Relevant Patient History', value: record?.relevant_history},
@@ -655,8 +707,8 @@ function adminArchive() {
       ].filter(field => this.clinicText(field.value));
     },
 
-    get clinicVitals() {
-      const vitals = this.detailsClinicRecord?.vitals;
+    clinicVitals(visit) {
+      const vitals = visit?.vitals;
       return [
         ['Weight', 'weight_kg', 'kg'], ['Temperature', 'temperature_c', '°C'],
         ['Heart rate', 'heart_rate_bpm', 'bpm'], ['Respiratory rate', 'respiratory_rate_bpm', 'breaths/min'],
@@ -673,24 +725,25 @@ function adminArchive() {
       return entry.applied_price == null ? '' : this.clinicMoney(Number(entry.applied_price) * Number(entry.quantity ?? 1));
     },
 
-    clinicServiceAttachments(entry) {
-      return (this.detailsClinicRecord?.record?.attachments || [])
+    clinicServiceAttachments(entry, visit) {
+      return (visit?.record?.attachments || [])
         .filter(file => String(file.clinic_case_service_id) === String(entry.id));
     },
 
-    get clinicMedicalAttachments() {
+    clinicMedicalAttachments(visit, care) {
       // Keep unmatched files discoverable even if the linked service is no longer present.
-      const serviceIds = new Set((this.clinicCare?.services || []).map(entry => String(entry.id)));
-      return (this.detailsClinicRecord?.record?.attachments || [])
+      const serviceIds = new Set((care?.services || []).map(entry => String(entry.id)));
+      return (visit?.record?.attachments || [])
         .filter(file => !file.clinic_case_service_id || !serviceIds.has(String(file.clinic_case_service_id)));
     },
 
     async openClinicAttachment(file) {
       const request = this._clinicRequest;
+      const record = this.detailsClinicRecord;
       this.clinicAttachmentBusyId = file.id;
       this.clinicAttachmentError = '';
       try {
-        await viewClinicAttachment(this.detailsClinicRecord.id, file);
+        await viewClinicAttachment(record.id, file);
       } catch (error) {
         if (request === this._clinicRequest) this.clinicAttachmentError = error.message || 'Could not open attachment. Try again.';
       } finally {
@@ -711,8 +764,8 @@ function adminArchive() {
       ].filter(field => this.clinicText(field.value));
     },
 
-    get clinicPrescriptions() {
-      return (this.detailsClinicRecord?.record?.prescriptions || []).filter(item => this.clinicText(item.medicine));
+    clinicPrescriptions(visit) {
+      return (visit?.record?.prescriptions || []).filter(item => this.clinicText(item.medicine));
     },
 
     clinicPrescriptionText(item) {
@@ -720,18 +773,17 @@ function adminArchive() {
         .filter(value => this.clinicText(value)).join(' · ');
     },
 
-    get clinicDiagnostics() {
-      return (this.detailsClinicRecord?.record?.diagnostics || [])
+    clinicDiagnostics(visit) {
+      return (visit?.record?.diagnostics || [])
         .filter(item => this.clinicText(item.diagnostic) || this.clinicText(item.result) || this.clinicText(item.notes));
     },
 
-    get clinicHasCare() {
-      return !!(this.clinicCare?.treatments.length || this.clinicCare?.services.length || this.clinicCare?.confinement
-        || this.clinicText(this.detailsClinicRecord?.record?.treatment_given) || this.clinicPrescriptions.length || this.clinicDiagnostics.length);
+    clinicHasCare(visit, care) {
+      return !!(care?.treatments.length || care?.services.length || care?.confinement
+        || this.clinicText(visit?.record?.treatment_given) || this.clinicPrescriptions(visit).length || this.clinicDiagnostics(visit).length);
     },
 
-    get clinicConfinementFields() {
-      const episode = this.clinicCare?.confinement;
+    clinicConfinementFields(episode) {
       if (!episode) return [];
       return [
         {label: 'Admitted', value: episode.admitted_at ? this.formatDateTime(episode.admitted_at, '') : ''},

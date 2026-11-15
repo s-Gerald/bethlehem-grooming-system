@@ -12,8 +12,15 @@ const styles = [...admin.matchAll(/<link\b[^>]*rel="stylesheet"[^>]*>|<style>[\s
 const session = {
   id: 91, ownerName: 'Recorded Owner', bookingReference: 'WI-91', status: 'released',
   appointmentDate: '2024-02-09', historyDate: '2024-02-10', historyAtIso: '2024-02-10T10:00:00+08:00',
-  pets: [{bookingPetId: 11, petName: 'First pet', specialInstructions: 'Recorded care instructions.\n'.repeat(30)},
-    {bookingPetId: 12, petName: 'Clicked pet'}], services: [], productAddons: [],
+  specialNotes: 'Owner requested a call', internalStaffNote: 'Use the side entrance',
+  payment: {id: 2, finalPrice: 1000}, paid: true,
+  pets: [{bookingPetId: 11, petName: 'First pet', confirmedSize: 'medium', bodyCondition: 'ideal', bodyConditionVerified: true,
+    medicalConditions: 'Sensitive paws', petGroomerName: 'Groomer Ana', groomingStateLabel: 'Finished',
+    groomingPreferenceLabel: 'Summer cut', groomingStartedAt: '10:15 AM', specialInstructions: 'Recorded care instructions.\n'.repeat(40)},
+    {bookingPetId: 12, petName: 'Clicked pet', specialInstructions: 'Brush gently'}],
+  services: [{id: 1, bookingPetId: 11, name: 'Full groom', serviceKind: 'package', paidPrice: 600},
+    {id: 2, bookingPetId: 12, name: 'Nail trim', serviceKind: 'add_on', paidPrice: 200}],
+  productAddons: [{itemName: 'Paw balm', quantity: 2, priceAtSale: 100, subtotal: 200}],
 };
 const payment = {status: 'paid', payment_method_label: 'Cash', paid_at: '2026-11-10T16:38:00Z'};
 const grooming = {booking_id: 91, booking_reference: 'GR-91', status: 'released', paid: true, number_of_pets: 2,
@@ -34,7 +41,8 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
     let releaseAlpine, alpineHold;
     let alpineSource;
     await page.route('**/alpinejs@*/**', async route => {
-      alpineSource ||= route.fetch().then(response => response.body());
+      alpineSource ||= process.env.ALPINE_PATH ? fs.readFileSync(process.env.ALPINE_PATH)
+        : route.fetch().then(response => response.body());
       const source = await alpineSource;
       if (alpineHold) await alpineHold;
       await route.fulfill({contentType: 'text/javascript', body: source});
@@ -58,21 +66,33 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
       return route.fulfill({path: file, contentType: file.endsWith('.js') ? 'application/javascript' : undefined});
     });
     await page.addInitScript(({session, grooming, clinic}) => {
+      window.printCalls = 0;
+      window.print = () => { window.printCalls++; };
+      window.ungroupedClinicCalls = 0;
       window.historyCalls = 0; window.consentCalls = 0; window.customerCalls = 0;
       const scenario = new URL(location.href).searchParams.get('scenario');
       window.holdHistory = Boolean(scenario);
+      const signature = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="24"%3E%3Cpath d="M 2 19 L 18 3 L 29 20 L 76 11" stroke="black" fill="none"/%3E%3C/svg%3E';
+      const patients = [81, 82].map(id => ({
+        id, clinic_visit_group_id: 1, appointment_reference: `CL-${id}`, appointment_date: '2024-02-10',
+        status: 'completed', final_status_label: 'Completed', paid: true, total_amount: 1500, payment_status_label: 'Paid',
+        pet: {id, name: id === 81 ? 'Clinic pet' : 'Clinic sibling'}, ownerName: 'Recorded Owner',
+        vitals: {weight_kg: id === 81 ? '3.2' : '12.3'},
+        record: {working_diagnosis: id === 81 ? 'First patient findings' : 'Sibling findings',
+          primary_veterinarian_name: 'Dr. Bethlehem',
+          prescriptions: [{medicine: `Prescription ${id}`, instructions: `Instructions ${id}`}],
+          diagnostics: [{diagnostic: `Diagnostic ${id}`, result: `Result ${id}`}],
+          attachments: [{id, file_name: `record-${id}.png`}, {id: id + 100, file_name: `service-${id}.pdf`, clinic_case_service_id: id}],
+          follow_up_notes: `Follow up for ${id}`},
+        treatment_count: 1, service_count: 1,
+      }));
+      const group = {id: 1, total_amount: 3000, paid_at: '2024-02-10T10:00:00+08:00'};
       const loadHistory = async type => {
         window.historyCalls++;
         if (window.holdHistory) await new Promise(resolve => { window.releaseHistory = resolve; });
         if (window.failHistory) throw new Error('History service is temporarily unavailable.');
-        const patients = [81, 82].map(id => ({
-          id, appointment_reference: `CL-${id}`, appointment_date: '2024-02-10', status: 'completed',
-          pet: {id, name: id === 81 ? 'Clinic pet' : 'Clinic sibling'}, ownerName: 'Recorded Owner',
-          record: {working_diagnosis: id === 81 ? 'First patient findings' : 'Sibling findings'},
-          treatment_count: 0, service_count: 0,
-        }));
         return {archived: window.emptyHistory ? [] : type === 'grooming' ? [session] : [{
-          ...patients[0], session: {id: 1, patients, total_amount: 3000, paid_at: '2024-02-10T10:00:00+08:00'},
+          ...patients[0], session: {...group, patients: patients.map(({id, pet, appointment_reference}) => ({id, pet, appointment_reference}))},
         }]};
       };
       window.API = {
@@ -84,14 +104,29 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
           if (scenario === 'cached') render({archived: [session]});
           render(await load());
         },
-        getGroomingSignedConsent: () => { window.consentCalls++; return new Promise(() => {}); },
-        getBookingHistory: async () => ({history: [grooming]}),
-        getClinicCase: async id => {
-          window.clinicPatientCalls = (window.clinicPatientCalls || 0) + 1;
-          return {case: {id, appointment_reference: `CL-${id}`, appointment_date: '2024-02-10', status: 'completed',
-            pet: {id, name: 'Clinic sibling'}, ownerName: 'Recorded Owner', record: {working_diagnosis: 'Sibling findings'},
-            treatment_count: 0, service_count: 0}};
+        getGroomingSignedConsent: () => {
+          window.consentCalls++;
+          if (scenario === 'startup') return new Promise(() => {});
+          return Promise.resolve({consent: {grooming_consent: true, sedation_consent: false,
+            signer_name: 'Grooming Signer', signed_at: '2024-02-10T10:00:00+08:00', signature_image: signature,
+            consent_version: 'Grooming v3', agreement_snapshot: {grooming_intro: 'Historical grooming agreement',
+              grooming_conditions: ['Recorded grooming clause']}}});
         },
+        getBookingHistory: async () => ({history: [grooming]}),
+        getArchivedClinicSessionDetails: async id => {
+          (window.clinicSessionCalls ||= []).push(id);
+          return {session: group, consent: {clinic_consent: true, signer_name: 'Clinic Signer',
+            signed_at: '2024-02-10T10:00:00+08:00', signature_image: signature, consent_version: 'Clinic v4',
+            agreement_snapshot: {title: 'Historical clinic agreement', clauses: [{heading: 'Recorded clause', text: 'Clinic consent text'}]}},
+          patients: patients.map(record => ({visit: record, care: {
+            treatments: [{id: record.id, state: 'published', treatment_name: `Treatment ${record.id}`, dose_amount: 1, dose_unit: 'mL'}],
+            services: [{id: record.id, status: 'performed', service_snapshot: {name: `Service ${record.id}`},
+              quantity: 2, applied_price: 175, notes: `Service notes ${record.id}`}],
+            confinement: {notes: `Confinement notes ${record.id}`, discharge_note: `Discharge ${record.id}`},
+          }}))};
+        },
+        getClinicCase: async () => { window.ungroupedClinicCalls++; throw new Error('Unexpected patient request'); },
+        adminGetPetCaseDetails: async () => { window.ungroupedClinicCalls++; throw new Error('Unexpected care request'); },
         getCustomerClinicHistory: async () => {
           window.customerCalls++;
           return {visits: [{...clinic, patients: [clinic]}], current_page: 1, last_page: 1};
@@ -104,6 +139,38 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
         getMe: async () => ({user: {first_name: 'Owner', last_name: 'Test'}}),
       };
     }, {session, grooming, clinic});
+
+    async function printRecord(dialog, title) {
+      const printButton = dialog.getByRole('button', {name: 'Print Record', exact: true});
+      await dialog.getByRole('button', {name: 'Close', exact: true}).waitFor();
+      assert.equal(await page.evaluate(() => sessionStorage.length), 0);
+      const callsBefore = await page.evaluate(() => window.printCalls);
+      await dialog.locator('.history-print-button:not([aria-disabled="true"])').waitFor();
+      await printButton.focus();
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(count => window.printCalls === count + 1, callsBefore);
+      const record = page.locator('[data-history-print]');
+      assert.equal(await record.isVisible(), false, 'Print content is hidden during normal use');
+      await page.emulateMedia({media: 'print'});
+      await record.getByRole('heading', {name: title, exact: true}).waitFor();
+      assert.equal(await page.locator('main').first().isVisible(), false);
+      assert.equal(await dialog.isVisible(), false);
+      assert.equal(await record.locator('a, button, summary, [role="alert"]').count(), 0);
+      const printed = await record.innerText();
+      assert.doesNotMatch(printed, /View Full Transaction|Search history|Invoice/i);
+      assert.equal(await record.locator('img[alt="Customer signature"]').count(), 1);
+      if (process.env.HISTORY_SCREENSHOT_DIR) {
+        await page.pdf({path: path.join(process.env.HISTORY_SCREENSHOT_DIR, title.toLowerCase().replaceAll(' ', '-') + '.pdf'),
+          preferCSSPageSize: true});
+      }
+      await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+      await record.waitFor({state: 'detached'});
+      await page.emulateMedia({media: 'screen'});
+      assert.equal(await dialog.isVisible(), true);
+      assert.equal(await printButton.evaluate(el => document.activeElement === el), true);
+      assert.equal(await page.evaluate(() => document.body.style.overflow), 'hidden');
+      return printed;
+    }
 
     const startup = {
       error: page.locator('main > section[x-show="!loading && errorMessage"]'),
@@ -161,6 +228,7 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
     await page.getByRole('button', {name: 'Clinic', exact: true}).click();
     await page.locator('.clinic-row').waitFor();
     assert.equal(await startup.error.isVisible(), false);
+    assert.deepEqual(await page.evaluate(() => window.clinicSessionCalls || []), [], 'Listing stays lightweight');
     await page.locator('.clinic-row').getByRole('button', {name: /View Visit/}).click();
     const clinicDialog = page.getByRole('dialog', {name: 'Clinic Record'});
     await clinicDialog.waitFor({state: 'visible'});
@@ -169,7 +237,23 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
     assert.match(await clinicDialog.innerText(), /Sibling findings/);
     assert.doesNotMatch(await clinicDialog.innerText(), /First patient findings/);
     assert.match(await clinicDialog.innerText(), /Total paid.*3,000/);
-    assert.equal(await page.evaluate(() => window.clinicPatientCalls), 1);
+    const clinicPrint = await printRecord(clinicDialog, 'CLINIC VISIT RECORD');
+    const firstPatient = clinicPrint.slice(clinicPrint.indexOf('Clinic pet'), clinicPrint.indexOf('Clinic sibling'));
+    const sibling = clinicPrint.slice(clinicPrint.indexOf('Clinic sibling'));
+    for (const [id, patientRecord] of [[81, firstPatient], [82, sibling]]) {
+      for (const field of [`CL-${id}`, `record-${id}.png`, `service-${id}.pdf`, `Prescription ${id}`,
+        `Diagnostic ${id}`, `Result ${id}`, `Treatment ${id}`, `Service notes ${id}`, `Follow up for ${id}`,
+        `Confinement notes ${id}`, `Discharge ${id}`, 'Dr. Bethlehem', 'Patient subtotal']) {
+        assert.ok(patientRecord.includes(field), `Patient ${id} must include ${field}`);
+      }
+      assert.doesNotMatch(patientRecord, new RegExp(`Treatment ${id === 81 ? 82 : 81}`));
+    }
+    assert.match(firstPatient, /First patient findings[\s\S]*3\.2 kg/);
+    assert.match(sibling, /Sibling findings[\s\S]*12\.3 kg/);
+    assert.match(clinicPrint, /Clinic Signer[\s\S]*Clinic v4[\s\S]*Clinic consent text/);
+    assert.match(clinicPrint, /Payment Summary[\s\S]*3,000/);
+    assert.deepEqual(await page.evaluate(() => window.clinicSessionCalls), [81], 'One grouped request covers switching and printing');
+    assert.equal(await page.evaluate(() => window.ungroupedClinicCalls), 0, 'Grouped visits never request details per patient');
     if (process.env.HISTORY_SCREENSHOT_DIR) {
       await page.evaluate(async () => Promise.all(document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity)
         .map(animation => animation.finished.catch(() => {}))));
@@ -203,6 +287,20 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
     assert.equal(await page.evaluate(() => window.historyCalls), 1);
     assert.equal(await page.evaluate(() => window.consentCalls), 1);
     assert.equal(await page.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Close grooming record');
+    await page.keyboard.press('Shift+Tab');
+    assert.equal(await page.evaluate(() => document.activeElement.textContent.trim()), 'Print Record');
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Close grooming record');
+    const groomingPrint = await printRecord(adminDialog, 'GROOMING VISIT RECORD');
+    assert.match(groomingPrint, /Recorded Owner[\s\S]*WI-91[\s\S]*Session Details/);
+    assert.match(groomingPrint, /Grooming Signer[\s\S]*Grooming v3[\s\S]*Recorded grooming clause/);
+    assert.match(groomingPrint, /First pet[\s\S]*Medium · Clinic verified[\s\S]*Recorded care instructions[\s\S]*Clicked pet/);
+    const firstPetRecord = groomingPrint.slice(groomingPrint.indexOf('First pet'), groomingPrint.indexOf('Clicked pet'));
+    const secondPetRecord = groomingPrint.slice(groomingPrint.indexOf('Clicked pet'), groomingPrint.indexOf('Product Add-ons'));
+    assert.match(firstPetRecord, /Groomer Ana[\s\S]*Ideal · Clinic verified[\s\S]*Sensitive paws[\s\S]*10:15 AM[\s\S]*Full groom[\s\S]*Main service[\s\S]*Summer cut[\s\S]*600.00/);
+    assert.doesNotMatch(firstPetRecord, /Nail trim/);
+    assert.match(secondPetRecord, /Nail trim[\s\S]*À la carte[\s\S]*200.00[\s\S]*Brush gently/);
+    assert.match(groomingPrint, /Paw balm[\s\S]*Owner requested a call[\s\S]*Use the side entrance[\s\S]*Payment Summary[\s\S]*Total paid\s+₱1000\.00/);
     await page.keyboard.press('Escape');
     await adminDialog.waitFor({state: 'hidden'});
     assert.equal(new URL(page.url()).search, '?type=grooming');
@@ -245,6 +343,6 @@ const clinic = {id: 91, appointment_reference: 'CL-91', appointment_date: '2026-
     assert.equal(await page.evaluate(() => window.customerCalls), 2, 'Opening details makes no payment request');
     assert.equal(await page.evaluate(() => window.clinicDetailCalls), 1, 'Only the selected clinic visit loads clinical details');
     assert.deepEqual(errors, []);
-    console.log('History browser checks passed: pre-Alpine paint/reload, loading, error/retry, empty/Clinic/cache states, deep links, focus and responsive customer payments.');
+    console.log('History browser checks passed: persisted session printing, print cleanup, deep links, focus, startup/retry and responsive customer payments.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
