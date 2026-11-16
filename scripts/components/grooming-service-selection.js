@@ -103,10 +103,14 @@ export function renderPetServiceCard(pet, selection, index, walkIn = false) {
   const petPricing = calculatePetSelectionPricing(selection, pet);
   const selectionSummary = getPetSelectionSummary(selection, petPricing);
   const packageCards = getPackagesByPetType(pet.petType)
-    .map((service) => renderPackageCard(pet, selection, service))
+    .map((service) => renderPackageCard(pet, selection, service, walkIn))
     .join("");
   const alaCarteServices = getAlaCarteServicesByPetType(pet.petType);
   const packageIssue = unavailablePackageMessage(pet, selection);
+  const needsToothbrush = !walkIn && (
+    selection.alaCarteServices.includes("tooth_brushing") ||
+    getPackageAlaCarteRules(selection.servicePackage).includedAlaCarteServiceIds.includes("tooth_brushing")
+  );
 
   return `
     <article
@@ -145,7 +149,11 @@ export function renderPetServiceCard(pet, selection, index, walkIn = false) {
           ${packageCards}
         </div>
         </fieldset>
-        ${selection.servicePackage === "cat_full_grooming" ? "" : renderHaircutPreference(pet, selection)}
+        ${needsToothbrush ? `<p data-role="toothbrush-reminder" class="mt-3 flex items-start gap-2 text-sm text-slate-600">
+          <svg class="ph-icon mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=toothbrush-20261116#info"></use></svg>
+          <span class="min-w-0">For tooth brushing, please bring your pet's own toothbrush.</span>
+        </p>` : ""}
+        ${walkIn && selection.servicePackage === "cat_full_grooming" ? "" : renderHaircutPreference(pet, selection)}
 
       ${
         alaCarteServices.length > 0
@@ -201,7 +209,7 @@ export function renderPetServiceCard(pet, selection, index, walkIn = false) {
   `;
 }
 
-export function renderPackageCard(pet, selection, service) {
+export function renderPackageCard(pet, selection, service, haircutWithinPackage = true) {
   const isAvailable = packageSupportsPet(service, pet);
   const isChecked = isAvailable && selection.servicePackage === service.id;
   const selectedSize = normalizePetSize(pet.size);
@@ -242,7 +250,7 @@ export function renderPackageCard(pet, selection, service) {
           </div>
         </div>
       </label>
-      ${isChecked && service.id === "cat_full_grooming" ? renderCatHaircutOption(pet, selection) + renderHaircutPreference(pet, selection) : ""}
+      ${isChecked && service.id === "cat_full_grooming" ? renderCatHaircutOption(pet, selection) + (haircutWithinPackage ? renderHaircutPreference(pet, selection) : "") : ""}
     </div>
   `;
 }

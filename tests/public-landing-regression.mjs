@@ -148,25 +148,49 @@ assert.equal(menu.getAttribute('aria-expanded'), 'false');
 // The same accordion handler keeps grooming, clinic and FAQ groups independent.
 const faqGroup = new Element();
 faqGroup.setAttribute('data-accordion-group', '');
-for (const id of ['faq-one', 'faq-two']) {
+const faqMarkup = read('../index.html').match(/<section id="faq"[\s\S]*?<\/section>/)[0];
+const faqEntries = [...faqMarkup.matchAll(/<button\b([^>]*data-accordion-trigger[^>]*)>[\s\S]*?<\/button>[\s\S]*?<div\b([^>]*class="faq-answer"[^>]*)>/g)];
+assert.equal(faqEntries.length, 8);
+const faqIds = new Set();
+for (const [, triggerAttributes, answerAttributes] of faqEntries) {
+  const attribute = (source, name) => source.match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`))?.[1];
+  const id = attribute(answerAttributes, 'id');
+  const triggerId = attribute(triggerAttributes, 'id');
+  assert.ok(id && triggerId && !faqIds.has(id) && !faqIds.has(triggerId), 'Each FAQ has unique relationship IDs');
+  faqIds.add(id); faqIds.add(triggerId);
+  assert.equal(attribute(triggerAttributes, 'aria-controls'), id);
+  assert.equal(attribute(answerAttributes, 'aria-labelledby'), triggerId);
   const article = new Element('article');
   article.setAttribute('data-accordion-item', '');
-  const button = new Element('button');
+  const button = new Element('button', triggerId);
   button.setAttribute('data-accordion-trigger', '');
-  button.setAttribute('aria-expanded', 'false');
+  button.setAttribute('aria-expanded', attribute(triggerAttributes, 'aria-expanded'));
   button.setAttribute('aria-controls', id);
   const answer = new Element('div', id);
-  answer.hidden = true;
+  answer.hidden = /\bhidden\b/.test(answerAttributes);
   article.append(button, answer);
   faqGroup.append(article);
 }
 page.doc.append(faqGroup);
 const faqButtons = faqGroup.querySelectorAll('[data-accordion-trigger]');
-click(triggers[0]); click(faqButtons[0]); click(faqButtons[1]);
-assert.equal(triggers[0].getAttribute('aria-expanded'), 'true');
+click(triggers[0]);
+for (const button of faqButtons) {
+  assert.equal(button.getAttribute('aria-expanded'), 'false');
+  assert.equal(page.doc.getElementById(button.getAttribute('aria-controls')).hidden, true);
+  click(button);
+  for (const other of faqButtons) {
+    assert.equal(other.getAttribute('aria-expanded'), String(other === button));
+    assert.equal(page.doc.getElementById(other.getAttribute('aria-controls')).hidden, other !== button);
+  }
+  click(button);
+  assert.equal(button.getAttribute('aria-expanded'), 'false');
+  assert.equal(page.doc.getElementById(button.getAttribute('aria-controls')).hidden, true);
+}
+click(faqButtons[0]); click(faqButtons[1]);
 assert.equal(faqButtons[0].getAttribute('aria-expanded'), 'false');
-assert.equal(page.doc.getElementById('faq-one').hidden, true);
-assert.equal(page.doc.getElementById('faq-two').hidden, false);
+assert.equal(page.doc.getElementById(faqButtons[0].getAttribute('aria-controls')).hidden, true);
+assert.equal(faqButtons[1].getAttribute('aria-expanded'), 'true');
+assert.equal(triggers[0].getAttribute('aria-expanded'), 'true', 'FAQ interaction leaves other accordion groups open');
 
 // A last-column card moves before its neighbor in reading order, then restores on collapse.
 const clinicButtons = page.clinic.querySelectorAll('[data-accordion-trigger]');

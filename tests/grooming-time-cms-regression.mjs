@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110&size-availability=20261110';
-import {renderHaircutPreference, renderPackageCard} from '../scripts/components/grooming-service-selection.js';
+import {renderHaircutPreference, renderPackageCard, renderPetServiceCard} from '../scripts/components/grooming-service-selection.js';
 import {groomingDurationValue} from '../scripts/components/grooming-estimates.js';
 
 const fixture = JSON.parse(fs.readFileSync(new URL('./grooming-catalogue-fixture.json', import.meta.url)));
@@ -65,7 +65,7 @@ for (const walkIn of [false,true]) {
   const context = vm.createContext({console,CSS:{escape:String},document:{getElementById:()=>node,querySelector:()=>node,addEventListener(){}},
     window:{},sessionStorage:{setItem(){},removeItem(){}},createGroomingEstimateFlow:()=>flow,updatePetServiceSelection:grooming.updatePetServiceSelection,
     canSelectGroomingPackage:grooming.canSelectGroomingPackage,
-    renderServiceSelections:(_container,_pets,selections)=>{markup=renderHaircutPreference(pet,selections[0]);},
+    renderServiceSelections:(_container,pets,selections,walkIn)=>{markup=pets.map((pet,index)=>renderPetServiceCard(pet,selections[index],index,walkIn)).join('');},
     updateSpecialInstructions(){},focusSpecialInstructions(){},hasCompletedRequiredServiceSelection:()=>true,hasPetGroomerSelection:()=>true,
     createEmptyPetServiceSelection:grooming.createEmptyPetServiceSelection,buildStepThreeDraftPayload:value=>value,selectedPricingSignature:()=>'',BOOKING_STEP_THREE_KEY:'draft'});
   const source = fs.readFileSync(new URL(`../scripts/components/${walkIn?'walk-in':'booking'}-services-step.js`,import.meta.url),'utf8')
@@ -76,7 +76,7 @@ for (const walkIn of [false,true]) {
     handleSelectionChange({target:{dataset:{role:'haircut-requested',petId:'cat'},checked:true}});`,context);
   assert.match(markup,/Requested style/, `${walkIn?'Walk-in':'Customer'} checkbox immediately shows choices`);
   vm.runInContext(`state.petSelections[0].groomingPreference='cat_style';handleSelectionChange({target:{dataset:{role:'haircut-requested',petId:'cat'},checked:false}});`,context);
-  assert.equal(markup,'');
+  assert.doesNotMatch(markup,/Haircut Preference/);
   assert.equal(vm.runInContext('state.petSelections[0].groomingPreference',context),'');
   assert.equal(requests,2);
   if (!walkIn) {
@@ -88,5 +88,26 @@ for (const walkIn of [false,true]) {
     assert.equal(vm.runInContext('state.petSelections[0].servicePackage', context), '', 'Synthetic changes cannot select an incompatible package');
     assert.equal(requests, 2);
   }
+  const reminder = "For tooth brushing, please bring your pet's own toothbrush.";
+  const change = (role, value, checked = true) => vm.runInContext(`handleSelectionChange({target:{dataset:{role:${JSON.stringify(role)},petId:'cat'},value:${JSON.stringify(value)},checked:${checked},disabled:false}});`, context);
+  const expectReminder = visible => assert.equal(markup.includes(reminder), visible && !walkIn, `${walkIn ? 'Staff' : 'Customer'} helper updates after selection changes`);
+  // Restore the supported size after the incompatible-package regression above.
+  vm.runInContext(`${walkIn ? 'state.pets' : 'state.bookingDraft.pets'}[0].size='small';`, context);
+  change('ala-carte', 'tooth_brushing'); expectReminder(true);
+  change('ala-carte', 'tooth_brushing', false); expectReminder(false);
+  change('service-package', '');
+  change('ala-carte', 'tooth_brushing'); expectReminder(true);
+  change('ala-carte', 'tooth_brushing', false); expectReminder(false);
+  const dog = {id:'cat',petType:'dog',size:'small'};
+  vm.runInContext(`${walkIn ? 'state.pets' : 'state.bookingDraft.pets'}=[${JSON.stringify(dog)}];`, context);
+  change('service-package', 'regular_dog_grooming'); expectReminder(true);
+  change('service-package', 'partial_grooming'); expectReminder(false);
+  change('ala-carte', 'tooth_brushing'); expectReminder(true);
+  change('service-package', 'regular_dog_grooming'); expectReminder(true);
+  assert.equal(vm.runInContext("state.petSelections[0].alaCarteServices.includes('tooth_brushing')", context), false, 'Included services remain deduplicated');
+  change('service-package', 'partial_grooming'); expectReminder(false);
+  change('ala-carte', 'tooth_brushing'); expectReminder(true);
+  change('service-package', ''); expectReminder(true);
+  change('ala-carte', 'tooth_brushing', false); expectReminder(false);
 }
 console.log('Customer and walk-in checkbox handlers immediately redraw cat haircuts.');
