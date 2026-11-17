@@ -16,6 +16,33 @@ use Illuminate\Validation\ValidationException;
 
 class ClinicSettingController extends Controller
 {
+    public function general()
+    {
+        $settings = ClinicSetting::query()->select(ClinicSetting::PUBLIC_INFORMATION_FIELDS)
+            ->findOrFail(ClinicSetting::SINGLETON_ID);
+
+        return response()->json(['data' => $settings->only(ClinicSetting::PUBLIC_INFORMATION_FIELDS)])
+            ->header('Cache-Control', 'no-store');
+    }
+
+    public function updateGeneral(Request $request)
+    {
+        $data = $request->validate([
+            'primary_contact_number' => ['required', 'string', 'max:50'],
+            'secondary_contact_number' => ['required', 'string', 'max:50'],
+            'clinic_address' => ['required', 'string', 'max:500'],
+            'map_directions_url' => ['required', 'string', 'url:http,https', 'max:2048'],
+            'facebook_url' => ['required', 'string', 'url:http,https', 'max:2048'],
+        ]);
+        $settings = ClinicSetting::query()->findOrFail(ClinicSetting::SINGLETON_ID);
+        $settings->update($data);
+
+        return response()->json([
+            'message' => 'Public clinic information saved.',
+            'data' => $settings->only(ClinicSetting::PUBLIC_INFORMATION_FIELDS),
+        ])->header('Cache-Control', 'no-store, private');
+    }
+
     public function page()
     {
         $html = file_get_contents(base_path('resources/views/admin/availability.html'));

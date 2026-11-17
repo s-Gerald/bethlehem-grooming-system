@@ -4,6 +4,42 @@ const header = document.getElementById('landing-header');
 const menuToggle = document.getElementById('menu-toggle');
 const links = document.getElementById('section-links');
 
+async function loadPublicClinicInformation() {
+  try {
+    const response = await fetch(new URL('api/public/clinic-information', document.baseURI), {
+      cache: 'no-store', credentials: 'omit', headers: {Accept: 'application/json'},
+    });
+    if (!response.ok) return;
+    const {data} = await response.json();
+    const fields = ['primary_contact_number', 'secondary_contact_number', 'clinic_address', 'map_directions_url', 'facebook_url'];
+    if (!data || !fields.every(field => typeof data[field] === 'string' && data[field].trim())) return;
+    if (![data.map_directions_url, data.facebook_url].every(value => ['http:', 'https:'].includes(new URL(value).protocol))) return;
+    const phoneHref = value => 'tel:' + (value.trim().startsWith('+') ? '+' : '') + value.replace(/\D/g, '');
+    const primaryHref = phoneHref(data.primary_contact_number);
+    const secondaryHref = phoneHref(data.secondary_contact_number);
+    if (![primaryHref, secondaryHref].every(value => /^tel:\+?\d+$/.test(value))) return;
+
+    const address = document.getElementById('public-clinic-address');
+    address.textContent = data.clinic_address;
+    for (const [id, number, href] of [
+      ['public-clinic-primary-contact', data.primary_contact_number, primaryHref],
+      ['public-clinic-secondary-contact', data.secondary_contact_number, secondaryHref],
+    ]) {
+      const link = document.getElementById(id);
+      link.textContent = number;
+      link.setAttribute('href', href);
+    }
+    for (const id of ['public-clinic-address', 'public-clinic-directions', 'public-clinic-location']) {
+      document.getElementById(id).setAttribute('href', data.map_directions_url);
+    }
+    for (const id of ['public-clinic-facebook', 'public-clinic-footer-facebook']) {
+      document.getElementById(id).setAttribute('href', data.facebook_url);
+    }
+  } catch {
+    // Keep the real HTML contact details and navigation links when unavailable.
+  }
+}
+
 function closeMenu(restoreFocus = false) {
   header.classList.remove('menu-open');
   menuToggle.setAttribute('aria-expanded', 'false');
@@ -220,4 +256,5 @@ async function loadPackages() {
 }
 
 retry.addEventListener('click', loadPackages);
+loadPublicClinicInformation();
 loadPackages();

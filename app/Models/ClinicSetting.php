@@ -13,6 +13,14 @@ class ClinicSetting extends Model
 
     public const SINGLETON_ID = 1;
 
+    public const PUBLIC_INFORMATION_FIELDS = [
+        'primary_contact_number',
+        'secondary_contact_number',
+        'clinic_address',
+        'map_directions_url',
+        'facebook_url',
+    ];
+
     public const DEFAULT_CAGE_CAPACITY = 20;
 
     public const MAX_CAGE_CAPACITY = 500;
@@ -30,6 +38,7 @@ class ClinicSetting extends Model
     public const DEFAULT_GROOMING_CLOSE_TIME = '17:00:00';
 
     protected $fillable = [
+        ...self::PUBLIC_INFORMATION_FIELDS,
         'clinic_open_time',
         'clinic_close_time',
         'grooming_open_time',

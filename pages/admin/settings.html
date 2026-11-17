@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="/css/output.css?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=legacy-off-20261026&profile=20261024&availability=20261027&email-entry=20261028&names=20261028-v2&auth-hardening=20261030" />
+    <link rel="stylesheet" href="/css/output.css?public-information=20261117&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=legacy-off-20261026&profile=20261024&availability=20261027&email-entry=20261028&names=20261028-v2&auth-hardening=20261030" />
     <link rel="stylesheet" href="/css/custom.css?v=unified-inventory-20261001b&release=pricing-footer-20261006&intake=20261019&grooming=actual-20261026" />
     <link rel="stylesheet" href="/css/components/toast.css" />
     <style>
@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="/css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="/css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="/scripts/components/admin-loading.js?v=universal-20261018&urls=20261103&credentials=20261107"></script>
-    <link rel="preload" as="script" href="/scripts/api.js?auth-reliability=20261107&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110" />
+    <link rel="preload" as="script" href="/scripts/api.js?public-information=20261117&auth-reliability=20261107&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110" />
     <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110" />
     <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
   </head>
@@ -132,7 +132,7 @@
         </div>
       </aside>
       <script src="/scripts/utils/human-name.js?v=20261028-names-v2&name-policy=20261110"></script>
-    <script src="/scripts/api.js?auth-reliability=20261107&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110"></script>
+    <script src="/scripts/api.js?public-information=20261117&auth-reliability=20261107&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110"></script>
       <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110"></script>
 
       <!-- Main Content -->
@@ -170,7 +170,7 @@
                 <div class="inline-flex min-w-full gap-1 rounded-2xl border border-[#cfe0ee] bg-white/70 p-1 shadow-sm sm:min-w-0">
                   <button
                     type="button"
-                    @click="activeSettingsTab = 'general'"
+                    @click="selectSettingsTab('general')"
                     class="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition"
                     :class="activeSettingsTab === 'general' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-white'"
                     aria-current="page"
@@ -293,162 +293,62 @@
               <p x-show="qrSettings.success" x-text="qrSettings.success" class="mt-4 text-sm text-emerald-700" role="status"></p>
             </form>
             </template>
-            <form x-cloak x-show="activeSettingsTab === 'general'" class="space-y-6">
-              <div x-show="isStaff" class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">
-                These settings are managed by an administrator.
-              </div>
-
-              <div x-show="isStaff" class="rounded-[24px] border border-[#d7e3ef] bg-white p-5 shadow-sm lg:p-6">
-                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-[#5c7690]">General</p>
-                <h3 class="mt-1 text-2xl font-bold text-[#1f3850]">General Information</h3>
-                <dl class="mt-5 grid gap-5 sm:grid-cols-2">
-                  <div><dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">Clinic Name</dt><dd class="mt-1 font-semibold text-[#1f3850]">Bethlehem Animal Clinic</dd></div>
-                  <div><dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">Business Type</dt><dd class="mt-1 font-semibold text-[#1f3850]">Clinic &amp; Grooming</dd></div>
-                  <div><dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">Contact Number</dt><dd class="mt-1 font-semibold text-[#1f3850]">+63 900 000 0000</dd></div>
-                  <div><dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">Email Address</dt><dd class="mt-1 font-semibold text-[#1f3850]">bethlehemclinic@example.com</dd></div>
-                  <div class="sm:col-span-2"><dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">Clinic Address</dt><dd class="mt-1 font-semibold text-[#1f3850]">Bethlehem Animal Clinic &amp; Grooming, Philippines</dd></div>
-                  <div class="sm:col-span-2"><dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">Clinic Description</dt><dd class="mt-1 font-semibold text-[#1f3850]">Compassionate veterinary care and grooming services for pets and their families.</dd></div>
-                  <div><dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">Website</dt><dd class="mt-1 break-all font-semibold text-[#1f3850]">https://bethlehemanimalclinic.example</dd></div>
-                  <div><dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">Facebook Page</dt><dd class="mt-1 break-all font-semibold text-[#1f3850]">https://facebook.com/bethlehemanimalclinic</dd></div>
+            <section id="public-clinic-information" x-cloak x-show="activeSettingsTab === 'general'"
+              class="rounded-[24px] border border-[#d7e3ef] bg-white p-5 shadow-sm lg:p-6" aria-labelledby="public-clinic-information-title" :aria-busy="generalLoading || generalSaving">
+              <h3 id="public-clinic-information-title" class="text-2xl font-bold text-[#1f3850]">Public Clinic Information</h3>
+              <p class="mt-1 text-sm text-slate-500">Shown on the public landing page.</p>
+              <p x-show="isStaff" class="mt-5 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">These settings are managed by an administrator.</p>
+              <p x-show="generalLoading" role="status" class="mt-5 text-sm text-slate-500">Loading public clinic information…</p>
+              <p x-show="generalError" class="admin-load-error mt-5" role="alert"><span x-text="generalError"></span><button x-show="!generalLoaded" type="button" @click="init()" :disabled="generalLoading">Retry</button></p>
+              <template x-if="isStaff &amp;&amp; generalLoaded">
+                <dl class="mt-5 grid gap-5 md:grid-cols-2">
+                    <div class="min-w-0"><dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">Primary Contact Number</dt><dd class="mt-1 break-words font-semibold text-[#1f3850]" x-text="generalInformation.primary_contact_number"></dd></div>
+                    <div class="min-w-0"><dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">Secondary Contact Number</dt><dd class="mt-1 break-words font-semibold text-[#1f3850]" x-text="generalInformation.secondary_contact_number"></dd></div>
+                    <div class="min-w-0 md:col-span-2"><dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">Clinic Address</dt><dd class="mt-1 break-words font-semibold text-[#1f3850]" x-text="generalInformation.clinic_address"></dd></div>
+                    <div class="min-w-0"><dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">Map / Directions URL</dt><dd class="mt-1 break-words font-semibold text-[#1f3850]" x-text="generalInformation.map_directions_url"></dd></div>
+                    <div class="min-w-0"><dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">Facebook Page</dt><dd class="mt-1 break-words font-semibold text-[#1f3850]" x-text="generalInformation.facebook_url"></dd></div>
                 </dl>
-              </div>
-
-              <div x-show="isAdmin" class="space-y-6">
-              <!-- BACKEND: Replace hardcoded values with clinic settings data once the endpoint is available. -->
-              <div class="rounded-[24px] border border-[#d7e3ef] bg-white p-5 shadow-sm lg:p-6">
-                <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-[#5c7690]">General</p>
-                    <h3 class="mt-1 text-2xl font-bold text-[#1f3850]">General Information</h3>
-                  </div>
-                  <div class="inline-flex w-fit items-center gap-2 rounded-full bg-[#eef5fb] px-3 py-1.5 text-xs font-semibold text-[#315b7e]">
-                    <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#seal-check"></use></svg>
-                    <span>Visible Profile</span>
-                  </div>
-                </div>
-
-                <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
-                  <div class="grid gap-4 md:grid-cols-2">
-                    <label class="block">
-                      <span class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Clinic Name</span>
-                      <input
-                        type="text"
-                        value="Bethlehem Animal Clinic"
-                        class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10"
-                      />
-                    </label>
-
-                    <label class="block">
-                      <span class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Business Type</span>
-                      <input
-                        type="text"
-                        value="Clinic &amp; Grooming"
-                        class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10"
-                      />
-                    </label>
-
-                    <label class="block">
-                      <span class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Contact Number</span>
-                      <input
-                        type="tel"
-                        value="+63 900 000 0000"
-                        class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10"
-                      />
-                    </label>
-
-                    <label class="block">
-                      <span class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Email Address</span>
-                      <input
-                        type="email"
-                        value="bethlehemclinic@example.com"
-                        class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10"
-                      />
-                    </label>
-
-                    <label class="block md:col-span-2">
-                      <span class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Clinic Address</span>
-                      <textarea
-                        rows="3"
-                        class="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10"
-                      >Bethlehem Animal Clinic &amp; Grooming, Philippines</textarea>
-                    </label>
-
-                    <label class="block md:col-span-2">
-                      <span class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Clinic Description</span>
-                      <textarea
-                        rows="4"
-                        class="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10"
-                      >Compassionate veterinary care and grooming services for pets and their families.</textarea>
-                    </label>
-                  </div>
-
-                  <aside class="rounded-2xl border border-[#d7e3ef] bg-[#f8fbfe] p-4">
-                    <p class="text-xs font-semibold uppercase tracking-[0.16em] text-[#5c7690]">Clinic Logo</p>
-                    <div class="mt-4 flex aspect-square items-center justify-center rounded-2xl border border-[#d7e3ef] bg-white p-6">
-                      <img
-                        src="/assets/images/clinic/Bethlehem_Logo-256.png"
-                        alt="Bethlehem Animal Clinic logo"
-                        class="h-full w-full object-contain"
-                      />
+              </template>
+              <template x-if="isAdmin &amp;&amp; generalLoaded">
+                <form id="public-clinic-information-form" @submit.prevent="saveGeneralInformation()" novalidate>
+                  <fieldset :disabled="generalLoading || generalSaving" class="mt-5">
+                    <legend class="sr-only">Public Clinic Information</legend>
+                    <div class="grid gap-5 md:grid-cols-2">
+                      <div class="min-w-0">
+                        <label for="general-primary-contact-number" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Primary Contact Number</label>
+                        <input type="tel" id="general-primary-contact-number" x-model="generalInformation.primary_contact_number" required maxlength="50" @input="delete generalErrors.primary_contact_number; generalSuccess = ''" :aria-invalid="!!generalErrors.primary_contact_number" aria-describedby="general-primary-contact-number-error" class="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-60 aria-[invalid=true]:border-red-600" />
+                        <p id="general-primary-contact-number-error" x-show="generalErrors.primary_contact_number" x-text="generalErrors.primary_contact_number" class="mt-1 text-sm text-red-600" role="alert"></p>
+                      </div>
+                      <div class="min-w-0">
+                        <label for="general-secondary-contact-number" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Secondary Contact Number</label>
+                        <input type="tel" id="general-secondary-contact-number" x-model="generalInformation.secondary_contact_number" required maxlength="50" @input="delete generalErrors.secondary_contact_number; generalSuccess = ''" :aria-invalid="!!generalErrors.secondary_contact_number" aria-describedby="general-secondary-contact-number-error" class="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-60 aria-[invalid=true]:border-red-600" />
+                        <p id="general-secondary-contact-number-error" x-show="generalErrors.secondary_contact_number" x-text="generalErrors.secondary_contact_number" class="mt-1 text-sm text-red-600" role="alert"></p>
+                      </div>
+                      <div class="min-w-0 md:col-span-2">
+                        <label for="general-clinic-address" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Clinic Address</label>
+                        <textarea rows="3" id="general-clinic-address" x-model="generalInformation.clinic_address" required maxlength="500" @input="delete generalErrors.clinic_address; generalSuccess = ''" :aria-invalid="!!generalErrors.clinic_address" aria-describedby="general-clinic-address-error" class="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-60 aria-[invalid=true]:border-red-600"></textarea>
+                        <p id="general-clinic-address-error" x-show="generalErrors.clinic_address" x-text="generalErrors.clinic_address" class="mt-1 text-sm text-red-600" role="alert"></p>
+                      </div>
+                      <div class="min-w-0">
+                        <label for="general-map-directions-url" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Map / Directions URL</label>
+                        <input type="url" id="general-map-directions-url" x-model="generalInformation.map_directions_url" required maxlength="2048" @input="delete generalErrors.map_directions_url; generalSuccess = ''" :aria-invalid="!!generalErrors.map_directions_url" aria-describedby="general-map-directions-url-error" class="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-60 aria-[invalid=true]:border-red-600" />
+                        <p id="general-map-directions-url-error" x-show="generalErrors.map_directions_url" x-text="generalErrors.map_directions_url" class="mt-1 text-sm text-red-600" role="alert"></p>
+                      </div>
+                      <div class="min-w-0">
+                        <label for="general-facebook-url" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Facebook Page</label>
+                        <input type="url" id="general-facebook-url" x-model="generalInformation.facebook_url" required maxlength="2048" @input="delete generalErrors.facebook_url; generalSuccess = ''" :aria-invalid="!!generalErrors.facebook_url" aria-describedby="general-facebook-url-error" class="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-60 aria-[invalid=true]:border-red-600" />
+                        <p id="general-facebook-url-error" x-show="generalErrors.facebook_url" x-text="generalErrors.facebook_url" class="mt-1 text-sm text-red-600" role="alert"></p>
+                      </div>
                     </div>
-                    <div class="mt-4 grid gap-2">
-                      <button type="button" class="flex items-center justify-center gap-2 rounded-xl border border-[#315b7e] bg-white px-4 py-2.5 text-sm font-semibold text-[#315b7e] transition hover:bg-[#eef5fb]">
-                        <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#upload-simple"></use></svg>
-                        <span>Upload Logo</span>
-                      </button>
-                      <button type="button" class="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-white">
-                        <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#arrow-counter-clockwise"></use></svg>
-                        <span>Reset</span>
-                      </button>
+                    <div class="mt-6 flex flex-col gap-3 border-t border-[#e8f0f8] pt-5 sm:flex-row sm:justify-end">
+                      <button type="button" @click="cancelGeneralInformation()" :disabled="generalSaving" class="whitespace-nowrap rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] disabled:opacity-60">Cancel</button>
+                      <button type="submit" :disabled="generalSaving" class="whitespace-nowrap rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] disabled:opacity-60" x-text="generalSaving ? 'Saving…' : 'Save Changes'">Save Changes</button>
                     </div>
-                  </aside>
-                </div>
-              </div>
-
-              <div class="rounded-[24px] border border-[#d7e3ef] bg-white p-5 shadow-sm lg:p-6">
-                <div class="mb-5 flex items-center gap-3">
-                  <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]">
-                    <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#map-pin"></use></svg>
-                  </div>
-                  <div>
-                    <h3 class="text-lg font-bold text-[#1f3850]">Public Contact Details</h3>
-                    <p class="text-sm text-slate-500">These fields are prepared for the customer-facing clinic profile.</p>
-                  </div>
-                </div>
-
-                <div class="grid gap-4 md:grid-cols-2">
-                  <label class="block">
-                    <span class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Website</span>
-                    <input
-                      type="url"
-                      value="https://bethlehemanimalclinic.example"
-                      class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10"
-                    />
-                  </label>
-
-                  <label class="block">
-                    <span class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Facebook Page</span>
-                    <input
-                      type="url"
-                      value="https://facebook.com/bethlehemanimalclinic"
-                      class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10"
-                    />
-                  </label>
-                </div>
-              </div>
-
-              <div class="flex flex-col gap-3 rounded-[24px] border border-[#d7e3ef] bg-white px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-end">
-                <button type="button" class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-50">
-                  Cancel
-                </button>
-                <!-- BACKEND: Wire this button to save General Information only. -->
-                <button type="button" class="flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67]">
-                  <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#floppy-disk"></use></svg>
-                  <span>Save Changes</span>
-                </button>
-              </div>
-              </div>
-            </form>
+                  </fieldset>
+                </form>
+              </template>
+              <p x-show="generalSuccess" x-text="generalSuccess" class="mt-4 text-sm text-emerald-700" role="status"></p>
+            </section>
 
             <div
  x-cloak              x-show="activeSettingsTab === 'security'"
@@ -1327,7 +1227,7 @@
     <script src="/scripts/auth/email-delivery.js?v=otp-resend-20261021"></script>
     <script src="/scripts/utils/account-email.js?v=email-entry-20261028"></script>
     <script src="/scripts/utils/credential-policy.js?v=20261107"></script>
-    <script src="/scripts/components/admin-settings.js?availability=20261027&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=legacy-off-20261026&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024&legacy-qr=off-20261026&email-entry=20261028&names=20261028-v2&auth-hardening=20261030&urls=20261103&credentials=20261107&name-policy=20261110"></script>
+    <script src="/scripts/components/admin-settings.js?public-information=20261117&availability=20261027&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=legacy-off-20261026&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024&legacy-qr=off-20261026&email-entry=20261028&names=20261028-v2&auth-hardening=20261030&urls=20261103&credentials=20261107&name-policy=20261110"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261111&urls=20261103&inventory-expiry=20261111&credentials=20261107"></script>
   </body>

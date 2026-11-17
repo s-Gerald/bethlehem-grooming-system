@@ -51,10 +51,32 @@ const packages = [
     priceOptions: [option('small', 600), option('medium', 800)]},
 ];
 
-function harness(fetcher = async () => ({ok: true, json: async () => ({data: packages})})) {
+const savedInformation = {
+  primary_contact_number: '+63 (2) 7007-3123', secondary_contact_number: '0917 113 1942',
+  clinic_address: '<script>Saved address</script>', map_directions_url: 'https://maps.example/clinic',
+  facebook_url: 'https://www.facebook.com/saved-clinic',
+};
+const publicIds = ['public-clinic-address', 'public-clinic-primary-contact', 'public-clinic-secondary-contact',
+  'public-clinic-facebook', 'public-clinic-footer-facebook', 'public-clinic-directions', 'public-clinic-location'];
+const html = read('../index.html');
+function harness(fetcher = async () => ({ok: true, json: async () => ({data: packages})}),
+  clinicFetcher = async () => ({ok: true, json: async () => ({data: savedInformation})})) {
   const ids = new Map(['landing-header', 'menu-toggle', 'section-links', 'pricing-status', 'pricing-retry',
     'pricing-content', 'package-grid', 'dog-pricing', 'cat-pricing'].map(id => [id, new Element('div', id)]));
+  for (const id of publicIds) {
+    const tag = html.match(new RegExp(`<a\\b[^>]*id="${id}"[^>]*>[\\s\\S]*?</a>`))?.[0];
+    assert.ok(tag, `Landing page provides stable hook ${id}`);
+    const node = new Element('a', id);
+    node.textContent = tag.replace(/<[^>]*>/g, '').trim();
+    node.setAttribute('href', tag.match(/href="([^"]*)"/)[1].replaceAll('&amp;', '&'));
+    ids.set(id, node);
+  }
+  const mapTag = html.match(/<iframe\b[^>]*openstreetmap[^>]*><\/iframe>/)[0];
+  const map = new Element('iframe');
+  for (const [, key, value] of mapTag.matchAll(/([\w-]+)="([^"]*)"/g)) map.setAttribute(key, value.replaceAll('&amp;', '&'));
+  const originalMap = {...map.attributes};
   const doc = new Element('document');
+  doc.append(map);
   const clinic = new Element();
   clinic.classList.add('clinic-grid');
   clinic.setAttribute('data-accordion-group', '');
@@ -84,10 +106,15 @@ function harness(fetcher = async () => ({ok: true, json: async () => ({data: pac
   const media = { matches: false, addEventListener(name, fn) { this.listener = fn; } };
   const tablet = { ...media, matches: true };
   const desktop = { ...media, matches: true };
-  let requests = 0;
+  const requests = {pricing: 0, clinic: 0};
   vm.runInNewContext(`${formatters}\n${source}`, { document: doc, window: {matchMedia: query => query.includes('40rem') ? tablet : query.includes('64rem') ? desktop : media},
-    fetch: (...args) => { requests++; return fetcher(...args); }, URL, console });
-  return {doc, ids, media, tablet, desktop, clinic, requests: () => requests};
+    fetch: (...args) => {
+      const path = new URL(args[0]).pathname;
+      if (path.endsWith('/api/public/clinic-information')) { requests.clinic++; return clinicFetcher(...args); }
+      assert.ok(path.endsWith('/api/public/grooming/packages'), `Unexpected endpoint: ${path}`);
+      requests.pricing++; return fetcher(...args);
+    }, URL, console });
+  return {doc, ids, media, tablet, desktop, clinic, map, originalMap, requests: (kind = 'pricing') => requests[kind]};
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
@@ -99,6 +126,23 @@ const page = harness(async (url, options) => {
 });
 await settle();
 assert.equal(page.requests(), 1);
+assert.equal(page.requests('clinic'), 1, 'One independent public-information request');
+assert.equal(page.ids.get('public-clinic-address').textContent, savedInformation.clinic_address);
+assert.equal(page.ids.get('public-clinic-primary-contact').textContent, '+63 (2) 7007-3123');
+assert.equal(page.ids.get('public-clinic-primary-contact').getAttribute('href'), 'tel:+63270073123');
+assert.equal(page.ids.get('public-clinic-secondary-contact').textContent, '0917 113 1942');
+assert.equal(page.ids.get('public-clinic-secondary-contact').getAttribute('href'), 'tel:09171131942');
+for (const id of ['public-clinic-facebook', 'public-clinic-footer-facebook'])
+  assert.equal(page.ids.get(id).getAttribute('href'), savedInformation.facebook_url);
+for (const id of ['public-clinic-address', 'public-clinic-directions', 'public-clinic-location'])
+  assert.equal(page.ids.get(id).getAttribute('href'), savedInformation.map_directions_url);
+assert.deepEqual(page.map.attributes, page.originalMap);
+assert.equal(page.map.getAttribute('src'), 'https://www.openstreetmap.org/export/embed.html?bbox=121.13274%2C14.57637%2C121.14274%2C14.58237&layer=mapnik&marker=14.57937%2C121.13774');
+assert.equal(page.map.getAttribute('loading'), 'lazy');
+assert.equal(page.map.getAttribute('title'), 'Map of Bethlehem Animal Clinic & Grooming, Taytay, Rizal');
+assert.equal(page.map.getAttribute('width'), '600');
+assert.equal(page.map.getAttribute('height'), '420');
+assert.equal(page.map.getAttribute('referrerpolicy'), 'no-referrer');
 const cards = page.ids.get('package-grid');
 assert.match(content(cards), /Starts at ₱450/);
 assert.match(content(cards), /Starts at ₱499.5/);
@@ -248,4 +292,28 @@ for (const data of [[], [{...packages[0], priceOptions: [option('small', 0)]}], 
   assert.equal(state.ids.get('pricing-content').hidden, true);
   assert.match(content(state.ids.get('pricing-status')), data?.length === 0 ? /No grooming packages/i : /unavailable/i);
 }
-console.log('Public landing rendering, pricing, retry, accordion and mobile-menu regressions passed.');
+for (const clinicFetcher of [
+  async () => { throw Error('Offline'); },
+  async () => ({ok: false}),
+  async () => ({ok: true, json: async () => ({data: {...savedInformation, facebook_url: 'javascript:alert(1)'}})}),
+]) {
+  const fallback = harness(undefined, clinicFetcher);
+  const before = publicIds.map(id => [fallback.ids.get(id).textContent, fallback.ids.get(id).getAttribute('href')]);
+  await settle();
+  assert.deepEqual(publicIds.map(id => [fallback.ids.get(id).textContent, fallback.ids.get(id).getAttribute('href')]), before);
+  assert.equal(fallback.ids.get('public-clinic-primary-contact').textContent, '7007-3122');
+  assert.equal(fallback.ids.get('public-clinic-secondary-contact').textContent, '0917 113 1941');
+  assert.equal(fallback.ids.get('public-clinic-address').textContent, 'K20 Ortigas Avenue Extension, Pearl Ave. St., Ortigas, Greenheights Subd., Brgy. San Isidro, Taytay, Rizal, Taytay, Philippines, 1920');
+  assert.equal(fallback.ids.get('pricing-content').hidden, false, 'Pricing works when information fails');
+  assert.deepEqual(fallback.map.attributes, fallback.originalMap);
+  assert.equal(fallback.requests('clinic'), 1);
+  fallback.ids.get('menu-toggle').listeners.click();
+  assert.equal(fallback.ids.get('menu-toggle').getAttribute('aria-expanded'), 'true');
+}
+let releaseInformation;
+const independent = harness(undefined, () => new Promise(resolve => { releaseInformation = resolve; }));
+await settle();
+assert.equal(independent.ids.get('pricing-content').hidden, false, 'A pending information request does not block pricing');
+releaseInformation({ok: true, json: async () => ({data: savedInformation})}); await settle();
+assert.equal(independent.ids.get('public-clinic-address').textContent, savedInformation.clinic_address);
+console.log('Public clinic information, map, rendering, pricing, retry, accordion and mobile-menu regressions passed.');

@@ -43,6 +43,35 @@ class StaffSettingsInterfaceTest extends TestCase
         }
     }
 
+    public function test_general_has_five_public_fields_for_admin_and_a_separate_read_only_staff_view(): void
+    {
+        $document = new \DOMDocument();
+        @$document->loadHTML(file_get_contents(base_path('pages/admin/settings.html')));
+        $xpath = new \DOMXPath($document);
+        $general = $document->getElementById('public-clinic-information');
+        $this->assertNotNull($general);
+        $this->assertStringContainsString('Public Clinic Information', $general->textContent);
+        $this->assertStringContainsString('Shown on the public landing page.', $general->textContent);
+        $this->assertStringContainsString('These settings are managed by an administrator.', $general->textContent);
+        foreach (['Clinic Name', 'Business Type', 'Email Address', 'Clinic Description', 'Clinic Logo', 'Website', 'Visible Profile', 'Upload Logo'] as $obsolete) {
+            $this->assertStringNotContainsString($obsolete, $general->textContent);
+        }
+        $admin = $xpath->query('.//template[@x-if="isAdmin && generalLoaded"]', $general)->item(0);
+        $staff = $xpath->query('.//template[@x-if="isStaff && generalLoaded"]', $general)->item(0);
+        $this->assertNotNull($admin);
+        $this->assertNotNull($staff);
+        $this->assertSame(5, $xpath->query('.//input | .//textarea', $admin)->length);
+        $this->assertSame(0, $xpath->query('.//input | .//textarea | .//button | .//form', $staff)->length);
+        $labels = ['Primary Contact Number', 'Secondary Contact Number', 'Clinic Address', 'Map / Directions URL', 'Facebook Page'];
+        $this->assertSame($labels, array_map(fn ($label) => $label->textContent, iterator_to_array($xpath->query('.//label', $admin))));
+        $this->assertSame($labels, array_map(fn ($label) => $label->textContent, iterator_to_array($xpath->query('.//dt', $staff))));
+        foreach ($xpath->query('.//input | .//textarea', $admin) as $field) {
+            $this->assertTrue($field->hasAttribute('required'));
+            $this->assertStringStartsWith('generalInformation.', $field->getAttribute('x-model'));
+            $this->assertNotEmpty($field->getAttribute('aria-describedby'));
+        }
+    }
+
     public function test_groomer_control_moved_without_moving_queue_information(): void
     {
         $settings = file_get_contents(base_path('pages/admin/settings.html'));

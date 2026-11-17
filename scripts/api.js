@@ -3155,6 +3155,14 @@ var API = (() => {
     return request("GET", "/settings/security/account", null, getAdminToken());
   }
 
+  async function getGeneralSettings() {
+    return request('GET', '/settings/general', null, getAdminToken(), { cache: 'no-store' });
+  }
+
+  async function saveGeneralSettings(payload) {
+    return request('PATCH', '/settings/general', payload, getAdminToken());
+  }
+
   function getSecurityAlert() {
     const session = getAuthSession(), owner = activitySessionId(session);
     if (!owner || !isAdminRole(session?.role)) return null;
@@ -3936,6 +3944,8 @@ var API = (() => {
     adminUpdateCapacity,
     getAdminSecurityAccounts,
     getSettingsSecurityAccount,
+    getGeneralSettings,
+    saveGeneralSettings,
     getSecurityAlert,
     getSecurityActivity,
     reviewSecurityActivity,

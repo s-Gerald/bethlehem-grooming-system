@@ -32,6 +32,8 @@ async function main() {
   context.FormData = FormData;
   let qrReads = 0, qrSaves = 0;
   context.API.getQrPaymentSettings = async () => { qrReads++; return {settings: {enabled: false, version: 1, has_image: false}}; };
+  context.API.getGeneralSettings = async () => ({data: {primary_contact_number: '7007-3122', secondary_contact_number: '0917 113 1941',
+    clinic_address: 'Taytay, Rizal', map_directions_url: 'https://maps.example/clinic', facebook_url: 'https://www.facebook.com/2022BethlehemAC'}});
   context.API.saveQrPaymentSettings = async payload => {
     qrSaves++;
     assert.equal(payload.get('enabled'), '0');

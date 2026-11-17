@@ -6,6 +6,21 @@ function adminSettings() {
     isAdmin: currentRole === "admin",
     isStaff: currentRole === "staff",
     activeSettingsTab: "general",
+    generalInformation: {
+      primary_contact_number: '',
+      secondary_contact_number: '',
+      clinic_address: '',
+      map_directions_url: '',
+      facebook_url: '',
+    },
+    generalSnapshot: null,
+    generalLoaded: false,
+    generalLoading: false,
+    generalSaving: false,
+    generalErrors: {},
+    generalError: '',
+    generalSuccess: '',
+    _generalRequest: null,
     securityIncidents: [],
     securityActivityLoaded: false,
     securityActivityLoading: false,
@@ -162,21 +177,70 @@ function adminSettings() {
           const {user} = await API.getStaffIdentity();
           this.isAdmin = user.role === 'admin';
           this.isStaff = user.role === 'staff';
-        } catch (error) { this.staffError = error.message || 'Could not verify settings access.'; return; }
+        } catch (error) {
+          this.generalError = this.staffError = error.message || 'Could not verify settings access.';
+          return;
+        }
       }
-      if (legacyTab === 'security') await this.selectSettingsTab('security');
+      await this.selectSettingsTab(legacyTab === 'security' ? 'security' : this.activeSettingsTab);
     },
 
     selectSettingsTab(tab) {
       if (!['general', 'security'].includes(tab)) tab = 'general';
       this.activeSettingsTab = tab;
-      if (tab !== "security") return Promise.resolve();
+      if (tab === 'general') return this.loadGeneralInformation();
       const activity = this.loadSecurityActivity();
       if (this.staffLoaded) return activity;
       if (this._securityRequest) return this._securityRequest;
       this._securityRequest = Promise.all([activity, this.isAdmin ? this.loadSecurityAccounts() : this.loadOwnAccount()])
         .finally(() => { this._securityRequest = null; });
       return this._securityRequest;
+    },
+
+    loadGeneralInformation() {
+      if (this.generalLoaded || (!this.isAdmin && !this.isStaff)) return Promise.resolve();
+      if (this._generalRequest) return this._generalRequest;
+      this.generalLoading = true;
+      this.generalError = '';
+      this._generalRequest = API.getGeneralSettings().then(({data}) => {
+        this.generalInformation = {...data};
+        this.generalSnapshot = {...data};
+        this.generalLoaded = true;
+      }).catch(error => {
+        this.generalError = error.message || 'Could not load public clinic information.';
+      }).finally(() => {
+        this.generalLoading = false;
+        this._generalRequest = null;
+      });
+      return this._generalRequest;
+    },
+
+    cancelGeneralInformation() {
+      if (!this.isAdmin || !this.generalSnapshot || this.generalSaving) return;
+      this.generalInformation = {...this.generalSnapshot};
+      this.generalErrors = {};
+      this.generalError = '';
+      this.generalSuccess = '';
+    },
+
+    async saveGeneralInformation() {
+      if (!this.isAdmin || !this.generalLoaded || this.generalLoading || this.generalSaving) return;
+      this.generalSaving = true;
+      this.generalErrors = {};
+      this.generalError = '';
+      this.generalSuccess = '';
+      try {
+        const {data} = await API.saveGeneralSettings({...this.generalInformation});
+        this.generalInformation = {...data};
+        this.generalSnapshot = {...data};
+        this.generalSuccess = 'Public clinic information saved.';
+      } catch (error) {
+        this.generalErrors = Object.fromEntries(Object.entries(error.errors || {}).map(([field, messages]) => [field, [].concat(messages)[0]]));
+        this.generalError = error.message || 'Could not save public clinic information.';
+        this.$nextTick(() => document.querySelector('#public-clinic-information-form [aria-invalid="true"]')?.focus());
+      } finally {
+        this.generalSaving = false;
+      }
     },
 
     loadSecurityActivity() {

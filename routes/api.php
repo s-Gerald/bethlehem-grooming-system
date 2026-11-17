@@ -71,6 +71,7 @@ Route::post('/email/login/resend', [LoginEmailChallengeController::class, 'resen
 
 // ── PUBLIC ROUTES ─────────────────────────────────────
 Route::get('/public/grooming/packages', [GroomingPricingController::class, 'publicPackages'])->middleware('throttle:60,1');
+Route::get('/public/clinic-information', [ClinicSettingController::class, 'general'])->middleware('throttle:60,1');
 Route::get('/timeslots', [BookingController::class, 'getTimeslots']);
 Route::get('/clinic/status', [ClinicClosureController::class, 'status']);
 Route::get('/clinic/timeslots', [ClinicWalkinController::class, 'timeslots']);
@@ -181,6 +182,8 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
 
     // Shared staff functionality, with grooming operations restricted separately.
     Route::middleware('role:admin,staff')->group(function () {
+        Route::get('/settings/general', [ClinicSettingController::class, 'general']);
+        Route::patch('/settings/general', [ClinicSettingController::class, 'updateGeneral'])->middleware('role:admin');
         Route::get('/settings/security/activity', [AdminSecurityController::class, 'activity']);
         Route::post('/settings/security/activity/{incident}/review', [AdminSecurityController::class, 'reviewActivity'])
             ->whereNumber('incident')->middleware('throttle:20,1,security-review');
