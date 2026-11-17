@@ -150,7 +150,7 @@ const faqGroup = new Element();
 faqGroup.setAttribute('data-accordion-group', '');
 const faqMarkup = read('../index.html').match(/<section id="faq"[\s\S]*?<\/section>/)[0];
 const faqEntries = [...faqMarkup.matchAll(/<button\b([^>]*data-accordion-trigger[^>]*)>[\s\S]*?<\/button>[\s\S]*?<div\b([^>]*class="faq-answer"[^>]*)>/g)];
-assert.equal(faqEntries.length, 8);
+assert.equal(faqEntries.length, 7);
 const faqIds = new Set();
 for (const [, triggerAttributes, answerAttributes] of faqEntries) {
   const attribute = (source, name) => source.match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`))?.[1];

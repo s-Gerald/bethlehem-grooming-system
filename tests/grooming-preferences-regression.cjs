@@ -33,7 +33,7 @@ async function main() {
       assert.equal(grooming.calculatePetSelectionPricing(next,pet).total.minAmount > base, !included);
     }
   }
-  const reminder = "For tooth brushing, please bring your pet's own toothbrush.";
+  const reminder = "For tooth brushing, please bring your pet's own toothbrush. If needed, toothbrushes may be available for purchase at Bethlehem.";
   for (const [petType, servicePackage, alaCarteServices, visible] of [
     ['dog', 'regular_dog_grooming', [], true],
     ['dog', 'deluxe_dog_grooming', [], true],

@@ -151,7 +151,7 @@ export function renderPetServiceCard(pet, selection, index, walkIn = false) {
         </fieldset>
         ${needsToothbrush ? `<p data-role="toothbrush-reminder" class="mt-3 flex items-start gap-2 text-sm text-slate-600">
           <svg class="ph-icon mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=toothbrush-20261116#info"></use></svg>
-          <span class="min-w-0">For tooth brushing, please bring your pet's own toothbrush.</span>
+          <span class="min-w-0">For tooth brushing, please bring your pet's own toothbrush. If needed, toothbrushes may be available for purchase at Bethlehem.</span>
         </p>` : ""}
         ${walkIn && selection.servicePackage === "cat_full_grooming" ? "" : renderHaircutPreference(pet, selection)}
 

@@ -88,7 +88,7 @@ for (const walkIn of [false,true]) {
     assert.equal(vm.runInContext('state.petSelections[0].servicePackage', context), '', 'Synthetic changes cannot select an incompatible package');
     assert.equal(requests, 2);
   }
-  const reminder = "For tooth brushing, please bring your pet's own toothbrush.";
+  const reminder = "For tooth brushing, please bring your pet's own toothbrush. If needed, toothbrushes may be available for purchase at Bethlehem.";
   const change = (role, value, checked = true) => vm.runInContext(`handleSelectionChange({target:{dataset:{role:${JSON.stringify(role)},petId:'cat'},value:${JSON.stringify(value)},checked:${checked},disabled:false}});`, context);
   const expectReminder = visible => assert.equal(markup.includes(reminder), visible && !walkIn, `${walkIn ? 'Staff' : 'Customer'} helper updates after selection changes`);
   // Restore the supported size after the incompatible-package regression above.
