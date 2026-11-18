@@ -185,8 +185,8 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::get('/settings/general', [ClinicSettingController::class, 'general']);
         Route::patch('/settings/general', [ClinicSettingController::class, 'updateGeneral'])->middleware('role:admin');
         Route::get('/settings/security/activity', [AdminSecurityController::class, 'activity']);
-        Route::post('/settings/security/activity/{incident}/review', [AdminSecurityController::class, 'reviewActivity'])
-            ->whereNumber('incident')->middleware('throttle:20,1,security-review');
+        Route::post('/settings/security/activity/{incident}/recognize', [AdminSecurityController::class, 'recognizeActivity'])
+            ->whereNumber('incident')->middleware('throttle:20,1,security-recognize');
         Route::get('/admin/qr-payments/{id}/proof', [\App\Http\Controllers\QrPaymentProofController::class, 'show'])->whereNumber('id')->middleware('grooming');
         Route::get('/admin/qr-payments/config', [\App\Http\Controllers\QrPaymentSettingController::class, 'configuration'])->middleware('grooming');
         Route::get('/admin/qr-payments/image', [\App\Http\Controllers\QrPaymentSettingController::class, 'image'])->middleware('grooming');

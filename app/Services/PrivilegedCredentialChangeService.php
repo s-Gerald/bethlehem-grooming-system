@@ -175,6 +175,10 @@ class PrivilegedCredentialChangeService
                 $target->password_hash = $change->new_password_hash;
             }
             $target->save();
+            $confirmedAt = now();
+            if ($change->changes_password) {
+                app(AccountSecurityService::class)->resolveByPasswordChange($target, $confirmedAt, $change->getKey(), $lockedRequester);
+            }
 
             $staffSelfServiceChange = $target->is($lockedRequester)
                 && $lockedRequester->role === 'staff';
@@ -185,7 +189,7 @@ class PrivilegedCredentialChangeService
             $change->update([
                 'new_password_hash' => null,
                 'code_hash' => null,
-                'confirmed_at' => now(),
+                'confirmed_at' => $confirmedAt,
             ]);
 
             return [
@@ -194,6 +198,7 @@ class PrivilegedCredentialChangeService
                 'target_name' => $this->displayName($target),
                 'target_role' => $target->role,
                 'changes' => $changedFields,
+                'security_resolved_at' => $change->changes_password ? $confirmedAt->toIso8601String() : null,
                 'requires_reauthentication' => $target->is($lockedRequester)
                     && ! $staffSelfServiceChange,
             ];

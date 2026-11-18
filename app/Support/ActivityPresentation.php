@@ -37,7 +37,8 @@ class ActivityPresentation
         'Services' => ['service_created', 'service_updated', 'service_price_updated', 'service_activated', 'service_deactivated'],
         'Staff & Security' => ['staff_created', 'staff_activated', 'staff_deactivated', 'staff_role_changed', 'staff_updated',
             'email_changed', 'password_changed', 'sign_in', 'sign_in_failed', 'recovery_completed',
-            'suspicious_verification', 'account_otp_restricted', 'security_incident_reviewed'],
+            'suspicious_verification', 'account_otp_restricted', 'security_incident_reviewed',
+            'security_incident_recognized', 'security_incidents_resolved'],
         'System' => ['settings_updated'],
     ];
 

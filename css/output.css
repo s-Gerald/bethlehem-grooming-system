@@ -1754,6 +1754,11 @@ video {
   transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
 }
 
+.-rotate-90 {
+  --tw-rotate: -90deg;
+  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
+}
+
 .transform {
   transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
 }
@@ -2023,11 +2028,6 @@ video {
 .divide-\[\#e6eef7\] > :not([hidden]) ~ :not([hidden]) {
   --tw-divide-opacity: 1;
   border-color: rgb(230 238 247 / var(--tw-divide-opacity, 1));
-}
-
-.divide-\[\#e8f0f8\] > :not([hidden]) ~ :not([hidden]) {
-  --tw-divide-opacity: 1;
-  border-color: rgb(232 240 248 / var(--tw-divide-opacity, 1));
 }
 
 .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
@@ -4384,10 +4384,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
 
 .focus\:ring-white\/70:focus {
   --tw-ring-color: rgb(255 255 255 / 0.7);
-}
-
-.focus-visible\:rounded-xl:focus-visible {
-  border-radius: 0.75rem;
 }
 
 .focus-visible\:bg-\[\#eaf4fb\]:focus-visible {

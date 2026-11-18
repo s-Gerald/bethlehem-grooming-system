@@ -25,7 +25,9 @@ function adminSettings() {
     securityActivityLoaded: false,
     securityActivityLoading: false,
     securityActivityError: '',
-    securityReviewBusyId: null,
+    securityRecognitionBusyId: null,
+    securityActivityHasMore: false,
+    securityActivityCursor: null,
     _securityActivityRequest: null,
     _securityActivityRevision: 0,
     adminAccount: {
@@ -243,22 +245,37 @@ function adminSettings() {
       }
     },
 
-    loadSecurityActivity() {
-      if (this.securityActivityLoaded) return Promise.resolve();
+    loadSecurityActivity(append = false) {
       if (this._securityActivityRequest) return this._securityActivityRequest;
-      const revision = ++this._securityActivityRevision;
+      if (append ? !this.securityActivityHasMore : this.securityActivityLoaded) return Promise.resolve();
+      const revision = this._securityActivityRevision;
       this.securityActivityLoading = true;
       this.securityActivityError = '';
       const requested = new URLSearchParams(window.location?.search || '').get('incident');
-      const focusId = /^[1-9]\d*$/.test(requested || '') && Number.isSafeInteger(Number(requested)) ? Number(requested) : null;
-      this._securityActivityRequest = API.getSecurityActivity(focusId).then(response => {
+      const focusId = !append && /^[1-9]\d*$/.test(requested || '') && Number.isSafeInteger(Number(requested)) ? Number(requested) : null;
+      this._securityActivityRequest = API.getSecurityActivity(focusId, append ? this.securityActivityCursor : null).then(response => {
         if (revision !== this._securityActivityRevision) return;
-        this.securityIncidents = response.incidents || [];
+        const entries = [...(response.incidents || [])];
+        if (response.focused_incident) entries.push(response.focused_incident);
+        const existing = new Set(this.securityIncidents.map(incident => String(incident.id)));
+        for (const incident of entries) {
+          if (existing.has(String(incident.id))) continue;
+          this.securityIncidents.push({ ...incident, expanded: false });
+          existing.add(String(incident.id));
+        }
+        this.securityIncidents.sort((a, b) => new Date(b.first_occurred_at) - new Date(a.first_occurred_at) || b.id - a.id);
+        if (!append) {
+          const newestUnresolved = this.securityIncidents.find(incident => incident.status === 'Needs review');
+          if (newestUnresolved) newestUnresolved.expanded = true;
+        }
+        this.securityActivityHasMore = !!response.has_more;
+        this.securityActivityCursor = response.next_cursor || null;
         this.securityActivityLoaded = true;
         const id = focusId === null ? '' : String(focusId);
         if (/^[1-9]\d*$/.test(id || '') && this.securityIncidents.some(incident => String(incident.id) === id)) {
+          this.securityIncidents.find(incident => String(incident.id) === id).expanded = true;
           this.$nextTick(() => {
-            const target = document.getElementById('security-incident-' + id);
+            const target = document.getElementById('security-incident-toggle-' + id);
             target?.focus({ preventScroll: true });
             target?.scrollIntoView({ block: 'center' });
           });
@@ -274,6 +291,17 @@ function adminSettings() {
       return this._securityActivityRequest;
     },
 
+    loadMoreSecurityActivity() {
+      return this.loadSecurityActivity(true);
+    },
+
+    securityActivityDate(value) {
+      const date = new Date(value);
+      return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('en-PH', {
+        timeZone: 'Asia/Manila', dateStyle: 'medium',
+      }).format(date) : '';
+    },
+
     securityActivityTime(value) {
       const date = new Date(value);
       return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('en-PH', {
@@ -281,16 +309,26 @@ function adminSettings() {
       }).format(date) + ' PHT' : '';
     },
 
-    async markSecurityReviewed(incident) {
-      if (this.securityReviewBusyId !== null || incident.status === 'Reviewed') return;
-      this.securityReviewBusyId = incident.id;
+    async recognizeSecurityIncident(incident) {
+      if (this.securityRecognitionBusyId !== null || incident.status !== 'Needs review') return;
+      const revision = this._securityActivityRevision;
+      this.securityRecognitionBusyId = incident.id;
       this.securityActivityError = '';
       try {
-        const response = await API.reviewSecurityActivity(incident.id);
-        this.securityIncidents = this.securityIncidents.map(item => item.id === incident.id ? response.incident : item);
-        this.$nextTick(() => document.getElementById('security-incident-' + incident.id)?.focus({ preventScroll: true }));
-      } catch (error) { this.securityActivityError = error.message || 'Could not mark this activity as reviewed.'; }
-      finally { this.securityReviewBusyId = null; }
+        const response = await API.recognizeSecurityActivity(incident.id);
+        if (revision !== this._securityActivityRevision) return;
+        Object.assign(incident, response.incident, { expanded: false });
+        this.$nextTick(() => document.getElementById('security-incident-toggle-' + incident.id)?.focus({ preventScroll: true }));
+      } catch (error) { this.securityActivityError = error.message || 'Could not save this activity.'; }
+      finally { this.securityRecognitionBusyId = null; }
+    },
+
+    applySecurityResolution(at) {
+      for (const incident of this.securityIncidents) {
+        if (incident.status === 'Needs review' && new Date(incident.last_occurred_at) <= new Date(at)) {
+          Object.assign(incident, { status: 'Resolved', resolved_at: at, expanded: false });
+        }
+      }
     },
 
     secureAccount() {
@@ -1585,6 +1623,10 @@ function adminSettings() {
         this.stopSecurityVerificationFeedback();
         this.securityVerification = this.emptySecurityVerification(false);
         if (this.isStaff) {
+          if (response.security_resolved_at) {
+            await this._securityActivityRequest;
+            this.applySecurityResolution(response.security_resolved_at);
+          }
           this.staffPassword.success = "Password updated successfully.";
           window.setTimeout?.(() => {
             this.staffPassword.success = "";

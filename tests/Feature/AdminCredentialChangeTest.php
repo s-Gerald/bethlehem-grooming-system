@@ -175,6 +175,7 @@ class AdminCredentialChangeTest extends TestCase
         (require database_path('migrations/2026_08_19_000003_add_polling_to_login_email_challenges_table.php'))->up();
         (require database_path('migrations/2026_10_30_000001_isolate_login_email_challenges.php'))->up();
         (require database_path('migrations/2026_10_30_000002_create_account_security_incidents.php'))->up();
+        (require database_path('migrations/2026_11_18_000001_preserve_security_incident_history.php'))->up();
     }
 
     protected function tearDown(): void

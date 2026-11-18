@@ -863,17 +863,21 @@ vm.runInThisContext(componentSource, {
   settings.staffLoaded = true;
   settings.isAdmin = true;
   let activityReads = 0;
-  const reviewed = [];
+  const recognized = [];
   API.getSecurityActivity = async () => { activityReads++; return { incidents: [
-    { id: 1, status: 'Needs review', failure_count: 3 }, { id: 2, status: 'Needs review', failure_count: 4 },
+    { id: 1, status: 'Needs review', failure_count: 3, first_occurred_at: '2026-11-18T06:00:00Z', last_occurred_at: '2026-11-18T06:00:00Z' }, { id: 2, status: 'Needs review', failure_count: 4, first_occurred_at: '2026-11-17T06:00:00Z', last_occurred_at: '2026-11-17T06:00:00Z' },
   ] }; };
-  API.reviewSecurityActivity = async id => { reviewed.push(id); return { incident: { id, status: 'Reviewed', failure_count: 3 } }; };
+  API.recognizeSecurityActivity = async id => { recognized.push(id); return { incident: { id, status: 'Recognized', failure_count: 3, recognized_at: '2026-11-18T06:00:00Z' } }; };
   await settings.loadSecurityActivity();
   await settings.loadSecurityActivity();
   assert.equal(activityReads, 1, 'Reopening Security reuses loaded activity without polling.');
-  await settings.markSecurityReviewed(settings.securityIncidents[0]);
-  assert.deepEqual(reviewed, [1]);
-  assert.equal(settings.securityIncidents[0].status, 'Reviewed');
+  assert.equal(settings.securityIncidents[0].expanded, true);
+  assert.equal(settings.securityIncidents[1].expanded, false);
+  await settings.recognizeSecurityIncident(settings.securityIncidents[0]);
+  assert.deepEqual(recognized, [1]);
+  assert.equal(settings.securityIncidents[0].status, 'Recognized');
+  assert.equal(settings.securityIncidents[0].expanded, false);
+  assert.equal(settings.securityIncidents[0].recognized_at, '2026-11-18T06:00:00Z');
   assert.equal(settings.securityIncidents[1].status, 'Needs review');
   const passwordTargets = [];
   document.querySelector = selector => ({ focus() { passwordTargets.push(selector); }, scrollIntoView() {} });
@@ -887,12 +891,79 @@ vm.runInThisContext(componentSource, {
   document.getElementById = id => ({ focus() { focusedFields.push(id); }, scrollIntoView() {} });
   API.getSecurityActivity = async id => {
     assert.equal(id, 2, 'The same bounded request includes the selected incident.');
-    return { incidents: [{ id: 2, status: 'Needs review' }] };
+    return { incidents: [{ id: 3, status: 'Recognized', first_occurred_at: '2026-11-18T06:00:00Z' }], focused_incident: { id: 2, status: 'Recognized', first_occurred_at: '2026-11-17T06:00:00Z' }, next_cursor: 'page2', has_more: true };
   };
   settings = adminSettings();
   settings.$nextTick = callback => callback();
   await settings.loadSecurityActivity();
-  assert.equal(focusedFields.at(-1), 'security-incident-2');
+  assert.equal(focusedFields.at(-1), 'security-incident-toggle-2');
+  assert.deepEqual(settings.securityIncidents.map(item => item.id), [3, 2], 'An older focus stays chronological.');
+  assert.equal(settings.securityIncidents[1].expanded, true);
+  const preserved = settings.securityIncidents[1];
+  window.location.search = '';
+  let releasePage;
+  API.getSecurityActivity = (focus, cursor) => {
+    activityReads++;
+    assert.equal(focus, null);
+    assert.equal(cursor, 'page2');
+    return new Promise(resolve => { releasePage = resolve; });
+  };
+  const more = settings.loadMoreSecurityActivity();
+  const duplicate = settings.loadMoreSecurityActivity();
+  const reads = activityReads;
+  assert.equal(settings.securityActivityLoading, true);
+  releasePage({ incidents: [{ id: 2, status: 'Recognized', first_occurred_at: '2026-11-17T06:00:00Z' },
+    { id: 1, status: 'Resolved', first_occurred_at: '2026-11-16T06:00:00Z', resolved_at: '2026-11-18T06:00:00Z' }], has_more: false, next_cursor: null });
+  await Promise.all([more, duplicate]);
+  assert.equal(activityReads, reads, 'Concurrent Load more requests are deduplicated.');
+  assert.deepEqual(settings.securityIncidents.map(item => item.id), [3, 2, 1]);
+  assert.equal(settings.securityIncidents[1], preserved, 'Appending keeps existing rows and disclosure state.');
+  assert.equal(preserved.expanded, true);
+  assert.equal(settings.securityIncidents[2].expanded, false);
+  assert.equal(settings.securityActivityHasMore, false);
+  await settings.loadMoreSecurityActivity();
+  assert.equal(activityReads, reads, 'No request is sent after the last page.');
+  assert.match(settings.securityActivityTime('2026-11-18T06:30:00Z'), /2:30/);
+
+  settings.securityIncidents.push({ id: 9, status: 'Needs review', expanded: true, first_occurred_at: '2026-11-18T06:30:00Z', last_occurred_at: '2026-11-18T06:30:00Z' });
+  const pendingIncident = settings.securityIncidents.at(-1);
+  API.recognizeSecurityActivity = async () => { throw new Error('Save failed'); };
+  await settings.recognizeSecurityIncident(pendingIncident);
+  assert.equal(pendingIncident.status, 'Needs review');
+  assert.equal(pendingIncident.expanded, true);
+  assert.equal(settings.securityRecognitionBusyId, null);
+  assert.equal(settings.securityActivityError, 'Save failed');
+  let releaseRecognition;
+  API.recognizeSecurityActivity = () => new Promise(resolve => { releaseRecognition = resolve; });
+  const saving = settings.recognizeSecurityIncident(pendingIncident);
+  assert.equal(settings.securityRecognitionBusyId, 9);
+  releaseRecognition({ incident: { ...pendingIncident, status: 'Recognized', recognized_at: '2026-11-18T07:00:00Z' } });
+  await saving;
+  assert.equal(settings.securityIncidents.at(-1).expanded, false);
+  settings.securityIncidents.push({ id: 10, status: 'Needs review', expanded: true, last_occurred_at: '2026-11-18T07:30:00Z' },
+    { id: 11, status: 'Needs review', expanded: true, last_occurred_at: '2026-11-18T08:30:00Z' });
+  settings.applySecurityResolution('2026-11-18T08:00:00Z');
+  assert.equal(settings.securityIncidents.find(item => item.id === 10).status, 'Resolved');
+  assert.equal(settings.securityIncidents.find(item => item.id === 10).expanded, false);
+  assert.equal(settings.securityIncidents.find(item => item.id === 11).status, 'Needs review');
+  assert.equal(settings.securityIncidents.find(item => item.id === 9).status, 'Recognized');
+  settings.isStaff = true;
+  const olderUnresolved = settings.securityIncidents.find(item => item.id === 10);
+  olderUnresolved.status = 'Needs review';
+  olderUnresolved.resolved_at = null;
+  olderUnresolved.expanded = true;
+  settings.securityVerification.changeId = 55;
+  settings.securityVerification.digits = ['1', '2', '3', '4', '5', '6'];
+  API.confirmStaffPasswordChange = async () => { throw new Error('Incorrect code'); };
+  await settings.confirmSecurityCredentialChange();
+  assert.equal(olderUnresolved.status, 'Needs review', 'Failed OTP confirmation must not resolve activity.');
+  settings.securityVerification.digits = ['1', '2', '3', '4', '5', '6'];
+  API.confirmStaffPasswordChange = async () => ({ security_resolved_at: '2026-11-18T08:00:00Z', requires_reauthentication: false });
+  await settings.confirmSecurityCredentialChange();
+  assert.equal(olderUnresolved.status, 'Resolved', 'A retained staff session reflects the authoritative password confirmation.');
+  assert.equal(olderUnresolved.resolved_at, '2026-11-18T08:00:00Z');
+  assert.equal(olderUnresolved.expanded, false);
+  assert.equal(settings.securityIncidents.find(item => item.id === 11).status, 'Needs review');
   console.log("Admin security settings regression tests passed.");
 })().catch((error) => {
   console.error(error);

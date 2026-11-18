@@ -10,8 +10,14 @@ class AccountSecurityIncident extends Model
 
     protected $casts = [
         'first_occurred_at' => 'datetime', 'last_occurred_at' => 'datetime',
-        'reviewed_at' => 'datetime', 'alert_attempted_at' => 'datetime', 'failure_count' => 'integer',
+        'reviewed_at' => 'datetime', 'recognized_at' => 'datetime', 'resolved_at' => 'datetime',
+        'alert_attempted_at' => 'datetime', 'failure_count' => 'integer',
     ];
+
+    public function scopeUnresolved($query)
+    {
+        return $query->whereNull('resolved_at')->whereNull('recognized_at')->whereNull('reviewed_at');
+    }
 
     public function payload(): array
     {
@@ -20,7 +26,9 @@ class AccountSecurityIncident extends Model
             'first_occurred_at' => $this->first_occurred_at->toIso8601String(),
             'last_occurred_at' => $this->last_occurred_at->toIso8601String(),
             'failure_count' => $this->failure_count,
-            'status' => $this->reviewed_at ? 'Reviewed' : 'Needs review',
+            'status' => $this->resolved_at ? 'Resolved' : ($this->recognized_at ? 'Recognized' : ($this->reviewed_at ? 'Reviewed' : 'Needs review')),
+            'recognized_at' => $this->recognized_at?->toIso8601String(),
+            'resolved_at' => $this->resolved_at?->toIso8601String(),
             'reviewed_at' => $this->reviewed_at?->toIso8601String()];
     }
 

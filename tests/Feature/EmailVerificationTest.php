@@ -61,7 +61,7 @@ class EmailVerificationTest extends TestCase
         }
         \Laravel\Sanctum\Sanctum::actingAs($user);
         $this->getJson('/api/settings/security/activity?incident='.$incident->getKey())->assertOk()
-            ->assertJsonCount(20, 'incidents')->assertJsonPath('incidents.0.id', $incident->getKey());
+            ->assertJsonCount(5, 'incidents')->assertJsonPath('focused_incident.id', $incident->getKey());
         $foreign = \App\Models\AccountSecurityIncident::create(['user_id' => User::factory()->create()->getKey(),
             'incident_day' => now()->toDateString(), 'first_occurred_at' => now(), 'last_occurred_at' => now()]);
         $this->getJson('/api/settings/security/activity?incident='.$foreign->getKey())->assertOk()
@@ -146,7 +146,7 @@ class EmailVerificationTest extends TestCase
         $this->assertTrue($response->headers->hasCacheControlDirective('no-store'));
         \Laravel\Sanctum\Sanctum::actingAs(User::factory()->create());
         $this->getJson('/api/settings/security/activity')->assertForbidden();
-        $this->postJson('/api/settings/security/activity/1/review')->assertForbidden();
+        $this->postJson('/api/settings/security/activity/1/recognize')->assertForbidden();
     }
 
     public function test_warning_queue_failure_preserves_the_incident_and_allows_a_valid_otp(): void
@@ -232,11 +232,11 @@ class EmailVerificationTest extends TestCase
         $other = User::factory()->create(['role' => 'staff']);
         \Laravel\Sanctum\Sanctum::actingAs($other);
         $this->getJson('/api/settings/security/activity')->assertOk()->assertJsonCount(0, 'incidents');
-        $this->postJson('/api/settings/security/activity/'.$incident->getKey().'/review')->assertNotFound();
+        $this->postJson('/api/settings/security/activity/'.$incident->getKey().'/recognize')->assertNotFound();
         \Laravel\Sanctum\Sanctum::actingAs($user);
         $this->getJson('/api/settings/security/activity')->assertOk()->assertJsonPath('incidents.0.failure_count', 4);
-        $this->postJson('/api/settings/security/activity/'.$incident->getKey().'/review')->assertOk();
-        $this->assertNotNull($incident->fresh()->reviewed_at);
+        $this->postJson('/api/settings/security/activity/'.$incident->getKey().'/recognize')->assertOk();
+        $this->assertNotNull($incident->fresh()->recognized_at);
         $this->assertSame(4, RateLimiter::attempts('login-code-account:'.$user->getKey()));
         $this->assertNull($active->fresh()->replaced_at);
         $good = Notification::sent($user, ConfirmLoginNotification::class)->last()->code;
@@ -244,9 +244,11 @@ class EmailVerificationTest extends TestCase
         $token = str_repeat('n', 64);
         LoginEmailChallenge::create(['user_id' => $user->getKey(), 'poll_token_hash' => hash('sha256', $token),
             'token_hash' => hash_hmac('sha256', '123456', $token), 'expires_at' => now()->addMinutes(10)]);
-        $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => '000000'])->assertUnprocessable();
-        $this->assertSame(5, $incident->fresh()->failure_count, 'A successful sign-in clears guessing budgets, not incident history.');
-        $this->assertNull($incident->fresh()->reviewed_at);
+        foreach (range(1, 3) as $i) $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => '000000'])->assertUnprocessable();
+        $this->assertSame(4, $incident->fresh()->failure_count, 'Recognized history is preserved after successful sign-in.');
+        $this->assertNotNull($incident->fresh()->recognized_at);
+        $this->assertDatabaseCount('account_security_incidents', 2);
+        $this->assertSame('Needs review', \App\Models\AccountSecurityIncident::latest('id')->first()->payload()['status']);
         Notification::assertSentToTimes($user, \App\Notifications\UnusualSignInActivityNotification::class, 1);
     }
 

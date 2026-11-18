@@ -3172,13 +3172,15 @@ var API = (() => {
     } catch { return null; }
   }
 
-  function getSecurityActivity(focusId = null) {
-    const query = Number.isSafeInteger(focusId) && focusId > 0 ? '?incident=' + focusId : '';
-    return request('GET', '/settings/security/activity' + query, null, getAdminToken(), { cache: 'no-store' });
+  function getSecurityActivity(focusId = null, cursor = null) {
+    const query = new URLSearchParams();
+    if (Number.isSafeInteger(focusId) && focusId > 0) query.set('incident', focusId);
+    if (cursor) query.set('cursor', cursor);
+    return request('GET', '/settings/security/activity' + (query.size ? '?' + query : ''), null, getAdminToken(), { cache: 'no-store' });
   }
 
-  async function reviewSecurityActivity(id) {
-    const result = await request('POST', `/settings/security/activity/${encodeURIComponent(id)}/review`, null, getAdminToken());
+  async function recognizeSecurityActivity(id) {
+    const result = await request('POST', `/settings/security/activity/${encodeURIComponent(id)}/recognize`, null, getAdminToken());
     if (getSecurityAlert() === id) {
       safeStorageRemove(sessionStorage, 'bethlehem.security.alert');
       document.getElementById('account-security-alert')?.remove();
@@ -3948,7 +3950,7 @@ var API = (() => {
     saveGeneralSettings,
     getSecurityAlert,
     getSecurityActivity,
-    reviewSecurityActivity,
+    recognizeSecurityActivity,
     validateStaffProfile,
     updateStaffProfile,
     requestStaffPasswordChange,

@@ -113,6 +113,7 @@ class AdminStaffAccountManagementTest extends TestCase
         });
         (require base_path('database/migrations/2026_10_30_000001_isolate_login_email_challenges.php'))->up();
         (require base_path('database/migrations/2026_10_30_000002_create_account_security_incidents.php'))->up();
+        (require base_path('database/migrations/2026_11_18_000001_preserve_security_incident_history.php'))->up();
 
         Schema::create('privileged_credential_changes', function (Blueprint $table): void {
             $table->id();

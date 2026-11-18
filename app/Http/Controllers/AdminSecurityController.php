@@ -25,26 +25,16 @@ class AdminSecurityController extends Controller
 {
     public function activity(Request $request)
     {
-        $data = $request->validate(['incident' => ['nullable', 'integer', 'min:1']]);
-        return response()->json(['success' => true,
-            'incidents' => app(\App\Services\AccountSecurityService::class)->recent($request->user(),
-                isset($data['incident']) ? (string) $data['incident'] : null)])
+        $data = $request->validate(['incident' => ['nullable', 'integer', 'min:1'], 'cursor' => ['nullable', 'string', 'max:512']]);
+        return response()->json(['success' => true] + app(\App\Services\AccountSecurityService::class)->recent($request->user(),
+            isset($data['incident']) ? (string) $data['incident'] : null, $data['cursor'] ?? null))
             ->header('Cache-Control', 'no-store');
     }
 
-    public function reviewActivity(Request $request, int $incident)
+    public function recognizeActivity(Request $request, int $incident)
     {
-        return DB::transaction(function () use ($request, $incident) {
-            $record = \App\Models\AccountSecurityIncident::where('user_id', $request->user()->getKey())
-                ->whereKey($incident)->lockForUpdate()->firstOrFail();
-            if (! $record->reviewed_at) {
-                $record->update(['reviewed_at' => now()]);
-                app(\App\Services\ActivityRecorder::class)->record('security_incident_reviewed', 'system', 'account',
-                    (string) $request->user()->getKey(), 'Security activity reviewed', [], false, $request->user(),
-                    'security-reviewed:'.$record->getKey().':'.$record->last_occurred_at->timestamp.':'.$record->failure_count);
-            }
-            return response()->json(['success' => true, 'incident' => $record->payload()])->header('Cache-Control', 'no-store');
-        });
+        $record = app(\App\Services\AccountSecurityService::class)->recognize($request->user(), $incident);
+        return response()->json(['success' => true, 'incident' => $record->payload()])->header('Cache-Control', 'no-store');
     }
 
     public function accounts(Request $request)
@@ -491,6 +481,7 @@ class AdminSecurityController extends Controller
             'target_name' => $result['target_name'],
             'target_role' => $result['target_role'],
             'changes' => $result['changes'],
+            'security_resolved_at' => $result['security_resolved_at'],
             'requires_reauthentication' => $result['requires_reauthentication'],
         ]);
     }

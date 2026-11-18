@@ -60,6 +60,7 @@ class CustomerPasswordChangeTest extends TestCase
         });
         (require base_path('database/migrations/2026_10_30_000001_isolate_login_email_challenges.php'))->up();
         (require base_path('database/migrations/2026_10_30_000002_create_account_security_incidents.php'))->up();
+        (require base_path('database/migrations/2026_11_18_000001_preserve_security_incident_history.php'))->up();
         foreach (['2026_11_07_000001_create_customer_security_changes.php', '2026_08_28_000001_create_privileged_credential_changes_table.php',
             '2026_10_25_000002_create_staff_email_changes.php'] as $migration) {
             (require base_path('database/migrations/'.$migration))->up();
