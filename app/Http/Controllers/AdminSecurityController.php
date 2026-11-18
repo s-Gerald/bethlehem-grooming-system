@@ -75,11 +75,7 @@ class AdminSecurityController extends Controller
         $data = $this->validateChange($request, requireCurrentPassword: true);
         $admin = $request->user();
 
-        if (! Hash::check($data['current_password'], $admin->password_hash)) {
-            throw ValidationException::withMessages([
-                'current_password' => 'Incorrect current password.',
-            ]);
-        }
+        $this->assertCurrentPassword($admin, $data['current_password']);
 
         return $this->requestChange(
             $credentialChanges,
@@ -100,17 +96,26 @@ class AdminSecurityController extends Controller
     public function updateOwnerProfile(Request $request)
     {
         abort_unless($request->user()->isOwner(), 403);
-        $this->assertProfileFields($request, ['first_name', 'last_name']);
-        $data = $this->profileNameData($request);
+        $this->assertProfileFields($request, ['first_name', 'last_name', 'current_password']);
+        $data = $this->profileNameData($request, ['current_password' => ['required', 'string']], partialNames: true);
         $owner = DB::transaction(function () use ($request, $data): User {
             $owner = User::query()->lockForUpdate()->findOrFail($request->user()->getKey());
             abort_unless($owner->isOwner() && $owner->is_active && ! $owner->is_archived, 403);
+            $this->assertCurrentPassword($owner, $data['current_password']);
+            unset($data['current_password']);
             $owner->fill($data);
             if ($owner->isDirty()) $owner->save();
             return $owner;
         }, 3);
 
         return $this->profileResponse($owner);
+    }
+
+    private function assertCurrentPassword(User $user, string $password): void
+    {
+        if (! Hash::check($password, $user->password_hash)) {
+            throw ValidationException::withMessages(['current_password' => 'Incorrect current password.']);
+        }
     }
 
     public function updateStaffProfile(Request $request)
@@ -184,7 +189,7 @@ class AdminSecurityController extends Controller
         }
     }
 
-    private function profileNameData(Request $request, array $additionalRules = []): array
+    private function profileNameData(Request $request, array $additionalRules = [], bool $partialNames = false): array
     {
         foreach (['first_name', 'last_name'] as $field) {
             if (is_string($request->input($field))) {
@@ -193,11 +198,17 @@ class AdminSecurityController extends Controller
             }
         }
 
-        return $request->validate([
-            'first_name' => \App\Support\HumanName::rules('first_name', unchanged: $request->user()->hasSelfServiceSecurity() ? $request->user()->first_name : null),
-            'last_name' => \App\Support\HumanName::rules('last_name', unchanged: $request->user()->hasSelfServiceSecurity() ? $request->user()->last_name : null),
-            ...$additionalRules,
-        ], ['username.required' => 'Enter a username.']);
+        $rules = [];
+        foreach (['first_name', 'last_name'] as $field) {
+            $unchanged = $request->user()->hasSelfServiceSecurity() ? $request->user()->$field : null;
+            $rules[$field] = \App\Support\HumanName::rules($field, unchanged: $unchanged);
+            if ($partialNames) array_unshift($rules[$field], 'sometimes');
+        }
+
+        return $request->validate($rules + $additionalRules, [
+            'username.required' => 'Enter a username.',
+            'current_password.required' => 'Enter your current password.',
+        ]);
     }
 
     private function assertStaffUsernameIsAvailable(string $username, User $staff, bool $lockForUpdate = false): void
@@ -640,7 +651,7 @@ class AdminSecurityController extends Controller
             'username' => AccountUsername::rules('nullable', $request->user()->username),
             'password' => AccountPassword::rules('admin', presence: 'nullable', screen: false),
             'password_confirmation' => ['bail', 'required_with:password', 'nullable', 'string', 'same:password'],
-        ], AccountPassword::messages());
+        ], AccountPassword::messages() + ['current_password.required' => 'Enter your current password.']);
     }
 
     public function accountPayload(User $user): array

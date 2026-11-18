@@ -86,9 +86,9 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
         $this->assertStringNotContainsString('resetStaffModal', $security);
         $this->assertStringNotContainsString('6-digit email verification code', $security);
         foreach ([
-            'adminPassword.showCurrent',
-            'adminPassword.showPassword',
-            'adminPassword.showConfirmation',
+            'ownerForm.showCurrent',
+            'ownerForm.showPassword',
+            'ownerForm.showConfirmation',
             'staffStatusModal.showPassword',
             'staffDetailsModal.showPassword',
             'staffSetupModal.showPassword',
@@ -149,8 +149,8 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
         $component = file_get_contents(base_path('scripts/components/admin-settings.js'));
 
         foreach ([
-            'x-model="adminPassword.username"',
-            '@click="submitAdminPassword()"',
+            'x-model="ownerForm.username"',
+            '@submit.prevent="submitOwnerAccount()"',
             '@click="requestNewStaffAccount()"',
             '@click="openStaffDetails(staff)"',
             'x-show="staffDetailsModal.open"',
@@ -166,7 +166,7 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
             'staffAccounts: []',
             'get filteredStaffAccounts()',
             'loadSecurityAccounts()',
-            'submitAdminPassword()',
+            'submitOwnerAccount()',
             'openStaffDetails(staff)',
             'closeStaffDetails()',
             'handleAddStaffClose()',

@@ -417,7 +417,7 @@
                         <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#shield-check"></use></svg>
                       </div>
                       <div>
-                        <h3 class="text-xl font-bold text-[#1f3850]">Admin account</h3>
+                        <h3 id="ownerAccountHeading" class="text-xl font-bold text-[#1f3850]">Admin account</h3>
                         <p class="mt-1 text-sm text-slate-500">Staff access and account details</p>
                       </div>
                     </div>
@@ -428,131 +428,116 @@
                   </div>
                 </div>
 
-                <form @submit.prevent="submitOwnerProfile()" class="border-b border-[#e8f0f8] px-5 py-5 lg:px-6" aria-labelledby="ownerProfileHeading" novalidate>
-                  <h4 id="ownerProfileHeading" class="mb-4 text-base font-bold text-[#1f3850]">Profile information</h4>
-                  <fieldset :disabled="!staffLoaded || ownerProfile.submitting" class="grid min-w-0 gap-4 sm:grid-cols-2">
+                <form @submit.prevent="submitOwnerAccount()" class="px-5 py-5 lg:px-6" aria-labelledby="ownerAccountHeading" novalidate>
+                  <fieldset :disabled="!staffLoaded || ownerForm.submitting" class="grid min-w-0 gap-4 sm:grid-cols-2">
                     <div>
-                      <label for="ownerProfileFirstName" class="mb-1.5 block text-sm font-semibold text-slate-600">First Name</label>
-                      <input id="ownerProfileFirstName" type="text" x-model="ownerProfile.firstName" data-human-name="first_name" required autocomplete="given-name" @input="ownerProfile.error = ''; ownerProfile.success = ''" :aria-invalid="Boolean(ownerProfile.errors.first_name)" aria-describedby="ownerProfileFirstNameError" :class="ownerProfile.errors.first_name ? '!border-red-400' : ''" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-70" />
-                      <p id="ownerProfileFirstNameError" x-show="ownerProfile.errors.first_name" x-text="ownerProfile.errors.first_name" class="mt-2 text-xs text-red-700" aria-live="polite"></p>
+                      <label for="adminCredential_first_name" class="mb-1.5 block text-sm font-semibold text-slate-600">First Name</label>
+                      <input id="adminCredential_first_name" type="text" x-model="ownerForm.first_name" data-human-name="first_name" required autocomplete="given-name" @input="ownerForm.error = ''; ownerForm.success = ''" :aria-invalid="Boolean(ownerForm.errors.first_name)" aria-describedby="adminCredential_first_nameError" :class="ownerForm.errors.first_name ? '!border-red-400' : ''" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-70" />
+                      <p id="adminCredential_first_nameError" x-show="ownerForm.errors.first_name" x-text="ownerForm.errors.first_name" class="mt-2 text-xs text-red-700" aria-live="polite"></p>
                     </div>
                     <div>
-                      <label for="ownerProfileLastName" class="mb-1.5 block text-sm font-semibold text-slate-600">Last Name</label>
-                      <input id="ownerProfileLastName" type="text" x-model="ownerProfile.lastName" data-human-name="last_name" required autocomplete="family-name" @input="ownerProfile.error = ''; ownerProfile.success = ''" :aria-invalid="Boolean(ownerProfile.errors.last_name)" aria-describedby="ownerProfileLastNameError" :class="ownerProfile.errors.last_name ? '!border-red-400' : ''" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-70" />
-                      <p id="ownerProfileLastNameError" x-show="ownerProfile.errors.last_name" x-text="ownerProfile.errors.last_name" class="mt-2 text-xs text-red-700" aria-live="polite"></p>
+                      <label for="adminCredential_last_name" class="mb-1.5 block text-sm font-semibold text-slate-600">Last Name</label>
+                      <input id="adminCredential_last_name" type="text" x-model="ownerForm.last_name" data-human-name="last_name" required autocomplete="family-name" @input="ownerForm.error = ''; ownerForm.success = ''" :aria-invalid="Boolean(ownerForm.errors.last_name)" aria-describedby="adminCredential_last_nameError" :class="ownerForm.errors.last_name ? '!border-red-400' : ''" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-70" />
+                      <p id="adminCredential_last_nameError" x-show="ownerForm.errors.last_name" x-text="ownerForm.errors.last_name" class="mt-2 text-xs text-red-700" aria-live="polite"></p>
                     </div>
-                  </fieldset>
-                  <div class="mt-5 flex justify-end">
-                    <button type="submit" :disabled="!staffLoaded || !ownerProfileChanged || ownerProfile.submitting" :aria-busy="ownerProfile.submitting" class="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67] disabled:cursor-not-allowed disabled:opacity-70">
-                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#floppy-disk"></use></svg>
-                      <span x-text="ownerProfile.submitting ? 'Saving...' : 'Save Profile'">Save Profile</span>
-                    </button>
-                  </div>
-                  <p x-show="ownerProfile.error" x-text="ownerProfile.error" class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600" role="alert"></p>
-                  <p x-show="ownerProfile.success" x-text="ownerProfile.success" class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700" role="status"></p>
-                </form>
-
-                <div class="px-5 py-5 lg:px-6">
-                  <h4 class="mb-4 text-base font-bold text-[#1f3850]">Credentials</h4>
-                  <div class="grid gap-4 sm:grid-cols-2">
                     <label class="block">
                       <span class="mb-1.5 block text-sm font-semibold text-slate-600">Username</span>
                       <input
                         type="text"
-                        x-model="adminPassword.username" id="adminCredential_username" @input="credentialInput('admin', 'username')" @blur="credentialInput('admin', 'username', true)" :aria-invalid="Boolean(adminPassword.errors.username)" aria-describedby="adminCredential_usernameError" :class="adminPassword.errors.username ? '!border-red-400' : ''"
+                        x-model="ownerForm.username" id="adminCredential_username" @input="credentialInput('admin', 'username')" @blur="credentialInput('admin', 'username', true)" :aria-invalid="Boolean(ownerForm.errors.username)" aria-describedby="adminCredential_usernameError" :class="ownerForm.errors.username ? '!border-red-400' : ''"
                         autocomplete="username"
                         placeholder="Enter username"
                         class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400 transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10"
                       />
-                      <p id="adminCredential_usernameError" x-show="adminPassword.errors.username" x-text="adminPassword.errors.username" class="mt-2 text-xs text-red-700" aria-live="polite"></p>
+                      <p id="adminCredential_usernameError" x-show="ownerForm.errors.username" x-text="ownerForm.errors.username" class="mt-2 text-xs text-red-700" aria-live="polite"></p>
                     </label>
 
                     <label class="block">
                       <span class="mb-1.5 block text-sm font-semibold text-slate-600">Current password</span>
                       <div class="relative">
                         <input
-                          :type="adminPassword.showCurrent ? 'text' : 'password'"
-                          x-model="adminPassword.current" id="adminCredential_current" @input="credentialInput('admin', 'current')" @blur="credentialInput('admin', 'current', true)" :aria-invalid="Boolean(adminPassword.errors.current)" aria-describedby="adminCredential_currentError" :class="adminPassword.errors.current ? '!border-red-400' : ''"
+                          :type="ownerForm.showCurrent ? 'text' : 'password'"
+                          x-model="ownerForm.current" id="adminCredential_current" @input="credentialInput('admin', 'current')" @blur="credentialInput('admin', 'current', true)" :aria-invalid="Boolean(ownerForm.errors.current)" aria-describedby="adminCredential_currentError" :class="ownerForm.errors.current ? '!border-red-400' : ''"
                           autocomplete="current-password"
                           placeholder="Enter current password"
                           class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 pr-11 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400 transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10"
                         />
                         <button
                           type="button"
-                          @click="adminPassword.showCurrent = !adminPassword.showCurrent"
+                          @click="ownerForm.showCurrent = !ownerForm.showCurrent"
                           class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e]"
-                          :aria-label="adminPassword.showCurrent ? 'Hide current password' : 'Show current password'"
+                          :aria-label="ownerForm.showCurrent ? 'Hide current password' : 'Show current password'"
                         >
-                          <svg x-show="!adminPassword.showCurrent"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
-                          <svg x-show="adminPassword.showCurrent"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
+                          <svg x-show="!ownerForm.showCurrent"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
+                          <svg x-show="ownerForm.showCurrent"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
                         </button>
                       </div>
-                      <p id="adminCredential_currentError" x-show="adminPassword.errors.current" x-text="adminPassword.errors.current" class="mt-2 text-xs text-red-700" aria-live="polite"></p>
+                      <p id="adminCredential_currentError" x-show="ownerForm.errors.current" x-text="ownerForm.errors.current" class="mt-2 text-xs text-red-700" aria-live="polite"></p>
                     </label>
 
                     <label class="block">
                       <span class="mb-1.5 block text-sm font-semibold text-slate-600">New password</span>
                       <div class="relative">
                         <input
-                          :type="adminPassword.showPassword ? 'text' : 'password'"
-                          x-model="adminPassword.password" id="adminCredential_password" @input="credentialInput('admin', 'password')" @blur="credentialInput('admin', 'password', true)" :aria-invalid="Boolean(adminPassword.errors.password)" aria-describedby="adminCredential_passwordError adminPasswordHelp" :class="adminPassword.errors.password ? '!border-red-400' : ''"
+                          :type="ownerForm.showPassword ? 'text' : 'password'"
+                          x-model="ownerForm.password" id="adminCredential_password" @input="credentialInput('admin', 'password')" @blur="credentialInput('admin', 'password', true)" :aria-invalid="Boolean(ownerForm.errors.password)" aria-describedby="adminCredential_passwordError adminPasswordHelp" :class="ownerForm.errors.password ? '!border-red-400' : ''"
                           autocomplete="new-password"
                           placeholder="Enter new password"
                           class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 pr-11 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400 transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10"
                         />
                         <button
                           type="button"
-                          @click="adminPassword.showPassword = !adminPassword.showPassword"
+                          @click="ownerForm.showPassword = !ownerForm.showPassword"
                           class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e]"
-                          :aria-label="adminPassword.showPassword ? 'Hide new password' : 'Show new password'"
+                          :aria-label="ownerForm.showPassword ? 'Hide new password' : 'Show new password'"
                         >
-                          <svg x-show="!adminPassword.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
-                          <svg x-show="adminPassword.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
+                          <svg x-show="!ownerForm.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
+                          <svg x-show="ownerForm.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
                         </button>
                       </div>
                       <p id="adminPasswordHelp" class="mt-2 text-xs text-slate-500">15–64 characters. Use English letters, numbers, or symbols. No spaces at the start or end.</p>
-                      <p id="adminCredential_passwordError" x-show="adminPassword.errors.password" x-text="adminPassword.errors.password" class="mt-2 text-xs text-red-700" aria-live="polite"></p>
+                      <p id="adminCredential_passwordError" x-show="ownerForm.errors.password" x-text="ownerForm.errors.password" class="mt-2 text-xs text-red-700" aria-live="polite"></p>
                     </label>
 
                     <label class="block">
                       <span class="mb-1.5 block text-sm font-semibold text-slate-600">Confirm new password</span>
                       <div class="relative">
                         <input
-                          :type="adminPassword.showConfirmation ? 'text' : 'password'"
-                          x-model="adminPassword.confirmation" id="adminCredential_confirmation" @input="credentialInput('admin', 'confirmation')" @blur="credentialInput('admin', 'confirmation', true)" :aria-invalid="Boolean(adminPassword.errors.confirmation)" aria-describedby="adminCredential_confirmationError" :class="adminPassword.errors.confirmation ? '!border-red-400' : ''"
+                          :type="ownerForm.showConfirmation ? 'text' : 'password'"
+                          x-model="ownerForm.confirmation" id="adminCredential_confirmation" @input="credentialInput('admin', 'confirmation')" @blur="credentialInput('admin', 'confirmation', true)" :aria-invalid="Boolean(ownerForm.errors.confirmation)" aria-describedby="adminCredential_confirmationError" :class="ownerForm.errors.confirmation ? '!border-red-400' : ''"
                           autocomplete="new-password"
                           placeholder="Re-enter new password"
                           class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 pr-11 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400 transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10"
                         />
                         <button
                           type="button"
-                          @click="adminPassword.showConfirmation = !adminPassword.showConfirmation"
+                          @click="ownerForm.showConfirmation = !ownerForm.showConfirmation"
                           class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e]"
-                          :aria-label="adminPassword.showConfirmation ? 'Hide password confirmation' : 'Show password confirmation'"
+                          :aria-label="ownerForm.showConfirmation ? 'Hide password confirmation' : 'Show password confirmation'"
                         >
-                          <svg x-show="!adminPassword.showConfirmation"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
-                          <svg x-show="adminPassword.showConfirmation"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
+                          <svg x-show="!ownerForm.showConfirmation"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
+                          <svg x-show="ownerForm.showConfirmation"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
                         </button>
                       </div>
-                      <p id="adminCredential_confirmationError" x-show="adminPassword.errors.confirmation" x-text="adminPassword.errors.confirmation" class="mt-2 text-xs text-red-700" aria-live="polite"></p>
+                      <p id="adminCredential_confirmationError" x-show="ownerForm.errors.confirmation" x-text="ownerForm.errors.confirmation" class="mt-2 text-xs text-red-700" aria-live="polite"></p>
                     </label>
-                  </div>
+                  </fieldset>
 
                   <div class="mt-4 flex justify-end border-t border-slate-100 pt-4">
                     <button
-                      type="button"
-                      @click="submitAdminPassword()"
-                      :disabled="adminPassword.submitting"
+                      type="submit"
+                      :disabled="!staffLoaded || ownerForm.submitting || !ownerAccountChanged"
+                      :aria-busy="ownerForm.submitting"
                       class="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67] disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#floppy-disk"></use></svg>
-                      <span x-text="adminPassword.submitting ? 'Updating...' : 'Update Changes'">Update Changes</span>
+                      <span x-text="ownerForm.submitting ? 'Updating...' : 'Update Changes'">Update Changes</span>
                     </button>
                   </div>
 
-                  <p x-show="adminPassword.error" x-text="adminPassword.error" class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600" role="alert"></p>
-                  <p x-show="adminPassword.success" x-text="adminPassword.success" class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700" role="status"></p>
-                </div>
+                  <p x-show="ownerForm.error" x-text="ownerForm.error" class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600" role="alert"></p>
+                  <p x-show="ownerForm.success" x-text="ownerForm.success" class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700" role="status"></p>
+                </form>
               </div>
 
               <section class="overflow-hidden rounded-[24px] border border-[#d7e3ef] bg-white shadow-sm" aria-labelledby="staffAccountsHeading">
@@ -1281,7 +1266,7 @@
     <script src="/scripts/auth/email-delivery.js?v=otp-resend-20261021"></script>
     <script src="/scripts/utils/account-email.js?v=email-entry-20261028"></script>
     <script src="/scripts/utils/credential-policy.js?v=20261107"></script>
-    <script src="/scripts/components/admin-settings.js?security-history=20261118&public-information=20261117&availability=20261027&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=legacy-off-20261026&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024&legacy-qr=off-20261026&email-entry=20261028&names=20261028-v2&auth-hardening=20261030&urls=20261103&credentials=20261107&name-policy=20261110&manager=20261118&owner-identity=20261118"></script>
+    <script src="/scripts/components/admin-settings.js?security-history=20261118&public-information=20261117&availability=20261027&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=legacy-off-20261026&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024&legacy-qr=off-20261026&email-entry=20261028&names=20261028-v2&auth-hardening=20261030&urls=20261103&credentials=20261107&name-policy=20261110&manager=20261118&owner-identity=20261118&owner-account-form=20261118"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261111&urls=20261103&inventory-expiry=20261111&credentials=20261107"></script>
   </body>

@@ -56,8 +56,10 @@ async function fixture(browser, profile = 'admin', inventory = false, workspaces
     if (url.pathname === '/api/logout') await state.logoutHold?.promise;
     let data = state.responses?.[url.pathname] || {};
     if (url.pathname === '/api/settings/security/owner-profile') {
+      const {current_password, ...names} = route.request().postDataJSON();
+      assert.equal(current_password, 'LocalFixturePassword');
       if (state.profileError) return route.fulfill({status: 422, contentType: 'application/json', body: JSON.stringify({errors: {last_name: ['Enter a valid last name.']}})});
-      state.user = {...state.user, ...route.request().postDataJSON()};
+      state.user = {...state.user, ...names};
       state.revision = 'owner-profile-revision';
       data = {success: true, account: state.user, user: state.user, sidebar_revision: state.revision};
     }
@@ -792,23 +794,38 @@ async function ownerProfileSecurity(browser) {
     try {
       await f.page.setViewportSize({width, height: 1000});
       await visit(f.page, 'settings?tab=security'); await ready(f.page);
-      const form = f.page.locator('form[aria-labelledby="ownerProfileHeading"]');
+      const form = f.page.getByRole('form', {name: 'Admin account'});
       const first = form.getByLabel('First Name', {exact: true});
       const last = form.getByLabel('Last Name', {exact: true});
-      const save = f.page.getByRole('button', {name: 'Save Profile', exact: true});
+      const current = form.locator('#adminCredential_current');
+      const username = form.locator('#adminCredential_username');
+      const save = form.getByRole('button', {name: 'Update Changes', exact: true});
       await first.waitFor();
+      assert.equal(await form.locator('button[type="submit"]').count(), 1);
+      assert.equal(await f.page.getByRole('button', {name: 'Save Profile', exact: true}).count(), 0);
+      assert.equal(await f.page.getByRole('heading', {name: /^(Profile information|Credentials)$/}).count(), 0);
       assert.equal(await first.inputValue(), 'Local');
       assert.equal(await save.isDisabled(), true);
-      const bounds = await Promise.all([first.boundingBox(), last.boundingBox()]);
-      assert.equal(Math.abs(bounds[0].y - bounds[1].y) < 2, width >= 640, 'Profile fields stack only at narrow widths');
+      const fields = [first, last, username, current, form.locator('#adminCredential_password'), form.locator('#adminCredential_confirmation')];
+      const bounds = await Promise.all(fields.map(field => field.boundingBox()));
+      if (width >= 640) {
+        for (const index of [0, 2, 4]) assert.ok(Math.abs(bounds[index].y - bounds[index + 1].y) < 2);
+        assert.ok(bounds[0].y < bounds[2].y && bounds[2].y < bounds[4].y);
+      } else {
+        assert.ok(bounds.every((field, index) => !index || field.y > bounds[index - 1].y));
+      }
       assert.equal(await f.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Settings has no horizontal overflow');
       await first.fill('');
       await save.click();
       assert.equal(f.state.requests.includes('/api/settings/security/owner-profile'), false);
       await first.fill('Gerald'); await last.fill('Marino');
+      await save.click();
+      await form.getByText('Enter your current password.', {exact: true}).waitFor();
+      assert.equal(f.state.requests.includes('/api/settings/security/owner-profile'), false);
+      await current.fill('LocalFixturePassword');
       f.state.profileError = true;
       await save.click();
-      await f.page.locator('#ownerProfileLastNameError').getByText('Enter a valid last name.').waitFor();
+      await form.getByText('Enter a valid last name.', {exact: true}).waitFor();
       assert.equal(await first.inputValue(), 'Gerald');
       assert.equal(await last.inputValue(), 'Marino');
       f.state.profileError = false;
@@ -819,8 +836,23 @@ async function ownerProfileSecurity(browser) {
       assert.deepEqual(await f.page.locator('[data-admin-account] [x-text]').allTextContents(), ['GM', 'Gerald', 'Admin']);
       assert.equal(f.state.requests.filter(path => path === '/api/me').length, meReads);
       assert.equal(await save.isDisabled(), true);
+      assert.equal(await current.inputValue(), '');
       assert.equal(f.state.requests.some(path => path.includes('credential-change')), false);
       if (process.env.LOCAL_REVIEW_SCREENSHOTS) await f.page.screenshot({path: process.env.LOCAL_REVIEW_SCREENSHOTS + '/owner-profile-' + width + '.png', fullPage: true});
+      if (width === 1440) {
+        const credentialPath = '/api/admin/security/account/credential-change';
+        f.state.responses[credentialPath] = { change_id: 12, purpose: 'Admin username change', confirmation_email: 'o***@gmail.com' };
+        await last.fill('Santos');
+        await username.fill('OtherOwner');
+        await current.fill('LocalFixturePassword');
+        await save.click();
+        await f.page.getByRole('dialog', {name: 'Admin username change'}).waitFor();
+        assert.deepEqual(f.state.requests.filter(path => path === '/api/settings/security/owner-profile' || path === credentialPath).slice(-2),
+          ['/api/settings/security/owner-profile', credentialPath]);
+        assert.equal(await last.inputValue(), 'Santos');
+        assert.equal(await username.inputValue(), 'Owner');
+        assert.equal(await current.inputValue(), '');
+      }
       assert.deepEqual(errors, []);
       console.log('Owner profile ' + width + 'px: validation, failed input preservation, independent save and sidebar refresh passed');
     } finally { await f.context.close(); }

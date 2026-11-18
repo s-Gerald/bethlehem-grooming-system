@@ -209,10 +209,10 @@ vm.runInThisContext(componentSource, {
   settings.staffPassword.password = settings.staffPassword.confirmation = '';
   settings.staffPassword.errors = {}; settings.staffPassword.touched = {};
 
-  settings.adminPassword.current = "CurrentAdmin!234";
-  settings.adminPassword.username = "ClinicAdmin";
-  await settings.submitAdminPassword();
-  assert.equal(settings.adminPassword.error, "");
+  settings.ownerForm.current = "CurrentAdmin!234";
+  settings.ownerForm.username = "ClinicAdmin";
+  await settings.submitOwnerAccount();
+  assert.equal(settings.ownerForm.error, "");
   assert.equal(settings.securityVerification.open, true);
   assert.equal(settings.securityVerification.changeId, 11);
   assert.equal(settings.securityVerification.purpose, "Admin username change");
@@ -622,44 +622,118 @@ vm.runInThisContext(componentSource, {
   settings.openStaffDetails({ staffType: "grooming", staffSubrole: "" });
   assert.equal(settings.savedStaffRole, "");
 
-  const ownerProfileCalls = [];
+  const ownerUpdates = [];
   API.updateOwnerProfile = async payload => {
-    ownerProfileCalls.push(payload);
-    return { account: { first_name: 'Gerald', last_name: 'Marino' } };
+    ownerUpdates.push(['profile', payload]);
+    return { account: { first_name: 'Gerald', last_name: 'Bethlehem' } };
+  };
+  const requestCredentials = API.requestAdminCredentialChange;
+  const challenge = { change_id: 11, purpose: 'Admin credentials change' };
+  API.requestAdminCredentialChange = async payload => {
+    ownerUpdates.push(['credentials', payload]);
+    return challenge;
   };
   settings = adminSettings();
   settings.$nextTick = callback => callback();
+  const owner = settings.ownerForm;
+  assert.equal(settings.ownerAccountChanged, false);
   await settings.loadSecurityAccounts();
-  assert.equal(settings.ownerProfile.firstName, 'Admin');
-  await settings.submitOwnerProfile();
-  assert.equal(ownerProfileCalls.length, 0, 'Unchanged names are not submitted');
-  settings.ownerProfile.firstName = 'Gerald123';
-  await settings.submitOwnerProfile();
-  assert.equal(ownerProfileCalls.length, 0);
-  assert.equal(settings.ownerProfile.errors.first_name, "Numbers aren't allowed.");
-  settings.ownerProfile.firstName = ' GERALD ';
-  settings.ownerProfile.lastName = 'MARINO';
-  API.updateOwnerProfile = async payload => { ownerProfileCalls.push(payload); throw { errors: { last_name: ['Enter a valid last name.'] } }; };
-  await settings.submitOwnerProfile();
-  assert.equal(settings.ownerProfile.firstName, ' GERALD ', 'Failed saves preserve entered values');
-  assert.equal(settings.ownerProfile.lastName, 'MARINO');
-  assert.equal(settings.ownerProfile.errors.last_name, 'Enter a valid last name.');
+  assert.equal(owner.first_name, 'Admin');
+  owner.current = 'CurrentAdmin!234';
+  owner.confirmation = 'Ignored confirmation alone';
+  assert.equal(settings.ownerAccountChanged, false, 'Current password and confirmation alone are not changes');
+  owner.username = 'OtherName';
+  assert.equal(settings.ownerAccountChanged, true);
+  owner.username = settings.adminAccount.username;
+  owner.first_name = ' ADMIN ';
+  assert.equal(settings.ownerAccountChanged, false, 'Normalized original names do not enable saving');
+  await settings.submitOwnerAccount();
+  assert.deepEqual(ownerUpdates, []);
+
+  owner.current = '';
+  owner.first_name = 'Gerald123';
+  await settings.submitOwnerAccount();
+  assert.equal(owner.errors.first_name, "Numbers aren't allowed.");
+  owner.first_name = ' GERALD ';
+  await settings.submitOwnerAccount();
+  assert.equal(owner.errors.current, 'Enter your current password.');
+  assert.equal(owner.errors.password, undefined);
+  assert.equal(owner.errors.confirmation, undefined);
+  assert.deepEqual(ownerUpdates, []);
+
+  owner.current = 'WrongPassword';
+  const saveNames = API.updateOwnerProfile;
+  API.updateOwnerProfile = async () => { throw { errors: { current_password: ['Incorrect current password.'] } }; };
+  await settings.submitOwnerAccount();
+  assert.equal(owner.first_name, ' GERALD ', 'Failed saves retain the name input');
+  assert.equal(owner.errors.current, 'Incorrect current password.');
+  owner.current = 'CurrentAdmin!234';
   let finishOwnerProfile;
-  API.updateOwnerProfile = payload => { ownerProfileCalls.push(payload); return new Promise(resolve => { finishOwnerProfile = resolve; }); };
-  const ownerSave = settings.submitOwnerProfile();
-  await settings.submitOwnerProfile();
-  assert.equal(ownerProfileCalls.length, 2, 'Concurrent submissions are blocked');
-  assert.deepEqual(ownerProfileCalls[1], { first_name: 'Gerald', last_name: 'Marino' });
-  finishOwnerProfile({ account: { first_name: 'Gerald', last_name: 'Marino' } });
+  API.updateOwnerProfile = payload => {
+    ownerUpdates.push(['profile', payload]);
+    return new Promise(resolve => { finishOwnerProfile = resolve; });
+  };
+  const ownerSave = settings.submitOwnerAccount();
+  await settings.submitOwnerAccount();
+  assert.deepEqual(ownerUpdates, [['profile', { first_name: 'Gerald', current_password: 'CurrentAdmin!234' }]]);
+  finishOwnerProfile({ account: { first_name: 'Gerald', last_name: 'Bethlehem' } });
   await ownerSave;
   assert.equal(settings.adminAccount.firstName, 'Gerald');
-  assert.equal(settings.ownerProfileChanged, false);
-  assert.equal(settings.securityVerification.open, false, 'Profile saving never opens credential OTP');
-  assert.equal(settings.adminPassword.current, '');
+  assert.equal(owner.current, '');
+  assert.equal(settings.ownerAccountChanged, false);
+  assert.equal(settings.securityVerification.open, false);
+
+  owner.current = 'CurrentAdmin!234';
+  owner.last_name = 'MARINO';
+  owner.username = 'ClinicAdmin';
+  owner.password = 'violet orchard meadow';
+  await settings.submitOwnerAccount();
+  assert.equal(owner.errors.confirmation, 'Confirm your new password.');
+  assert.equal(ownerUpdates.length, 1, 'Both parts are locally validated before either request');
+  owner.confirmation = owner.password;
+  API.updateOwnerProfile = async payload => {
+    ownerUpdates.push(['profile', payload]);
+    return { account: { first_name: 'Gerald', last_name: 'Marino' } };
+  };
+  await settings.submitOwnerAccount();
+  assert.deepEqual(ownerUpdates.slice(1), [
+    ['profile', { last_name: 'Marino', current_password: 'CurrentAdmin!234' }],
+    ['credentials', { username: 'ClinicAdmin', password: 'violet orchard meadow', password_confirmation: 'violet orchard meadow', current_password: 'CurrentAdmin!234' }],
+  ]);
+  assert.equal(settings.securityVerification.open, true);
+  assert.equal(owner.last_name, 'Marino');
+  assert.notEqual(settings.adminAccount.username, 'ClinicAdmin', 'Username remains pending until OTP');
+  assert.equal(owner.current, '');
+  assert.equal(owner.password, '');
+  assert.equal(owner.confirmation, '');
+  assert.equal(owner.success, '');
+  settings.closeSecurityVerification();
+
+  owner.current = 'CurrentAdmin!234';
+  owner.password = owner.confirmation = 'violet orchard meadow';
+  await settings.submitOwnerAccount();
+  assert.deepEqual(ownerUpdates.at(-1), ['credentials', { password: 'violet orchard meadow', password_confirmation: 'violet orchard meadow', current_password: 'CurrentAdmin!234' }]);
+  assert.equal(settings.securityVerification.open, true);
+  settings.closeSecurityVerification();
+
+  API.requestAdminCredentialChange = async () => { throw { errors: { username: ['That username is already in use.'] } }; };
+  API.updateOwnerProfile = async () => ({ account: { first_name: 'Gerald', last_name: 'Santos' } });
+  owner.current = 'CurrentAdmin!234';
+  owner.last_name = 'Santos';
+  owner.username = 'TakenName';
+  await settings.submitOwnerAccount();
+  assert.equal(owner.last_name, 'Santos');
+  assert.equal(settings.adminAccount.lastName, 'Santos');
+  assert.equal(owner.username, 'TakenName', 'Failed credential request retains the draft');
+  assert.equal(owner.errors.username, 'That username is already in use.');
+  assert.equal(owner.success, 'Profile updated successfully.');
+  assert.equal(settings.securityVerification.open, false);
+  assert.equal(owner.current, '');
   settings.isOwner = false;
-  settings.ownerProfile.firstName = 'Other';
-  await settings.submitOwnerProfile();
-  assert.equal(ownerProfileCalls.length, 2);
+  await settings.submitOwnerAccount();
+  assert.equal(ownerUpdates.length, 4);
+  API.updateOwnerProfile = saveNames;
+  API.requestAdminCredentialChange = requestCredentials;
 
   API.getUserRole = () => 'staff';
   const savedAccount = { user_id: 7, first_name: 'Grooming', last_name: 'Staff', username: 'groomingstaff',
@@ -921,7 +995,7 @@ vm.runInThisContext(componentSource, {
   const passwordTargets = [];
   document.querySelector = selector => ({ focus() { passwordTargets.push(selector); }, scrollIntoView() {} });
   settings.secureAccount();
-  assert.deepEqual(passwordTargets, ['[x-model="adminPassword.current"]']);
+  assert.deepEqual(passwordTargets, ['[x-model="ownerForm.current"]']);
   settings.isAdmin = false; settings.isOwner = false;
   settings.secureAccount();
   assert.equal(passwordTargets[1], '[x-model="staffPassword.current"]');

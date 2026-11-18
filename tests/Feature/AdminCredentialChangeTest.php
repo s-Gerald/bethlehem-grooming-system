@@ -23,8 +23,8 @@ class AdminCredentialChangeTest extends TestCase
         $revision = $owner->sidebarRevision();
         $token = $owner->createToken('owner')->plainTextToken;
         $this->useEmailToken($token);
-        $this->patchJson('/api/settings/security/owner-profile', ['first_name' => ' GERALD ', 'last_name' => 'MARINO'])
-            ->assertOk()->assertJsonPath('account.first_name', 'Gerald')->assertJsonPath('account.last_name', 'Marino')
+        $this->patchJson('/api/settings/security/owner-profile', ['first_name' => ' GERALD ', 'current_password' => 'CurrentAdmin!234'])
+            ->assertOk()->assertJsonPath('account.first_name', 'Gerald')->assertJsonPath('account.last_name', 'Bethlehem')
             ->assertJsonPath('user.first_name', 'Gerald')->assertJsonPath('user.admin_type', 'owner')
             ->assertJsonPath('user.clinic_permissions', $owner->clinicPermissions())
             ->assertJsonPath('user.staff_permissions', $owner->staffPermissions())
@@ -35,7 +35,35 @@ class AdminCredentialChangeTest extends TestCase
         $this->assertSame(1, $owner->tokens()->count());
         $this->useEmailToken($token);
         $this->getJson('/api/settings/security/account')->assertOk()->assertJsonPath('account.first_name', 'Gerald');
+        $this->patchJson('/api/settings/security/owner-profile', ['last_name' => ' MARINO ', 'current_password' => 'CurrentAdmin!234'])
+            ->assertOk()->assertJsonPath('account.first_name', 'Gerald')->assertJsonPath('account.last_name', 'Marino');
+        $this->patchJson('/api/settings/security/owner-profile', ['first_name' => 'Gerard', 'last_name' => 'Santos', 'current_password' => 'CurrentAdmin!234'])
+            ->assertOk()->assertJsonPath('account.first_name', 'Gerard')->assertJsonPath('account.last_name', 'Santos');
+        $this->assertSame(array_diff_key($before, array_flip(['first_name', 'last_name'])),
+            array_diff_key($owner->fresh()->getAttributes(), array_flip(['first_name', 'last_name'])));
+        $this->assertSame(1, $owner->tokens()->count());
         $this->patchJson('/api/settings/security/profile', ['first_name' => 'Gerald', 'last_name' => 'Marino', 'username' => 'Owner'])->assertForbidden();
+        $this->assertDatabaseCount('privileged_credential_changes', 0);
+        Notification::assertNothingSent();
+    }
+
+    public function test_owner_profile_requires_the_correct_current_password_for_each_name(): void
+    {
+        Notification::fake();
+        $owner = $this->createUser('admin', 'owner@gmail.com', '09170009123', 'Owner');
+        Sanctum::actingAs($owner);
+
+        $this->patchJson('/api/settings/security/owner-profile', ['first_name' => 'Gerald', 'last_name' => 'Marino'])
+            ->assertUnprocessable()->assertJsonPath('errors.current_password.0', 'Enter your current password.');
+        foreach (['first_name' => 'Gerald', 'last_name' => 'Marino'] as $field => $name) {
+            $this->patchJson('/api/settings/security/owner-profile', [$field => $name])
+                ->assertUnprocessable()->assertJsonPath('errors.current_password.0', 'Enter your current password.');
+            $this->patchJson('/api/settings/security/owner-profile', [$field => $name, 'current_password' => 'WrongPassword'])
+                ->assertUnprocessable()->assertJsonPath('errors.current_password.0', 'Incorrect current password.');
+        }
+
+        $this->assertSame('Admin', $owner->fresh()->first_name);
+        $this->assertSame('Bethlehem', $owner->fresh()->last_name);
         $this->assertDatabaseCount('privileged_credential_changes', 0);
         Notification::assertNothingSent();
     }
@@ -47,18 +75,18 @@ class AdminCredentialChangeTest extends TestCase
         Sanctum::actingAs($owner);
         foreach (['', '   ', 'Gerald123', '<Admin>', ['Gerald'], str_repeat('a', 101)] as $invalid) {
             foreach (['first_name', 'last_name'] as $field) {
-                $this->patchJson('/api/settings/security/owner-profile', array_replace(['first_name' => 'Gerald', 'last_name' => 'Marino'], [$field => $invalid]))
+                $this->patchJson('/api/settings/security/owner-profile', [$field => $invalid, 'current_password' => 'CurrentAdmin!234'])
                     ->assertUnprocessable()->assertJsonValidationErrors($field);
             }
         }
-        foreach (['username', 'email', 'password', 'password_hash', 'current_password', 'role', 'admin_type', 'is_active', 'staff_subrole'] as $field) {
-            $this->patchJson('/api/settings/security/owner-profile', ['first_name' => 'Gerald', 'last_name' => 'Marino', $field => 'changed'])
+        foreach (['username', 'email', 'password', 'password_hash', 'role', 'admin_type', 'is_active', 'staff_subrole'] as $field) {
+            $this->patchJson('/api/settings/security/owner-profile', ['first_name' => 'Gerald', 'current_password' => 'CurrentAdmin!234', $field => 'changed'])
                 ->assertUnprocessable()->assertJsonValidationErrors($field);
         }
         $this->assertSame('Admin', $owner->fresh()->first_name);
         $this->assertSame('Bethlehem', $owner->fresh()->last_name);
         $owner->update(['first_name' => 'Legacy123']);
-        $this->patchJson('/api/settings/security/owner-profile', ['first_name' => 'Legacy123', 'last_name' => 'Marino'])
+        $this->patchJson('/api/settings/security/owner-profile', ['first_name' => 'Legacy123', 'current_password' => 'CurrentAdmin!234'])
             ->assertUnprocessable()->assertJsonValidationErrors('first_name');
     }
 
@@ -68,7 +96,7 @@ class AdminCredentialChangeTest extends TestCase
             $user = $this->createUser($role === 'manager' ? 'admin' : $role, "person{$index}@gmail.com", '0917000912'.$index, 'Person'.$index);
             if ($role === 'manager') $user->update(['admin_type' => 'manager']);
             Sanctum::actingAs($user);
-            $this->patchJson('/api/settings/security/owner-profile', ['first_name' => 'Gerald', 'last_name' => 'Marino'])->assertForbidden();
+            $this->patchJson('/api/settings/security/owner-profile', ['first_name' => 'Gerald', 'current_password' => 'CurrentAdmin!234'])->assertForbidden();
             $this->assertSame('Bethlehem', $user->fresh()->last_name);
         }
     }
@@ -279,10 +307,12 @@ class AdminCredentialChangeTest extends TestCase
         $admin->createToken('admin_token');
         Sanctum::actingAs($admin);
 
+        $this->postJson('/api/admin/security/account/credential-change', ['username' => 'ClinicAdmin'])
+            ->assertUnprocessable()->assertJsonPath('errors.current_password.0', 'Enter your current password.');
         $this->postJson('/api/admin/security/account/credential-change', [
             'current_password' => 'wrong-password',
             'username' => 'ClinicAdmin',
-        ])->assertUnprocessable();
+        ])->assertUnprocessable()->assertJsonPath('errors.current_password.0', 'Incorrect current password.');
 
         $response = $this->postJson('/api/admin/security/account/credential-change', [
             'current_password' => 'CurrentAdmin!234',
@@ -362,6 +392,11 @@ class AdminCredentialChangeTest extends TestCase
         $admin = $this->createUser('admin', 'bethlehem.admin.test@gmail.com', '09170001006', 'Admin');
         Sanctum::actingAs($admin);
 
+        $passwordChange = ['password' => 'ChangedAdmin!234', 'password_confirmation' => 'ChangedAdmin!234'];
+        $this->postJson('/api/admin/security/account/credential-change', $passwordChange)
+            ->assertUnprocessable()->assertJsonPath('errors.current_password.0', 'Enter your current password.');
+        $this->postJson('/api/admin/security/account/credential-change', $passwordChange + ['current_password' => 'wrong-password'])
+            ->assertUnprocessable()->assertJsonPath('errors.current_password.0', 'Incorrect current password.');
         $response = $this->postJson('/api/admin/security/account/credential-change', [
             'current_password' => 'CurrentAdmin!234',
             'password' => 'ChangedAdmin!234',
@@ -384,6 +419,39 @@ class AdminCredentialChangeTest extends TestCase
 
         $this->assertTrue(Hash::check('CurrentAdmin!234', $admin->fresh()->password_hash));
         $this->assertTrue(Hash::check($plainCode, $change->fresh()->code_hash));
+    }
+
+    public function test_owner_names_save_before_a_combined_username_and_password_challenge(): void
+    {
+        Notification::fake();
+        $owner = $this->createUser('admin', 'owner@gmail.com', '09170009123', 'Owner');
+        Sanctum::actingAs($owner);
+
+        // Prior profile saves must not consume the credential challenge's throttle budget.
+        foreach (['Gerard', 'Juan'] as $firstName) {
+            $this->patchJson('/api/settings/security/owner-profile', ['first_name' => $firstName, 'current_password' => 'CurrentAdmin!234'])
+                ->assertOk();
+        }
+        $this->patchJson('/api/settings/security/owner-profile', ['first_name' => 'Gerald', 'last_name' => 'Marino', 'current_password' => 'CurrentAdmin!234'])
+            ->assertOk()->assertJsonPath('user.first_name', 'Gerald');
+        $this->assertDatabaseCount('privileged_credential_changes', 0);
+
+        $challenge = $this->postJson('/api/admin/security/account/credential-change', [
+            'current_password' => 'CurrentAdmin!234', 'username' => 'ClinicAdmin',
+            'password' => 'violet orchard meadow', 'password_confirmation' => 'violet orchard meadow',
+        ])->assertAccepted()->assertJsonPath('purpose', 'Admin username and password change');
+        $this->assertSame('Gerald', $owner->fresh()->first_name);
+        $this->assertSame('Owner', $owner->fresh()->username);
+        $this->assertTrue(Hash::check('CurrentAdmin!234', $owner->fresh()->password_hash));
+
+        $code = $this->credentialChangeCodeSentTo($owner, 'Admin username and password change', 'Gerald Marino');
+        $this->postJson('/api/admin/security/credential-changes/'.$challenge->json('change_id').'/confirm', ['code' => $code])
+            ->assertOk()->assertJsonPath('changes', ['username', 'password']);
+        $owner->refresh();
+        $this->assertSame('Gerald', $owner->first_name);
+        $this->assertSame('Marino', $owner->last_name);
+        $this->assertSame('ClinicAdmin', $owner->username);
+        $this->assertTrue(Hash::check('violet orchard meadow', $owner->password_hash));
     }
 
     public function test_security_code_can_be_resent_after_the_cooldown_and_replaces_the_old_code(): void

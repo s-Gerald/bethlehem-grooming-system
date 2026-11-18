@@ -338,7 +338,7 @@ async function profileIdentitySynchronization(owner = false) {
   }));
   const oldMe = e.c.API.getMe(owner ? 'admin' : 'staff');
   const epoch = e.c.API.getAdminDataRevision('grooming');
-  await e.c.API[method]({ first_name: 'Updated', last_name: 'Person', ...(!owner ? {username: 'updated.staff', current_password: 'Test!234'} : {}) });
+  await e.c.API[method]({ first_name: 'Updated', last_name: 'Person', current_password: 'Test!234', ...(!owner ? {username: 'updated.staff'} : {}) });
   assert.equal(sidebar.staffRoleLabel, owner ? 'Admin' : 'Veterinarian');
   assert.ok(e.calls.some(c => c.url.endsWith(owner ? '/settings/security/owner-profile' : '/settings/security/profile')));
   assert.equal(sidebar.staffDisplayName, 'Updated');
