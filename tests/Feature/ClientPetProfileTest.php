@@ -430,6 +430,8 @@ class ClientPetProfileTest extends TestCase
             $table->unsignedInteger('booking_pet_id')->nullable();
             $table->unsignedInteger('service_id')->nullable();
             $table->decimal('price_at_booking', 8, 2)->nullable();
+            $table->string('service_name_snapshot', 150)->nullable();
+            $table->string('service_kind_snapshot', 20)->nullable();
         });
     }
 
@@ -992,6 +994,8 @@ class ClientPetProfileTest extends TestCase
                 'booking_pet_id' => 401,
                 'service_id' => 501,
                 'price_at_booking' => 800,
+                'service_name_snapshot' => 'Full Groom',
+                'service_kind_snapshot' => 'package',
             ],
             [
                 'booking_service_id' => 602,
@@ -999,6 +1003,8 @@ class ClientPetProfileTest extends TestCase
                 'booking_pet_id' => 402,
                 'service_id' => 502,
                 'price_at_booking' => 150,
+                'service_name_snapshot' => 'Nail Trim',
+                'service_kind_snapshot' => 'ala_carte',
             ],
         ]);
 

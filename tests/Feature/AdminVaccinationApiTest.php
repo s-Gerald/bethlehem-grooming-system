@@ -17,6 +17,8 @@ use Tests\TestCase;
 
 class AdminVaccinationApiTest extends TestCase
 {
+    use \Tests\Support\CreatesRegistrationAvailability;
+
     private $vaccinationMigration;
 
     public function test_bulk_vaccination_checks_total_stock_and_preserves_each_patient_dose_on_retry(): void
@@ -121,6 +123,7 @@ class AdminVaccinationApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->createRegistrationAvailability();
 
         Schema::create('users', function (Blueprint $table) {
             $table->increments('user_id');
@@ -239,6 +242,9 @@ class AdminVaccinationApiTest extends TestCase
         Schema::dropIfExists('clinic_appointments');
         Schema::dropIfExists('pets');
         Schema::dropIfExists('users');
+        Schema::dropIfExists('clinic_closures');
+        Schema::dropIfExists('clinic_settings');
+        Schema::dropIfExists('pet_groomers');
 
         parent::tearDown();
     }
