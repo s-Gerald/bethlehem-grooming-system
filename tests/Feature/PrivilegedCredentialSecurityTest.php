@@ -27,6 +27,7 @@ class PrivilegedCredentialSecurityTest extends TestCase
             $table->string('phone')->unique();
             $table->string('password_hash');
             $table->string('role');
+            $table->string('admin_type', 20)->nullable();
             $table->string('staff_type', 20)->nullable();
             $table->string('staff_subrole', 30)->nullable();
             $table->string('customer_tier')->default('new');
@@ -159,6 +160,37 @@ class PrivilegedCredentialSecurityTest extends TestCase
             'StrongStaff!2345',
             $legacyStaff->fresh()->password_hash,
         ));
+    }
+
+    public function test_reseeding_owner_credentials_reuses_the_single_owner_and_never_adopts_a_manager(): void
+    {
+        config()->set('app.privileged_seed_accounts.admin', ['username' => 'Owner', 'email' => 'owner@example.test',
+            'phone' => '09170000103', 'password' => 'StrongAdmin!2345']);
+        $this->seed(AdminSeeder::class);
+        $owner = User::sole();
+        config()->set('app.privileged_seed_accounts.admin.username', 'NewOwner');
+        config()->set('app.privileged_seed_accounts.admin.email', 'newowner@example.test');
+        $this->seed(AdminSeeder::class);
+        $this->assertDatabaseCount('users', 1);
+        $this->assertSame('owner', $owner->fresh()->admin_type);
+        $manager = $this->createUser('admin', 'manager@example.test', '09170000104');
+        $manager->update(['admin_type' => 'manager', 'username' => 'Manager']);
+        config()->set('app.privileged_seed_accounts.admin.username', 'Manager');
+        config()->set('app.privileged_seed_accounts.admin.email', 'manager@example.test');
+        $this->expectException(\InvalidArgumentException::class);
+        $this->seed(AdminSeeder::class);
+    }
+
+    public function test_staff_seeder_preserves_an_owner_promoted_manager_on_redeployment(): void
+    {
+        config()->set('app.privileged_seed_accounts.staff', ['username' => 'groomingstaff', 'email' => 'staff@example.test',
+            'phone' => '09170000104', 'password' => 'StrongStaff!2345']);
+        $this->seed(StaffSeeder::class);
+        $manager = User::sole();
+        $manager->update(['role' => 'admin', 'admin_type' => 'manager', 'staff_type' => null, 'staff_subrole' => null]);
+        $before = $manager->getAttributes();
+        $this->seed(StaffSeeder::class);
+        $this->assertSame($before, $manager->fresh()->getAttributes());
     }
 
     public function test_staff_seeder_initializes_canonical_roles_and_preserves_admin_role_changes(): void

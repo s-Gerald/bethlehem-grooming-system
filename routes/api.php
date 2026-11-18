@@ -208,23 +208,23 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::patch('/admin/pet-groomers/{id}', [\App\Http\Controllers\PetGroomerController::class, 'update'])->middleware('staff:availability_manage');
         Route::get('/settings/security/account', [AdminSecurityController::class, 'ownAccount']);
         Route::post('/settings/security/email-change', [\App\Http\Controllers\StaffEmailChangeController::class, 'start'])
-            ->middleware(['role:staff', 'throttle:3,10,staff-email-start'])->name('staff.email-change.start');
+            ->middleware(['security.self-service', 'throttle:3,10,staff-email-start'])->name('staff.email-change.start');
         Route::post('/settings/security/email-change/{change}/confirm', [\App\Http\Controllers\StaffEmailChangeController::class, 'confirm'])
-            ->middleware(['role:staff', 'throttle:10,1,staff-email-confirm'])->name('staff.email-change.confirm');
+            ->middleware(['security.self-service', 'throttle:10,1,staff-email-confirm'])->name('staff.email-change.confirm');
         Route::post('/settings/security/email-change/{change}/resend', [\App\Http\Controllers\StaffEmailChangeController::class, 'resend'])
-            ->middleware(['role:staff', 'throttle:3,10,staff-email-resend'])->name('staff.email-change.resend');
+            ->middleware(['security.self-service', 'throttle:3,10,staff-email-resend'])->name('staff.email-change.resend');
         Route::delete('/settings/security/email-change/{change}', [\App\Http\Controllers\StaffEmailChangeController::class, 'cancel'])
-            ->middleware(['role:staff', 'throttle:10,1,staff-email-cancel'])->name('staff.email-change.cancel');
+            ->middleware(['security.self-service', 'throttle:10,1,staff-email-cancel'])->name('staff.email-change.cancel');
         Route::post('/settings/security/profile/validate', [AdminSecurityController::class, 'validateStaffProfile'])
-            ->middleware(['role:staff', 'throttle:10,1']);
+            ->middleware(['security.self-service', 'throttle:10,1']);
         Route::patch('/settings/security/profile', [AdminSecurityController::class, 'updateStaffProfile'])
-            ->middleware(['role:staff', 'throttle:10,1']);
+            ->middleware(['security.self-service', 'throttle:10,1']);
         Route::post('/settings/security/password-change', [AdminSecurityController::class, 'requestStaffPasswordChange'])
-            ->middleware(['role:staff', 'throttle:3,10']);
+            ->middleware(['security.self-service', 'throttle:3,10']);
         Route::post('/settings/security/credential-changes/{change}/confirm', [AdminSecurityController::class, 'confirm'])
-            ->middleware(['role:staff', 'throttle:10,1']);
+            ->middleware(['security.self-service', 'throttle:10,1']);
         Route::post('/settings/security/credential-changes/{change}/resend', [AdminSecurityController::class, 'resend'])
-            ->middleware(['role:staff', ThrottleAuthenticationResends::class.':3,10']);
+            ->middleware(['security.self-service', ThrottleAuthenticationResends::class.':3,10']);
         Route::get('/admin/transactions', [PaymentController::class, 'index']);
         Route::get('/admin/dashboard/summary', [AdminBookingController::class, 'dashboardSummary'])->middleware('staff:dashboard');
         Route::get('/admin/dashboard/activity', [AdminBookingController::class, 'dashboardActivity'])->middleware('staff:dashboard');
@@ -378,7 +378,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     Route::middleware('role:admin')->group(function () {
         Route::get('/admin/qr-payments/settings', [\App\Http\Controllers\QrPaymentSettingController::class, 'show']);
         Route::post('/admin/qr-payments/settings', [\App\Http\Controllers\QrPaymentSettingController::class, 'save'])->middleware('throttle:10,1');
-        Route::middleware('role:admin')->prefix('admin/security/staff/{staff}/email-recovery')->name('admin.staff-recovery.')->group(function () {
+        Route::middleware('owner')->prefix('admin/security/staff/{staff}/email-recovery')->name('admin.staff-recovery.')->group(function () {
         Route::post('/', [\App\Http\Controllers\StaffEmailRecoveryController::class, 'start'])->middleware('throttle:3,10,admin-recovery-start')->name('start');
         Route::post('/{recovery}/confirm', [\App\Http\Controllers\StaffEmailRecoveryController::class, 'confirm'])->middleware('throttle:10,1,admin-recovery-confirm')->name('confirm');
         Route::post('/{recovery}/code', [\App\Http\Controllers\StaffEmailRecoveryController::class, 'resendCode'])->middleware('throttle:3,10,admin-recovery-code')->name('code');
@@ -386,25 +386,26 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::post('/{recovery}/cancel', [\App\Http\Controllers\StaffEmailRecoveryController::class, 'cancel'])->middleware('throttle:10,1,admin-recovery-cancel')->name('cancel');
         Route::get('/history', [\App\Http\Controllers\StaffEmailRecoveryController::class, 'history'])->name('history');
     });
-    Route::get('/admin/security/accounts', [AdminSecurityController::class, 'accounts']);
+    Route::get('/admin/security/accounts', [AdminSecurityController::class, 'accounts'])->middleware('owner');
+        Route::post('/admin/security/accounts', [AdminSecurityController::class, 'requestAccount'])->middleware(['owner', 'throttle:3,10']);
         Route::post('/admin/security/account/credential-change', [AdminSecurityController::class, 'requestOwnChange'])
-            ->middleware('throttle:3,10');
+            ->middleware('owner')->middleware('throttle:3,10');
         Route::post('/admin/security/staff-accounts', [AdminSecurityController::class, 'requestStaffAccount'])
-            ->middleware('throttle:3,10');
+            ->middleware('owner')->middleware('throttle:3,10');
         Route::patch('/admin/security/staff/{staff}/status', [AdminSecurityController::class, 'updateStaffStatus'])
-            ->middleware('throttle:10,1');
+            ->middleware('owner')->middleware('throttle:10,1');
         Route::patch('/admin/security/staff/{staff}/role', [AdminSecurityController::class, 'updateStaffRole'])
-            ->middleware('throttle:10,1');
+            ->middleware('owner')->middleware('throttle:10,1');
         Route::post('/admin/security/staff/{staff}/setup-email', [AdminSecurityController::class, 'resendStaffSetupEmail'])
-            ->middleware('throttle:3,10');
+            ->middleware('owner')->middleware('throttle:3,10');
         Route::patch('/admin/security/staff/{staff}/setup-email', [AdminSecurityController::class, 'correctStaffSetupEmail'])
-            ->middleware('throttle:10,1');
+            ->middleware('owner')->middleware('throttle:10,1');
         Route::delete('/admin/security/staff/{staff}/setup', [AdminSecurityController::class, 'cancelStaffSetup'])
-            ->middleware('throttle:10,1');
+            ->middleware('owner')->middleware('throttle:10,1');
         Route::post('/admin/security/credential-changes/{change}/confirm', [AdminSecurityController::class, 'confirm'])
-            ->middleware('throttle:10,1');
+            ->middleware('owner')->middleware('throttle:10,1');
         Route::post('/admin/security/credential-changes/{change}/resend', [AdminSecurityController::class, 'resend'])
-            ->middleware(ThrottleAuthenticationResends::class.':3,10');
+            ->middleware('owner')->middleware(ThrottleAuthenticationResends::class.':3,10');
 
     });
 });

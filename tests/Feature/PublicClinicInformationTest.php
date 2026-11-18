@@ -61,15 +61,16 @@ class PublicClinicInformationTest extends TestCase
 
     public function test_admin_and_each_staff_role_can_read_general_settings(): void
     {
-        foreach (['admin', 'grooming_receptionist', 'clinic_receptionist', 'veterinarian'] as $role) {
-            Sanctum::actingAs(new User(['role' => $role === 'admin' ? 'admin' : 'staff', 'staff_subrole' => $role]));
+        foreach (['admin', 'manager', 'grooming_receptionist', 'clinic_receptionist', 'veterinarian'] as $role) {
+            Sanctum::actingAs(new User(['role' => in_array($role, ['admin', 'manager']) ? 'admin' : 'staff', 'admin_type' => $role === 'manager' ? 'manager' : null, 'staff_subrole' => $role]));
             $this->getJson('/api/settings/general')->assertOk()->assertExactJson(['data' => $this->information]);
         }
     }
 
-    public function test_admin_updates_are_persisted_publicly_without_changing_operational_settings(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('operationalAdmins')]
+    public function test_admin_updates_are_persisted_publicly_without_changing_operational_settings(?string $adminType): void
     {
-        Sanctum::actingAs(new User(['role' => 'admin']));
+        Sanctum::actingAs(new User(['role' => 'admin', 'admin_type' => $adminType]));
         $changed = [...$this->information, 'primary_contact_number' => '+63 (2) 7007-3123',
             'secondary_contact_number' => '0917 113 1942', 'clinic_address' => 'Updated clinic address',
             'map_directions_url' => 'https://www.bing.com/maps/search?q=updated', 'facebook_url' => 'https://www.facebook.com/updated'];
@@ -79,6 +80,8 @@ class PublicClinicInformationTest extends TestCase
         $this->assertDatabaseHas('clinic_settings', [...$changed, 'id' => 1, 'grooming_cage_capacity' => 20, 'clinic_open_time' => '08:00:00']);
         $this->assertDatabaseCount('clinic_settings', 1);
     }
+
+    public static function operationalAdmins(): array { return [[null], ['manager']]; }
 
     public function test_staff_direct_update_attempts_are_forbidden_and_do_not_change_data(): void
     {

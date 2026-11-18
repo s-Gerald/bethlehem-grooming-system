@@ -33,11 +33,11 @@ class StaffSeeder extends Seeder
             ->whereRaw('LOWER(email) = ?', ['staff@bethlehem.com'])
             ->first();
 
-        if ($emailOwner && $emailOwner->role !== 'staff') {
+        if ($emailOwner && ! $emailOwner->isManageableAccount()) {
             throw new InvalidArgumentException('STAFF_SEED_EMAIL already belongs to a non-staff account.');
         }
 
-        if ($usernameOwner && $usernameOwner->role !== 'staff') {
+        if ($usernameOwner && ! $usernameOwner->isManageableAccount()) {
             throw new InvalidArgumentException('STAFF_SEED_USERNAME already belongs to a non-staff account.');
         }
 
@@ -50,6 +50,9 @@ class StaffSeeder extends Seeder
         }
 
         $staff = $emailOwner ?? $usernameOwner ?? $legacyStaff ?? new User();
+        if ($staff->isManager()) {
+            return;
+        }
         if (! $staff->exists) {
             $staff->fill(StaffRole::fields('grooming_receptionist'));
         }

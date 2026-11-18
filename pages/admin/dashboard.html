@@ -12,8 +12,8 @@
     <link rel="stylesheet" href="/css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="/css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="/scripts/components/admin-loading.js?v=universal-20261018&urls=20261103"></script>
-    <link rel="preload" as="script" href="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&dashboard-refresh=20261021&session-presentation=walk-in-20261021&payments=cash-only-20261023&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&estimates=20261031&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&short-notes=20261110" />
-    <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110" />
+    <link rel="preload" as="script" href="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&dashboard-refresh=20261021&session-presentation=walk-in-20261021&payments=cash-only-20261023&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&estimates=20261031&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&short-notes=20261110&manager=20261118" />
+    <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110&manager=20261118" />
       <link rel="stylesheet" href="/css/components/admin-activity.css?v=20261025-refinements" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -192,13 +192,13 @@
           <div data-admin-account aria-busy="true" :aria-busy="String(!sidebarReady)" class="mb-4 flex items-center gap-3 rounded-2xl bg-[#355c84] p-3">
             <div
               class="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold text-white"
-              x-text="isAdmin ? 'AD' : staffInitials"
+              x-text="isOwner ? 'AD' : staffInitials"
             ></div>
 
             <div class="min-w-0">
               <!-- BACKEND: Replace with logged-in admin data -->
-              <p class="truncate font-bold text-white" x-text="isAdmin ? 'Admin' : staffDisplayName"></p>
-              <p class="truncate text-sm text-white/80" x-text="isAdmin ? 'Owner' : staffRoleLabel"></p>
+              <p class="truncate font-bold text-white" x-text="isOwner ? 'Admin' : staffDisplayName"></p>
+              <p class="truncate text-sm text-white/80" x-text="isOwner ? 'Owner' : staffRoleLabel"></p>
             </div>
           </div>
 
@@ -214,9 +214,9 @@
           </button>
         </div>
       </aside>
-      <script src="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&dashboard-refresh=20261021&session-presentation=walk-in-20261021&payments=cash-only-20261023&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&estimates=20261031&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&short-notes=20261110"></script>
+      <script src="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&dashboard-refresh=20261021&session-presentation=walk-in-20261021&payments=cash-only-20261023&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&estimates=20261031&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&short-notes=20261110&manager=20261118"></script>
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-policy-20261110"></script>
-      <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110"></script>
+      <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110&manager=20261118"></script>
 
       <!-- Main Content -->
       <div class="flex min-h-screen flex-1 flex-col lg:ml-[280px]">

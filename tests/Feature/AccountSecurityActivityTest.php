@@ -25,6 +25,7 @@ class AccountSecurityActivityTest extends TestCase
         parent::setUp();
         $this->createAuthenticationSchema();
         Schema::table('users', function (Blueprint $table): void {
+            $table->string('admin_type', 20)->nullable();
             $table->string('staff_type')->nullable();
             $table->string('staff_subrole')->nullable();
         });
@@ -50,6 +51,18 @@ class AccountSecurityActivityTest extends TestCase
         return AccountSecurityIncident::create($attributes + ['user_id' => $user->getKey(),
             'incident_day' => now()->subDays($days)->toDateString(), 'failure_count' => 3,
             'first_occurred_at' => now()->subDays($days), 'last_occurred_at' => now()->subDays($days)]);
+    }
+
+    public function test_manager_lifecycle_and_operational_activity_use_account_and_manager_labels(): void
+    {
+        $manager = User::factory()->create(['role' => 'admin', 'admin_type' => 'manager', 'first_name' => 'Mara', 'last_name' => 'Santos']);
+        $created = ActivityLog::where('action', 'staff_created')->where('subject_id', (string) $manager->getKey())->first();
+        $this->assertNotNull($created);
+        $this->assertSame('Account created', \App\Support\ActivityPresentation::title($created));
+        app(\App\Services\ActivityRecorder::class)->record('settings_updated', 'system', 'settings', '1', 'Settings', [], false, $manager);
+        $event = ActivityLog::where('action', 'settings_updated')->sole();
+        $this->assertSame('Manager', $event->actor_role);
+        $this->assertSame('Mara · Manager', $event->actor_display);
     }
 
     public function test_forward_migration_preserves_legacy_history_and_allows_same_day_terminal_records(): void
@@ -80,9 +93,10 @@ class AccountSecurityActivityTest extends TestCase
         $this->assertTrue(Schema::hasIndex('account_security_incidents', 'security_incidents_owner_active'));
     }
 
-    public function test_pagination_position_survives_new_failures_and_terminal_state_changes(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('roles')]
+    public function test_pagination_position_survives_new_failures_and_terminal_state_changes(string $role): void
     {
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => $role === 'manager' ? 'admin' : $role, 'admin_type' => $role === 'manager' ? 'manager' : null]);
         $records = collect(range(0, 6))->map(fn ($days) => $this->incident($user, $days));
         Sanctum::actingAs($user);
         $first = $this->getJson('/api/settings/security/activity')->assertOk();
@@ -92,9 +106,10 @@ class AccountSecurityActivityTest extends TestCase
         $this->assertSame([$records[5]->id, $records[6]->id], array_column($second->json('incidents'), 'id'));
     }
 
-    public function test_recognition_is_owned_idempotent_and_does_not_change_credentials_or_sessions(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('roles')]
+    public function test_recognition_is_owned_idempotent_and_does_not_change_credentials_or_sessions(string $role): void
     {
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => $role === 'manager' ? 'admin' : $role, 'admin_type' => $role === 'manager' ? 'manager' : null]);
         $selected = $this->incident($user);
         $other = $this->incident($user, 1);
         $foreign = $this->incident(User::factory()->create(['role' => 'staff']));
@@ -115,6 +130,7 @@ class AccountSecurityActivityTest extends TestCase
         $this->assertNotNull($token->fresh());
         $this->assertNull($token->fresh()->replaced_at);
         $this->assertSame(1, ActivityLog::where('action', 'security_incident_recognized')->count());
+        if ($role === 'manager') $this->assertSame('Manager', ActivityLog::where('action', 'security_incident_recognized')->value('actor_role'));
     }
 
     public function test_terminal_history_is_truthful_and_cannot_be_recognized_again(): void
@@ -130,9 +146,10 @@ class AccountSecurityActivityTest extends TestCase
         $this->assertSame(0, ActivityLog::where('action', 'security_incident_recognized')->count());
     }
 
-    public function test_cursor_pages_are_bounded_chronological_and_focus_does_not_move_old_history_first(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('roles')]
+    public function test_cursor_pages_are_bounded_chronological_and_focus_does_not_move_old_history_first(string $role): void
     {
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => $role === 'manager' ? 'admin' : $role, 'admin_type' => $role === 'manager' ? 'manager' : null]);
         $records = collect(range(0, 11))->map(fn ($days) => $this->incident($user, $days));
         Sanctum::actingAs($user);
         $first = $this->getJson('/api/settings/security/activity?incident='.$records[10]->id)->assertOk()
@@ -191,7 +208,7 @@ class AccountSecurityActivityTest extends TestCase
     #[\PHPUnit\Framework\Attributes\DataProvider('roles')]
     public function test_only_successful_password_confirmation_resolves_prior_unresolved_incidents(string $role): void
     {
-        $user = User::factory()->create(['role' => $role, 'username' => 'SecurityOwner',
+        $user = User::factory()->create(['role' => $role === 'manager' ? 'admin' : $role, 'admin_type' => $role === 'manager' ? 'manager' : null, 'username' => 'SecurityOwner',
             'staff_type' => $role === 'staff' ? 'clinic' : null, 'staff_subrole' => $role === 'staff' ? 'veterinarian' : null]);
         $old = $this->incident($user, 2);
         $recent = $this->incident($user, 1);
@@ -200,8 +217,8 @@ class AccountSecurityActivityTest extends TestCase
         $future = $this->incident($user, 0, ['last_occurred_at' => now()->addHour(), 'first_occurred_at' => now()->addHour()]);
         $foreign = $this->incident(User::factory()->create());
         Sanctum::actingAs($user);
-        $requestUrl = $role === 'staff' ? '/api/settings/security/password-change' : '/api/admin/security/account/credential-change';
-        $confirmBase = $role === 'staff' ? '/api/settings/security/credential-changes/' : '/api/admin/security/credential-changes/';
+        $requestUrl = $role !== 'admin' ? '/api/settings/security/password-change' : '/api/admin/security/account/credential-change';
+        $confirmBase = $role !== 'admin' ? '/api/settings/security/credential-changes/' : '/api/admin/security/credential-changes/';
         $this->postJson($requestUrl, ['current_password' => 'password', 'password' => 'violet orchard meadow',
             'password_confirmation' => 'violet orchard meadow'])->assertAccepted();
         $change = PrivilegedCredentialChange::sole();
@@ -210,7 +227,8 @@ class AccountSecurityActivityTest extends TestCase
         $this->postJson($confirmBase.$change->id.'/confirm', ['code' => $code === '000000' ? '111111' : '000000'])->assertUnprocessable();
         $this->assertNull($recent->fresh()->resolved_at);
         $this->postJson($confirmBase.$change->id.'/confirm', ['code' => $code])->assertOk()
-            ->assertJsonPath('security_resolved_at', now()->toIso8601String());
+            ->assertJsonPath('security_resolved_at', now()->toIso8601String())
+            ->assertJsonPath('requires_reauthentication', $role === 'admin');
         $this->assertTrue(Hash::check('violet orchard meadow', $user->fresh()->password_hash));
         foreach ([$old, $recent] as $record) {
             $this->assertSame('Resolved', $record->fresh()->payload()['status']);
@@ -223,7 +241,7 @@ class AccountSecurityActivityTest extends TestCase
         $this->assertSame(1, ActivityLog::where('action', 'security_incidents_resolved')->count());
     }
 
-    public static function roles(): array { return [['admin'], ['staff']]; }
+    public static function roles(): array { return [['admin'], ['staff'], ['manager']]; }
 
     public function test_username_only_confirmation_leaves_incidents_unresolved(): void
     {

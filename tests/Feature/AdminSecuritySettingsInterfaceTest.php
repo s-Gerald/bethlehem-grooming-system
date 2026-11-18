@@ -17,12 +17,12 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
 
         foreach ([
             '>Admin account</h3>',
-            '>Staff accounts</h3>',
-            '>Add staff account</span>',
+            '>Accounts</h3>',
+            '>Add Account</span>',
             '>Username</span>',
             '@click="openStaffDetails(staff)"',
-            '>Staff account details</h3>',
-            '>Staff name</dt>',
+            '>Account details</h3>',
+            '>Name</dt>',
             '>Username</dt>',
             '>Email</dt>',
             'for="staffDetailsRole">Role</label>',
@@ -32,7 +32,7 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
             "chooseStaffType('clinic')",
             "chooseStaffType('grooming')",
             '@click="handleAddStaffClose()"',
-            "? 'Back to account roles' : 'Close add staff account form'",
+            "? 'Back to account roles' : 'Close add account form'",
             "chooseClinicSubrole('veterinarian')",
             "chooseClinicSubrole('clinic_receptionist')",
             "addStaffModal.staffSubrole === 'veterinarian' ? 'Veterinarian' : 'Clinic Receptionist'",
@@ -42,12 +42,12 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
             '>Clinic Receptionist</span>',
             '>Grooming Receptionist</span>',
             '>Account setup email sent</h3>',
-            "A Set Up Your Password link was sent to the staff member's email address. Their account will become active after they complete setup.",
+            "A Set Up Your Password link was sent to the account holder's email address. Their account will become active after they complete setup.",
             'Update Changes',
             'x-for="staff in filteredStaffAccounts"',
-            "staffAccounts.length === 0 ? 'No staff accounts yet' : 'No staff accounts in this category'",
+            "staffAccounts.length === 0 ? 'No accounts yet' : 'No accounts in this category'",
             '>Security verification</p>',
-            "x-text=\"isStaff ? 'Verify your identity' : securityVerification.purpose\"",
+            "x-text=\"isSelfService ? 'Verify your identity' : securityVerification.purpose\"",
             '>6-digit security code</legend>',
             'x-for="(digit, index) in securityVerification.digits"',
             '@submit.prevent="confirmSecurityCredentialChange()"',
@@ -66,8 +66,8 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
         $this->assertStringNotContainsString('Staff Account Change Password', $security);
         $adminSecurity = $this->sourceBetween(
             $security,
-            'x-show="isAdmin" class="space-y-6"',
-            'x-show="isStaff" class="space-y-6"',
+            'x-show="isOwner" class="space-y-6"',
+            'x-show="isSelfService" class="space-y-6"',
         );
 
         $this->assertStringNotContainsString('Use at least 12 characters', $adminSecurity);
@@ -118,7 +118,7 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
     public function test_role_change_controls_stay_inside_the_staff_details_dialog(): void
     {
         $page = file_get_contents(base_path('pages/admin/settings.html'));
-        $details = $this->sourceBetween($page, '<!-- Staff account details modal -->', 'x-show="staffSetupModal.open"');
+        $details = $this->sourceBetween($page, '<!-- Account details modal -->', 'x-show="staffSetupModal.open"');
         foreach ([
             'x-model="staffDetailsModal.selectedRole"',
             '@change="changeStaffRole()"',
@@ -126,7 +126,7 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
             '<option value="clinic_receptionist">Clinic Receptionist</option>',
             '<option value="grooming_receptionist">Grooming Receptionist</option>',
             'x-show="staffRoleChangePending"',
-            'This will change this staff member’s system access.',
+            'This will change this account holder’s system access.',
             'placeholder="Enter your password"',
             'Required to save this role change.',
             'role="alert"',
@@ -172,8 +172,8 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
             'handleAddStaffClose()',
             'API.getAdminSecurityAccounts()',
             'API.requestAdminCredentialChange({',
-            'API.requestStaffAccount({',
-            'staff_subrole: staffSubrole',
+            'API.requestAccount({',
+            "account_role: this.addStaffModal.staffType === 'manager' ? 'manager' : staffSubrole",
             'this.addStaffModal.step = "success"',
             'API.updateStaffAccountStatus(staff.id, targetActive, this.staffStatusModal.password)',
             '? API.confirmStaffPasswordChange',
@@ -206,8 +206,8 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
         );
         $adminSecurity = $this->sourceBetween(
             $security,
-            'x-show="isAdmin" class="space-y-6"',
-            'x-show="isStaff" class="space-y-6"',
+            'x-show="isOwner" class="space-y-6"',
+            'x-show="isSelfService" class="space-y-6"',
         );
 
         $this->assertStringContainsString('autocomplete="current-password"', $adminSecurity);
@@ -231,14 +231,14 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
         );
         $security = $this->sourceBetween(
             $securityTab,
-            'x-show="isStaff" class="space-y-6"',
+            'x-show="isSelfService" class="space-y-6"',
             '<!-- Security code verification modal -->',
         );
 
         foreach ([
             '>Your Account</h3>',
             '>Full name</dt>',
-            '>Staff role</dt>',
+            '>Role</dt>',
             '>Username</dt>',
             '>Email address</dt>',
             '>Account status</dt>',
@@ -255,8 +255,8 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
 
         foreach ([
             'Admin account',
-            'Staff accounts',
-            'Add staff account',
+            'Accounts',
+            'Add Account',
             'openStaffStatusModal',
         ] as $adminControl) {
             $this->assertStringNotContainsString($adminControl, $security);

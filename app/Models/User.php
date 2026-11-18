@@ -33,6 +33,7 @@ class User extends Authenticatable
         'phone',
         'password_hash',
         'role',
+        'admin_type',
         'staff_type',
         'staff_subrole',
         'customer_tier',
@@ -79,7 +80,7 @@ class User extends Authenticatable
     protected static function booted(): void
     {
         static::updated(function (User $user): void {
-            if ($user->wasChanged(['password_hash', 'role', 'email'])
+            if ($user->wasChanged(['password_hash', 'role', 'admin_type', 'staff_type', 'staff_subrole', 'email'])
                 || ($user->wasChanged(['is_active', 'is_archived', 'account_deleted_at', 'email_recovery_id', 'email_verified_at'])
                     && ! app(\App\Services\AccountSessionService::class)->accountIsUsable($user))) {
                 app(\App\Services\RememberedDeviceService::class)->revokeFor($user);
@@ -130,11 +131,43 @@ class User extends Authenticatable
 
     public function requiresPasswordSetup(): bool
     {
-        return $this->role === 'staff'
+        return $this->isManageableAccount()
             && str_starts_with(
                 (string) $this->password_hash,
                 self::PASSWORD_SETUP_REQUIRED_PREFIX,
             );
+    }
+
+    public function isOwner(): bool
+    {
+        return $this->role === 'admin' && in_array($this->admin_type, [null, 'owner'], true);
+    }
+
+    public function isManager(): bool
+    {
+        return $this->role === 'admin' && $this->admin_type === 'manager';
+    }
+
+    public function isManageableAccount(): bool
+    {
+        return $this->role === 'staff' || $this->isManager();
+    }
+
+    public function hasSelfServiceSecurity(): bool
+    {
+        return $this->isManageableAccount();
+    }
+
+    public function scopeManageableAccount(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $accounts) => $accounts->where('role', 'staff')
+            ->orWhere(fn (Builder $managers) => $managers->where('role', 'admin')->where('admin_type', 'manager')));
+    }
+
+    public function scopeOwner(Builder $query): Builder
+    {
+        return $query->where('role', 'admin')->where(fn (Builder $admins) => $admins
+            ->whereNull('admin_type')->orWhere('admin_type', 'owner'));
     }
 
     public function clinicPermissions(): array
@@ -162,7 +195,7 @@ class User extends Authenticatable
     {
         // Uses already-loaded attributes; no queries or token secrets.
         return hash('sha256', json_encode([
-            $this->user_id, $this->role, $this->staff_type, $this->staff_subrole,
+            $this->user_id, $this->role, $this->admin_type, $this->staff_type, $this->staff_subrole,
             $this->first_name, $this->last_name, $this->clinicPermissions(), $this->staffPermissions(),
         ], JSON_THROW_ON_ERROR));
     }
@@ -172,7 +205,7 @@ class User extends Authenticatable
         $name = trim((string) $this->first_name);
         if ($name === '') return null;
 
-        $role = $this->role === 'admin' ? 'Admin' : ($this->role === 'staff' ? match ($this->staff_subrole) {
+        $role = $this->role === 'admin' ? ($this->isManager() ? 'Manager' : 'Admin') : ($this->role === 'staff' ? match ($this->staff_subrole) {
             'clinic_receptionist' => 'Clinic Receptionist',
             'veterinarian' => 'Veterinarian',
             'grooming_receptionist' => 'Grooming Receptionist',

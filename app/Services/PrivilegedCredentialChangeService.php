@@ -180,9 +180,9 @@ class PrivilegedCredentialChangeService
                 app(AccountSecurityService::class)->resolveByPasswordChange($target, $confirmedAt, $change->getKey(), $lockedRequester);
             }
 
-            $staffSelfServiceChange = $target->is($lockedRequester)
-                && $lockedRequester->role === 'staff';
-            if (! $staffSelfServiceChange) {
+            $selfServiceChange = $target->is($lockedRequester)
+                && $lockedRequester->hasSelfServiceSecurity();
+            if (! $selfServiceChange) {
                 $target->tokens()->delete();
             }
 
@@ -194,13 +194,13 @@ class PrivilegedCredentialChangeService
 
             return [
                 'status' => 'confirmed',
-                'purpose' => $this->purposeLabel($change),
+                'purpose' => $this->purposeLabel($change, $target),
                 'target_name' => $this->displayName($target),
                 'target_role' => $target->role,
                 'changes' => $changedFields,
                 'security_resolved_at' => $change->changes_password ? $confirmedAt->toIso8601String() : null,
                 'requires_reauthentication' => $target->is($lockedRequester)
-                    && ! $staffSelfServiceChange,
+                    && ! $selfServiceChange,
             ];
         });
     }
@@ -264,9 +264,10 @@ class PrivilegedCredentialChangeService
     ): string {
         return AuthenticationMailDelivery::queue($requester, new ConfirmPrivilegedCredentialChangeCodeNotification(
             $plainCode,
-            $this->purposeLabel($change),
+            $this->purposeLabel($change, $target),
             $this->displayName($target),
             $target->role === 'admin',
+            $target->isManager(),
         ), $change, 'code_hash', purpose: 'privileged_change');
     }
 
@@ -277,7 +278,7 @@ class PrivilegedCredentialChangeService
     ): array {
         return [
             'change_id' => $change->getKey(),
-            'purpose' => $this->purposeLabel($change),
+            'purpose' => $this->purposeLabel($change, $target),
             'target_name' => $this->displayName($target),
             'confirmation_email' => $this->maskEmail($requester->email),
             'expires_at' => $change->expires_at->toIso8601String(),
@@ -306,23 +307,23 @@ class PrivilegedCredentialChangeService
 
     private function usersAreStillEligible(User $requester, User $target, string $targetRole): bool
     {
-        $requesterIsUsableAdmin = $requester->role === 'admin'
+        $requesterIsUsableAdmin = $requester->isOwner()
             && $requester->is_active
             && ! $requester->is_archived;
-        $requesterIsUsableStaff = $requester->role === 'staff'
+        $requesterIsUsableSelfService = $requester->hasSelfServiceSecurity()
             && $requester->is_active
             && ! $requester->is_archived;
         $targetIsAllowed = $target->role === $targetRole
             && in_array($target->role, ['admin', 'staff'], true)
             && ! $target->is_archived;
         $selfChangeIsValid = $target->role !== 'admin' || $target->is($requester);
-        $staffSelfChangeIsValid = $requesterIsUsableStaff
-            && $target->role === 'staff'
+        $selfServiceChangeIsValid = $requesterIsUsableSelfService
+            && $target->hasSelfServiceSecurity()
             && $target->is($requester);
 
         return $targetIsAllowed && (
             ($requesterIsUsableAdmin && $selfChangeIsValid)
-            || $staffSelfChangeIsValid
+            || $selfServiceChangeIsValid
         );
     }
 
@@ -343,9 +344,9 @@ class PrivilegedCredentialChangeService
         ]));
     }
 
-    private function purposeLabel(PrivilegedCredentialChange $change): string
+    private function purposeLabel(PrivilegedCredentialChange $change, User $target): string
     {
-        $account = $change->target_role === 'admin' ? 'Admin' : 'Staff';
+        $account = $target->isManager() ? 'Manager' : ($change->target_role === 'admin' ? 'Admin' : 'Staff');
         $fields = $this->changedFields($change);
         $credential = count($fields) === 2
             ? 'username and password'

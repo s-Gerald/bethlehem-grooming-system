@@ -42,12 +42,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
+  let passwordMinimum = 15;
   try {
     const response = await API.verifyStaffPasswordSetupToken(setupToken);
     if (accountEmail && accountDescription && response?.email) {
       accountEmail.textContent = response.email;
       accountDescription.classList.remove("hidden");
     }
+    passwordMinimum = response.password_min_length || 15;
     form.classList.remove("hidden");
     username.focus();
   } catch (error) {
@@ -61,7 +63,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const credentialBindings = {
     username: CredentialPolicy.bind(username, { feedback: usernameMessage, validate: () => CredentialPolicy.username(username.value.trim(), false) }),
-    password: CredentialPolicy.bind(password, { validate: () => CredentialPolicy.password(password.value, 15) }),
+    password: CredentialPolicy.bind(password, { validate: () => CredentialPolicy.password(password.value, passwordMinimum) }),
     password_confirmation: CredentialPolicy.bind(confirmation, { validate: () => CredentialPolicy.confirmation(confirmation.value, password.value) }),
   };
   form.noValidate = true;
@@ -86,7 +88,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         confirmation.value,
         username.value.trim() || null,
       );
-      if (!response.completed_setup || response.user?.role !== "staff") {
+      if (!response.completed_setup || !(response.user?.role === "staff" || (response.user?.role === "admin" && response.user?.admin_type === "manager"))) {
         throw new Error("This setup link has expired or is no longer valid.");
       }
       window.location.replace("/admin/dashboard");

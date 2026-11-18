@@ -172,13 +172,14 @@ class StaffEmailChangeService
 
     private static function eligible(User $user): bool
     {
-        return $user->role === 'staff' && ! $user->hasEmailRecoveryHold() && $user->is_active && ! $user->is_archived
+        return $user->hasSelfServiceSecurity() && ! $user->hasEmailRecoveryHold() && $user->is_active && ! $user->is_archived
             && $user->account_deleted_at === null && ! $user->requiresPasswordSetup();
     }
 
     public static function fingerprint(User $user): string
     {
-        return hash('sha256', json_encode([$user->role, $user->staff_type, $user->staff_subrole, $user->password_hash], JSON_THROW_ON_ERROR));
+        // Preserve already-issued staff email/recovery snapshots during deployment.
+        return hash('sha256', json_encode([$user->role, ...($user->isManager() ? [$user->admin_type] : []), $user->staff_type, $user->staff_subrole, $user->password_hash], JSON_THROW_ON_ERROR));
     }
 
     private function resendAfter(StaffEmailChange $change): int

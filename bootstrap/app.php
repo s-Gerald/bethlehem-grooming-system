@@ -32,10 +32,14 @@ return Application::configure(basePath: dirname(__DIR__))
             'account.usable' => EnsureAccountIsUsable::class,
             'session.active' => \App\Http\Middleware\EnsureSessionIsActive::class,
             'role' => EnsureUserHasRole::class,
+            'owner' => \App\Http\Middleware\EnsureOwner::class,
+            'security.self-service' => \App\Http\Middleware\EnsureSelfServiceAccount::class,
             'clinic' => EnsureClinicPermission::class,
             'grooming' => EnsureGroomingPermission::class,
             'staff' => \App\Http\Middleware\EnsureStaffPermission::class,
         ]);
+        $middleware->prependToPriorityList(\Illuminate\Routing\Middleware\ThrottleRequests::class,
+            \App\Http\Middleware\EnsureOwner::class);
 
         $middleware->api(prepend: [
             HandleCors::class,

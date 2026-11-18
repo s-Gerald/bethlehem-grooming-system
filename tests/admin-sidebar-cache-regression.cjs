@@ -86,7 +86,7 @@ async function isolationAndRaces() {
   assert.equal(nextSidebar.canAccessGrooming, false);
   assert.deepEqual(Object.keys(nextSidebar.clinicPermissions), []);
   let verifyIdentity;
-  e.respond(() => new Promise(resolve => { verifyIdentity = resolve; }));
+  e.respond(url => url.endsWith('/me') ? new Promise(resolve => { verifyIdentity = resolve; }) : {});
   nextSidebar.$nextTick = callback => callback();
   const pending = nextSidebar.init();
   assert.equal(nextSidebar.sidebarReady, false, 'Identity remains unresolved while the new account /me request is pending');
@@ -117,7 +117,6 @@ async function independentRendering() {
   sidebar.destroy();
 }
 async function rolesAndInvalidCache() {
-  await cachedAccountLabels();
   const cases = [
     [{ role: 'admin', staff_type: null, staff_subrole: null }, true, true, 'Staff'],
     [{ staff_type: 'clinic', staff_subrole: 'veterinarian' }, false, false, 'Veterinarian'],
@@ -154,6 +153,7 @@ async function rolesAndInvalidCache() {
 async function cachedAccountLabels() {
   for (const [user, expected] of [
     [{ role: 'admin', staff_type: null, staff_subrole: null }, ['AD', 'Admin', 'Owner']],
+    [{ role: 'admin', admin_type: 'manager', staff_type: null, staff_subrole: null, first_name: 'Mara', last_name: 'Santos' }, ['MS', 'Mara Santos', 'Manager']],
     [{ staff_subrole: 'veterinarian' }, ['TS', 'Test Staff', 'Veterinarian']],
     [{ staff_subrole: 'clinic_receptionist' }, ['TS', 'Test Staff', 'Clinic Receptionist']],
     [{ staff_type: 'grooming', staff_subrole: 'grooming_receptionist' }, ['TS', 'Test Staff', 'Grooming Receptionist']],
@@ -164,7 +164,7 @@ async function cachedAccountLabels() {
     await e.c.API.getStaffIdentity();
     // The pre-Alpine renderer must recognize the same bindings as the templates.
     for (const c of [e.c, e.page()]) {
-      const labels = ["isAdmin ? 'AD' : staffInitials", "isAdmin ? 'Admin' : staffDisplayName", "isAdmin ? 'Owner' : staffRoleLabel"]
+      const labels = ["isOwner ? 'AD' : staffInitials", "isOwner ? 'Admin' : staffDisplayName", "isOwner ? 'Owner' : staffRoleLabel"]
         .map(expression => ({ textContent: '', getAttribute: () => expression }));
       const account = { setAttribute(name, value) { this[name] = value; } };
       const aside = { querySelector: () => account, closest: () => null, setAttribute() {}, removeAttribute() {},
@@ -450,7 +450,7 @@ async function privateSecurityAlertRendersOnce() {
 }
 
 (async () => {
-  for (const test of [servicesNavigationAndPageGuardForAuthorizedRoles, reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, sharedReceptionistSwitchReplacesTheFormerAccountDocument, profileIdentitySynchronization, profileSessionSwitchRace, activityLogNavigationUsesVerifiedAdminIdentity, availabilityNavigationForAuthorizedRoles, privateSecurityAlertRendersOnce]) {
+  for (const test of [cachedAccountLabels, servicesNavigationAndPageGuardForAuthorizedRoles, reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, sharedReceptionistSwitchReplacesTheFormerAccountDocument, profileIdentitySynchronization, profileSessionSwitchRace, activityLogNavigationUsesVerifiedAdminIdentity, availabilityNavigationForAuthorizedRoles, privateSecurityAlertRendersOnce]) {
     await test(); console.log(test.name + ' passed');
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

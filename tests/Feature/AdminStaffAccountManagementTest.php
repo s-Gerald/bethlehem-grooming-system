@@ -65,6 +65,7 @@ class AdminStaffAccountManagementTest extends TestCase
             $table->string('phone', 20)->nullable()->unique();
             $table->string('password_hash');
             $table->string('role');
+            $table->string('admin_type', 20)->nullable();
             $table->string('staff_type', 20)->nullable();
             $table->string('staff_subrole', 30)->nullable();
             $table->string('customer_tier')->default('new');
@@ -922,7 +923,7 @@ class AdminStaffAccountManagementTest extends TestCase
             'current_password' => 'CurrentAdmin!234',
         ])
             ->assertOk()
-            ->assertJsonPath('message', 'Staff account deactivated.')
+            ->assertJsonPath('message', 'Account deactivated.')
             ->assertJsonPath('staff.is_active', false);
 
         $this->assertDatabaseHas('users', [
@@ -949,7 +950,7 @@ class AdminStaffAccountManagementTest extends TestCase
             'current_password' => 'CurrentAdmin!234',
         ])
             ->assertOk()
-            ->assertJsonPath('message', 'Staff account reactivated.')
+            ->assertJsonPath('message', 'Account reactivated.')
             ->assertJsonPath('staff.is_active', true);
 
         Notification::fake();
@@ -979,7 +980,7 @@ class AdminStaffAccountManagementTest extends TestCase
             foreach (['incorrect', 'CurrentStaff!234', 'CurrentAdmin!234'] as $password) {
                 $this->patchJson($url, ['active' => $active, 'current_password' => $password])
                     ->assertUnprocessable()
-                    ->assertJsonPath('errors.current_password.0', 'The admin password is incorrect.');
+                    ->assertJsonPath('errors.current_password.0', 'The owner password is incorrect.');
                 $this->assertSame(! $active, $staff->fresh()->is_active);
                 $this->assertDatabaseHas('personal_access_tokens', ['tokenable_id' => $staff->user_id]);
             }
@@ -1011,7 +1012,7 @@ class AdminStaffAccountManagementTest extends TestCase
         $this->deleteJson($url)->assertUnprocessable()->assertJsonValidationErrors('current_password');
         $this->deleteJson($url, ['current_password' => 'CurrentStaff!234'])
             ->assertUnprocessable()
-            ->assertJsonPath('errors.current_password.0', 'The admin password is incorrect.');
+            ->assertJsonPath('errors.current_password.0', 'The owner password is incorrect.');
         $this->assertDatabaseHas('users', ['user_id' => $staff->user_id]);
         $this->assertDatabaseHas('password_reset_requests', ['token_hash' => $reset->token_hash]);
 
@@ -1219,7 +1220,7 @@ class AdminStaffAccountManagementTest extends TestCase
 
     public static function pendingEmailRoles(): array
     {
-        return [['clinic', 'veterinarian'], ['clinic', 'clinic_receptionist'], ['grooming', 'grooming_receptionist']];
+        return [['clinic', 'veterinarian'], ['clinic', 'clinic_receptionist'], ['grooming', 'grooming_receptionist'], ['manager', 'manager']];
     }
 
     public function test_pending_email_correction_rejects_bad_email_password_and_unrelated_fields(): void
@@ -1564,8 +1565,8 @@ class AdminStaffAccountManagementTest extends TestCase
         Notification::fake();
         $admin = $this->createUser('admin', 'admin@gmail.com', 'Admin');
         Sanctum::actingAs($admin);
-        $this->postJson('/api/admin/security/staff-accounts', [
-            'staff_type' => $type, 'staff_subrole' => $subrole,
+        $this->postJson('/api/admin/security/accounts', [
+            'account_role' => $subrole,
             'first_name' => 'Pending', 'last_name' => 'Staff', 'email' => 'wrong@gmail.com',
         ])->assertCreated();
         $staff = User::query()->where('email', 'wrong@gmail.com')->sole();
@@ -1629,6 +1630,111 @@ class AdminStaffAccountManagementTest extends TestCase
             ->assertUnprocessable()->assertJsonValidationErrors('email');
         $this->assertDatabaseCount('users', 1);
         Notification::assertNothingSent();
+    }
+
+    public function test_owner_creates_manager_using_the_existing_setup_and_sign_in_lifecycle(): void
+    {
+        Notification::fake();
+        $owner = $this->createUser('admin', 'owner@gmail.com', 'Owner');
+        Sanctum::actingAs($owner);
+        $this->postJson('/api/admin/security/accounts', ['account_role' => 'manager',
+            'first_name' => 'Mara', 'last_name' => 'Santos', 'email' => 'manager@GMAIL.COM'])
+            ->assertCreated()->assertJsonPath('account.role', 'admin')->assertJsonPath('account.admin_type', 'manager')
+            ->assertJsonPath('account.password_setup_required', true);
+        $manager = User::where('email', 'manager@gmail.com')->sole();
+        $this->assertFalse($manager->is_active);
+        $this->assertNull($manager->staff_type);
+        $token = $this->staffSetupLinkSentTo($manager);
+        $this->getJson('/api/admin/security/accounts')->assertOk()->assertJsonCount(1, 'accounts')
+            ->assertJsonPath('accounts.0.admin_type', 'manager');
+        $this->postJson('/api/staff/password-setup/complete', ['token' => $token, 'username' => 'MaraSantos',
+            'password' => 'violet orchard meadow', 'password_confirmation' => 'violet orchard meadow'])
+            ->assertOk()->assertJsonPath('completed_setup', true)->assertJsonPath('user.admin_type', 'manager');
+        $this->assertTrue($manager->fresh()->is_active);
+        $this->assertSame('Mara · Manager', $manager->fresh()->paymentAttribution());
+        $this->signInWithCode($manager->fresh(), 'MaraSantos', 'violet orchard meadow')
+            ->assertJsonPath('user.admin_type', 'manager');
+        $this->assertTrue($manager->fresh()->clinicPermissions()['services_manage']);
+        $this->assertTrue($manager->fresh()->staffPermissions()['services_manage']);
+    }
+
+    public function test_manager_is_forbidden_from_every_account_administration_endpoint(): void
+    {
+        $manager = $this->createUser('admin', 'manager@gmail.com', 'Manager');
+        $manager->forceFill(['admin_type' => 'manager'])->save();
+        $staff = $this->createUser('staff', 'staff@gmail.com', 'Staff', 'clinic');
+        Sanctum::actingAs($manager);
+        foreach ([['GET', '/accounts'], ['POST', '/accounts'], ['POST', '/staff-accounts'],
+            ['PATCH', "/staff/{$staff->user_id}/status"], ['PATCH', "/staff/{$staff->user_id}/role"],
+            ['POST', "/staff/{$staff->user_id}/setup-email"], ['PATCH', "/staff/{$staff->user_id}/setup-email"],
+            ['DELETE', "/staff/{$staff->user_id}/setup"], ['POST', "/staff/{$staff->user_id}/email-recovery"],
+            ['GET', "/staff/{$staff->user_id}/email-recovery/history"],
+            ...array_map(fn ($action) => ['POST', "/staff/{$staff->user_id}/email-recovery/example/{$action}"], ['confirm', 'code', 'resend', 'cancel']),
+            ['POST', '/account/credential-change']] as [$method, $path]) {
+            $this->json($method, '/api/admin/security'.$path)->assertForbidden();
+        }
+        $this->getJson('/api/settings/security/account')->assertOk()->assertJsonPath('account.admin_type', 'manager');
+    }
+
+    public function test_owner_can_transition_manager_and_staff_without_leaving_stale_permissions(): void
+    {
+        $owner = $this->createUser('admin', 'owner@gmail.com', 'Owner');
+        $staff = $this->createUser('staff', 'staff@gmail.com', 'Staff', 'clinic');
+        $staff->createToken('old-session');
+        Sanctum::actingAs($owner);
+        $revision = $staff->sidebarRevision();
+        $this->patchJson("/api/admin/security/staff/{$staff->user_id}/role", ['staff_role' => 'manager', 'current_password' => 'CurrentAdmin!234'])
+            ->assertOk()->assertJsonPath('staff.admin_type', 'manager');
+        $this->assertNull($staff->fresh()->staff_type);
+        $this->assertNull($staff->fresh()->staff_subrole);
+        $this->assertSame(0, $staff->tokens()->count());
+        $this->assertNotSame($revision, $staff->fresh()->sidebarRevision());
+        $staff->createToken('manager-session');
+        $this->patchJson("/api/admin/security/staff/{$staff->user_id}/role", ['staff_role' => 'grooming_receptionist', 'current_password' => 'CurrentAdmin!234'])
+            ->assertOk()->assertJsonPath('staff.role', 'staff')->assertJsonPath('staff.admin_type', null)
+            ->assertJsonPath('staff.staff_type', 'grooming');
+        $this->assertSame(0, $staff->tokens()->count());
+        $this->patchJson("/api/admin/security/staff/{$owner->user_id}/role", ['staff_role' => 'manager', 'current_password' => 'CurrentAdmin!234'])->assertNotFound();
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        $this->postJson('/api/admin/security/accounts', ['account_role' => 'owner'])->assertUnprocessable();
+    }
+
+    public function test_owner_manages_manager_status_and_pending_setup_with_existing_cleanup(): void
+    {
+        Notification::fake();
+        $owner = $this->createUser('admin', 'owner@gmail.com', 'Owner');
+        Sanctum::actingAs($owner);
+        $this->postJson('/api/admin/security/accounts', ['account_role' => 'manager',
+            'first_name' => 'Mara', 'last_name' => 'Santos', 'email' => 'manager@gmail.com'])->assertCreated();
+        $manager = User::where('email', 'manager@gmail.com')->sole();
+        $oldToken = $this->staffSetupLinkSentTo($manager);
+        $this->travel(25)->hours();
+        $this->postJson('/api/staff/password-setup/verify', ['token' => $oldToken])
+            ->assertUnprocessable()->assertJsonPath('expired', true);
+        $this->postJson('/api/staff/password-setup/request-new-link', ['token' => $oldToken])->assertAccepted();
+        $newToken = $this->staffSetupLinkSentTo($manager);
+        $this->assertNotSame($oldToken, $newToken);
+        $this->postJson('/api/staff/password-setup/verify', ['token' => $oldToken])->assertUnprocessable();
+        $this->postJson('/api/staff/password-setup/complete', ['token' => $newToken,
+            'password' => 'violet orchard meadow', 'password_confirmation' => 'violet orchard meadow'])->assertOk();
+        $manager->createToken('manager-session');
+        LoginEmailChallenge::create(['user_id' => $manager->getKey(), 'token_hash' => hash('sha256', 'login'),
+            'expires_at' => now()->addMinutes(10)]);
+        $change = \App\Models\PrivilegedCredentialChange::create(['requested_by_user_id' => $manager->getKey(),
+            'target_user_id' => $manager->getKey(), 'target_role' => 'admin', 'code_hash' => 'placeholder']);
+        $this->patchJson('/api/admin/security/staff/'.$manager->getKey().'/status',
+            ['active' => false, 'current_password' => 'CurrentAdmin!234'])->assertOk()->assertJsonPath('staff.is_active', false);
+        $this->assertSame(0, $manager->tokens()->count());
+        $this->assertDatabaseMissing('login_email_challenges', ['user_id' => $manager->getKey()]);
+        $this->assertDatabaseMissing('privileged_credential_changes', ['id' => $change->id]);
+        $this->patchJson('/api/admin/security/staff/'.$manager->getKey().'/status',
+            ['active' => true, 'current_password' => 'CurrentAdmin!234'])->assertOk()->assertJsonPath('staff.is_active', true);
+        $this->travel(601)->seconds();
+        $this->postJson('/api/admin/security/accounts', ['account_role' => 'manager',
+            'first_name' => 'Pending', 'last_name' => 'Manager', 'email' => 'pending@gmail.com'])->assertCreated();
+        $pending = User::where('email', 'pending@gmail.com')->sole();
+        $this->deleteJson('/api/admin/security/staff/'.$pending->getKey().'/setup', ['current_password' => 'CurrentAdmin!234'])->assertOk();
+        $this->assertDatabaseMissing('users', ['user_id' => $pending->getKey()]);
     }
 
     private function createUser(

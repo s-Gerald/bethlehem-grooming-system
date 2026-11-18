@@ -115,6 +115,7 @@ class AdminCredentialChangeTest extends TestCase
             $table->string('phone')->unique();
             $table->string('password_hash');
             $table->string('role');
+            $table->string('admin_type', 20)->nullable();
             $table->string('staff_type')->nullable();
             $table->string('staff_subrole')->nullable();
             $table->string('customer_tier')->default('new');
@@ -758,7 +759,9 @@ class AdminCredentialChangeTest extends TestCase
     {
         Notification::fake();
         $staff = $this->createUser('staff', 'current@gmail.com', '09171111099', 'ExistingStaff');
-        $staff->update(['staff_type' => $type, 'staff_subrole' => $subrole]);
+        $staff->update($type === 'manager'
+            ? ['role' => 'admin', 'admin_type' => 'manager', 'staff_type' => null, 'staff_subrole' => null]
+            : ['staff_type' => $type, 'staff_subrole' => $subrole]);
         if ($subrole === 'grooming_receptionist') $staff->update(['email_verified_at' => null]);
         $original = $staff->refresh()->getAttributes();
         $token = $staff->createToken('staff')->plainTextToken;
@@ -801,7 +804,7 @@ class AdminCredentialChangeTest extends TestCase
 
     public static function selfServiceEmailRoles(): array
     {
-        return [['clinic', 'veterinarian'], ['clinic', 'clinic_receptionist'], ['grooming', 'grooming_receptionist']];
+        return [['clinic', 'veterinarian'], ['clinic', 'clinic_receptionist'], ['grooming', 'grooming_receptionist'], ['manager', 'manager']];
     }
 
     public function test_self_service_email_validation_ownership_and_role_restrictions(): void
@@ -1640,7 +1643,9 @@ class AdminCredentialChangeTest extends TestCase
         Notification::fake();
         $admin = $this->createUser('admin', 'admin@gmail.com', '09172222001', 'Admin');
         $staff = $this->createUser('staff', 'current@gmail.com', '09172222002', 'Staff');
-        $staff->update(['staff_type' => $type, 'staff_subrole' => $subrole]);
+        $staff->update($type === 'manager'
+            ? ['role' => 'admin', 'admin_type' => 'manager', 'staff_type' => null, 'staff_subrole' => null]
+            : ['staff_type' => $type, 'staff_subrole' => $subrole]);
         $token = $admin->createToken('admin')->plainTextToken;
         $this->useEmailToken($token);
         return [$admin, $staff, $token];
@@ -1685,6 +1690,53 @@ class AdminCredentialChangeTest extends TestCase
     private function latestEmailCode(): string
     {
         return Notification::sent(new \Illuminate\Notifications\AnonymousNotifiable, \App\Notifications\VerifyStaffEmailChangeNotification::class)->last()->code;
+    }
+
+    public function test_manager_profile_and_username_changes_are_self_service_and_cannot_change_authority(): void
+    {
+        $manager = $this->createUser('admin', 'manager@gmail.com', '09171111777', 'MaraSantos');
+        $manager->update(['admin_type' => 'manager']);
+        $token = $manager->createToken('manager')->plainTextToken;
+        $this->useEmailToken($token);
+        $incident = \App\Models\AccountSecurityIncident::create(['user_id' => $manager->getKey(),
+            'incident_day' => now()->toDateString(), 'first_occurred_at' => now(), 'last_occurred_at' => now()]);
+        $data = ['first_name' => 'Mara', 'last_name' => 'Santos', 'username' => 'NewMara'];
+        $this->postJson('/api/settings/security/profile/validate', $data)->assertOk();
+        $this->patchJson('/api/settings/security/profile', $data)->assertUnprocessable()->assertJsonValidationErrors('current_password');
+        $this->patchJson('/api/settings/security/profile', $data + ['current_password' => 'CurrentAdmin!234', 'admin_type' => 'owner'])
+            ->assertUnprocessable()->assertJsonValidationErrors('admin_type');
+        $this->patchJson('/api/settings/security/profile', $data + ['current_password' => 'CurrentAdmin!234'])
+            ->assertOk()->assertJsonPath('user.admin_type', 'manager')->assertJsonPath('account.username', 'NewMara');
+        $this->assertSame(1, $manager->tokens()->count());
+        $this->assertNull($incident->fresh()->resolved_at);
+        $this->useEmailToken($token);
+        $this->getJson('/api/settings/security/account')->assertOk()->assertJsonPath('account.first_name', 'Mara');
+        $this->getJson('/api/admin/security/accounts')->assertForbidden();
+    }
+
+    public function test_manager_password_change_uses_the_admin_policy_and_preserves_own_session(): void
+    {
+        Notification::fake();
+        $manager = $this->createUser('admin', 'manager@gmail.com', '09171111777', 'MaraSantos');
+        $manager->update(['admin_type' => 'manager']);
+        $token = $manager->createToken('manager')->plainTextToken;
+        $this->useEmailToken($token);
+        $this->postJson('/api/settings/security/password-change', ['current_password' => 'CurrentAdmin!234',
+            'password' => 'short phrase', 'password_confirmation' => 'short phrase'])->assertUnprocessable();
+        $this->postJson('/api/settings/security/password-change', ['current_password' => 'wrong',
+            'password' => 'violet orchard meadow', 'password_confirmation' => 'violet orchard meadow'])->assertUnprocessable();
+        $this->postJson('/api/settings/security/password-change', ['current_password' => 'CurrentAdmin!234',
+            'password' => 'violet orchard meadow', 'password_confirmation' => 'violet orchard meadow'])
+            ->assertAccepted()->assertJsonPath('purpose', 'Manager password change');
+        $change = PrivilegedCredentialChange::sole();
+        $notice = Notification::sent($manager, ConfirmPrivilegedCredentialChangeCodeNotification::class)->last();
+        $this->assertStringContainsString('your Manager account', implode(' ', $notice->toMail($manager)->introLines));
+        $code = $notice->code;
+        $this->postJson('/api/settings/security/credential-changes/'.$change->id.'/confirm', ['code' => $code])
+            ->assertOk()->assertJsonPath('requires_reauthentication', false);
+        $this->assertTrue(Hash::check('violet orchard meadow', $manager->fresh()->password_hash));
+        $this->assertSame(1, $manager->tokens()->count());
+        $this->getJson('/api/settings/security/account')->assertOk();
     }
 
     private function createUser(

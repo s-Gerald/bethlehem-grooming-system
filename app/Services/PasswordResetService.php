@@ -206,7 +206,7 @@ class PasswordResetService
         $account = $inspection['user'];
         $username = trim($username ?? '');
         if ($username !== '') $this->validateStaffUsername($username);
-        Validator::make(['password' => $newPassword], ['password' => AccountPassword::rules('staff', $account->toArray() + ['new_username' => $username])])->validate();
+        Validator::make(['password' => $newPassword], ['password' => AccountPassword::rules($account->role, $account->toArray() + ['new_username' => $username])])->validate();
         while (true) {
             $selectedUsername = null;
             $staff = null;
@@ -360,7 +360,7 @@ class PasswordResetService
 
     private function staffSetupIsEligible(User $user): bool
     {
-        return $user->role === 'staff'
+        return $user->isManageableAccount()
             && ! $user->is_archived
             && $user->account_deleted_at === null
             && $user->requiresPasswordSetup();

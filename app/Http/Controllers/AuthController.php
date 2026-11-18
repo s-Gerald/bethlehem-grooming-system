@@ -221,6 +221,7 @@ class AuthController extends Controller
                         ->where('original_phone', $user->phone)->where('original_verified_at', $user->getRawOriginal('phone_verified_at'))
                         ->whereNotIn('status', ['consumed', 'superseded'])->exists(),
                 'role' => $user->role,
+                'admin_type' => $user->admin_type,
                 'staff_type' => $user->staff_type,
                 'staff_subrole' => $user->staff_subrole,
                 'clinic_permissions' => $user->clinicPermissions(),
@@ -274,6 +275,7 @@ class AuthController extends Controller
                     ? 'not_added'
                     : ($user->phone_verified_at !== null ? 'verified' : 'unverified'),
                 'role' => $user->role,
+                'admin_type' => $user->admin_type,
                 'staff_type' => $user->staff_type,
                 'staff_subrole' => $user->staff_subrole,
                 'clinic_permissions' => $user->clinicPermissions(),

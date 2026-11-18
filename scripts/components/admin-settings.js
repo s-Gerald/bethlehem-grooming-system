@@ -2,7 +2,11 @@ function adminSettings() {
   const currentRole = typeof API !== "undefined" && typeof API.getUserRole === "function"
     ? API.getUserRole()
     : "admin";
+  const cachedUser = typeof API !== 'undefined' ? API.getCachedStaffIdentity?.()?.user : null;
   return {
+    isOwner: currentRole === 'admin' && cachedUser?.role === 'admin' && (cachedUser.admin_type == null || cachedUser.admin_type === 'owner'),
+    isManager: currentRole === 'admin' && cachedUser?.admin_type === 'manager',
+    get isSelfService() { return this.isStaff || this.isManager; },
     isAdmin: currentRole === "admin",
     isStaff: currentRole === "staff",
     activeSettingsTab: "general",
@@ -178,6 +182,8 @@ function adminSettings() {
         try {
           const {user} = await API.getStaffIdentity();
           this.isAdmin = user.role === 'admin';
+          this.isManager = user.role === 'admin' && user.admin_type === 'manager';
+          this.isOwner = this.isAdmin && (user.admin_type == null || user.admin_type === 'owner');
           this.isStaff = user.role === 'staff';
         } catch (error) {
           this.generalError = this.staffError = error.message || 'Could not verify settings access.';
@@ -194,7 +200,7 @@ function adminSettings() {
       const activity = this.loadSecurityActivity();
       if (this.staffLoaded) return activity;
       if (this._securityRequest) return this._securityRequest;
-      this._securityRequest = Promise.all([activity, this.isAdmin ? this.loadSecurityAccounts() : this.loadOwnAccount()])
+      this._securityRequest = Promise.all([activity, this.isOwner ? this.loadSecurityAccounts() : this.loadOwnAccount()])
         .finally(() => { this._securityRequest = null; });
       return this._securityRequest;
     },
@@ -334,7 +340,7 @@ function adminSettings() {
     secureAccount() {
       this.activeSettingsTab = 'security';
       this.$nextTick(() => {
-        const field = document.querySelector(this.isAdmin ? '[x-model="adminPassword.current"]' : '[x-model="staffPassword.current"]');
+        const field = document.querySelector(this.isOwner ? '[x-model="adminPassword.current"]' : '[x-model="staffPassword.current"]');
         field?.focus({ preventScroll: true });
         field?.scrollIntoView({ block: 'center' });
       });
@@ -350,6 +356,7 @@ function adminSettings() {
     },
 
     accountRoleLabel(account) {
+      if (account?.role === "admin" && account?.admin_type === "manager") return "Manager";
       if (account?.staff_subrole === "veterinarian") return "Veterinarian";
       if (account?.staff_subrole === "clinic_receptionist") return "Clinic Receptionist";
       if (account?.staff_subrole === "grooming_receptionist") return "Grooming Receptionist";
@@ -378,11 +385,11 @@ function adminSettings() {
       if (this._ownEmailCompleted) return;
       this.staffAccount = {
         firstName: account.first_name || "", lastName: account.last_name || "",
-        fullName: `${account.first_name || ""} ${account.last_name || ""}`.trim() || "Staff account",
+        fullName: `${account.first_name || ""} ${account.last_name || ""}`.trim() || "Account",
         roleLabel: this.accountRoleLabel(account), username: account.username || "",
         email: account.email || "No email address",
         statusLabel: account.is_active && !account.is_archived ? "Active" : "Inactive",
-        canChangeEmail: Boolean(this.isStaff && account.is_active && !account.is_archived && !account.password_setup_required),
+        canChangeEmail: Boolean(this.isSelfService && account.is_active && !account.is_archived && !account.password_setup_required),
       };
     },
 
@@ -417,7 +424,7 @@ function adminSettings() {
     },
 
     openOwnEmailChange() {
-      if (!this.isStaff || !this.staffAccount.canChangeEmail || this.staffProfile.editing || this.staffProfile.submitting
+      if (!this.isSelfService || !this.staffAccount.canChangeEmail || this.staffProfile.editing || this.staffProfile.submitting
         || this.staffPassword.submitting || this.securityVerification.open || this.staffEmailChange.busy || this._ownEmailCompleted) return;
       this._ownEmailOpener = document.activeElement;
       Object.assign(this.staffEmailChange, { open: true, stage: 'form', newEmail: '', password: '', showPassword: false,
@@ -566,7 +573,7 @@ function adminSettings() {
     },
 
     editStaffProfile() {
-      if (!this.isStaff || !this.staffLoaded || this.staffProfile.submitting || this.staffEmailChange.open || this.staffEmailChange.busy) return;
+      if (!this.isSelfService || !this.staffLoaded || this.staffProfile.submitting || this.staffEmailChange.open || this.staffEmailChange.busy) return;
       this.staffProfile = { editing: true, confirming: false, submitting: false,
         firstName: this.staffAccount.firstName, lastName: this.staffAccount.lastName, username: this.staffAccount.username,
         currentPassword: "", showPassword: false, errors: {}, error: "" };
@@ -612,7 +619,7 @@ function adminSettings() {
     },
 
     async submitStaffProfile() {
-      if (!this.isStaff || !this.staffProfile.editing || this.staffProfile.submitting || this.staffProfile.confirming) return;
+      if (!this.isSelfService || !this.staffProfile.editing || this.staffProfile.submitting || this.staffProfile.confirming) return;
       this.staffProfile.errors = this.staffProfileValidation();
       if (!this.staffProfileValid) {
         const ids = { first_name: 'staffProfileFirstName', last_name: 'staffProfileLastName', username: 'staffProfileUsername' };
@@ -688,6 +695,7 @@ function adminSettings() {
     },
 
     loadSecurityAccounts() {
+      if (!this.isOwner) return Promise.resolve();
       const epoch = API.getAdminDataRevision?.();
       if (this._staffAccountsRequest && this._staffAccountsEpoch === epoch) return this._staffAccountsRequest;
       this._staffAccountsEpoch = epoch;
@@ -701,7 +709,7 @@ function adminSettings() {
           username: response?.admin?.username || "",
         };
         this.adminPassword.username = this.adminAccount.username;
-        this.staffAccounts = (response?.staff || []).map((staff) => this.staffAccountFields(staff));
+        this.staffAccounts = (response?.accounts || response?.staff || []).map((staff) => this.staffAccountFields(staff));
         this.staffLoaded = true;
       }).catch(error => {
         if (revision !== this._securityRevision) return;
@@ -717,7 +725,7 @@ function adminSettings() {
     },
 
     staffAccountFields(staff) {
-      const fullName = `${staff.first_name || ""} ${staff.last_name || ""}`.trim() || "Staff account";
+      const fullName = `${staff.first_name || ""} ${staff.last_name || ""}`.trim() || "Account";
       const setupRequired = Boolean(staff.password_setup_required);
       const state = setupRequired ? "pending" : staff.is_active && !staff.is_archived ? "active" : "deactivated";
       return {
@@ -900,7 +908,7 @@ function adminSettings() {
     },
 
     chooseStaffType(staffType) {
-      if (!["clinic", "grooming"].includes(staffType)) return;
+      if (!["manager", "clinic", "grooming"].includes(staffType)) return;
       this.addStaffModal.staffType = staffType;
       this.addStaffModal.staffSubrole = staffType === "grooming" ? "grooming_receptionist" : "";
 
@@ -966,9 +974,8 @@ function adminSettings() {
 
       this.addStaffModal.submitting = true;
       try {
-        await API.requestStaffAccount({
-          staff_type: this.addStaffModal.staffType,
-          staff_subrole: staffSubrole,
+        await API.requestAccount({
+          account_role: this.addStaffModal.staffType === 'manager' ? 'manager' : staffSubrole,
           first_name: firstName,
           last_name: lastName,
           email,
@@ -1021,6 +1028,7 @@ function adminSettings() {
       const subroleLabel = staff.staff_subrole === "veterinarian" ? "Veterinarian"
         : staff.staff_subrole === "clinic_receptionist" ? "Clinic Receptionist" : "";
       return {
+        accountRole: staff.admin_type === "manager" && staff.role === "admin" ? "manager" : staff.staff_subrole || "",
         staffType: staff.staff_type || "",
         staffSubrole: staff.staff_subrole || "",
         roleLabel,
@@ -1030,7 +1038,7 @@ function adminSettings() {
 
     get savedStaffRole() {
       const staff = this.staffDetailsModal.staff;
-      return staff?.staffSubrole || "";
+      return staff?.accountRole || staff?.staffSubrole || "";
     },
 
     get staffRoleChangePending() {
@@ -1072,7 +1080,7 @@ function adminSettings() {
 
     get canAssistStaffEmail() {
       const staff = this.staffDetailsModal.staff;
-      return Boolean(this.isAdmin && staff?.active && !staff.setupRequired && !staff.archived && !staff.emailRecovery);
+      return Boolean(this.isOwner && staff?.active && !staff.setupRequired && !staff.archived && !staff.emailRecovery);
     },
 
     armStaffRecoveryExpiry() {
@@ -1095,7 +1103,7 @@ function adminSettings() {
 
     get staffDetailsTitle() {
       return ({ email: 'Change Staff Email', recovery: 'Assist Email Change', 'recovery-code': 'Verify Recovery Request',
-        'recovery-manage': this.staffRecoveryExpired ? 'Recovery Expired' : 'Recovery Pending' })[this.staffDetailsModal.view] || 'Staff account details';
+        'recovery-manage': this.staffRecoveryExpired ? 'Recovery Expired' : 'Recovery Pending' })[this.staffDetailsModal.view] || 'Account details';
     },
 
     recoveryValidation() {
@@ -1103,8 +1111,8 @@ function adminSettings() {
       const email = this.emailReplacementError(form.email, this.staffDetailsModal.staff?.email);
       if (email) errors.email = email;
       if (!['inaccessible', 'compromised'].includes(form.reason)) errors.reason = 'Select a recovery reason.';
-      if (!form.identityVerified) errors.identity_verified = "Verify this staff member's identity.";
-      if (!form.password) errors.current_password = 'Enter your admin password.';
+      if (!form.identityVerified) errors.identity_verified = "Verify this account holder's identity.";
+      if (!form.password) errors.current_password = 'Enter your owner password.';
       return errors;
     },
 
@@ -1235,7 +1243,7 @@ function adminSettings() {
       const modal = this.staffDetailsModal, form = this.staffRecovery, recovery = modal.staff?.emailRecovery;
       if (modal.busy || modal.view !== 'recovery-manage' || !recovery || (action === 'resend' && form.resendRemaining)) return;
       form.errors = {}; form.error = '';
-      if (!form.password) form.errors.current_password = 'Enter your admin password.';
+      if (!form.password) form.errors.current_password = 'Enter your owner password.';
       if (action === 'cancel' && !form.oldEmailSafe) form.errors.old_email_safe = 'Confirm that current email access is safe to restore.';
       if (Object.keys(form.errors).length) return;
       modal.busy = true;
@@ -1254,14 +1262,14 @@ function adminSettings() {
 
     get canCorrectStaffEmail() {
       const staff = this.staffDetailsModal.staff;
-      return Boolean(this.isAdmin && staff?.setupRequired && !staff.active && !staff.archived);
+      return Boolean(this.isOwner && staff?.setupRequired && !staff.active && !staff.archived);
     },
 
     staffEmailValidation() {
       const errors = {};
       const emailError = this.emailReplacementError(this.staffEmailCorrection.email, this.staffDetailsModal.staff?.email);
       if (emailError) errors.email = emailError;
-      if (!this.staffEmailCorrection.password) errors.current_password = "Enter your admin password.";
+      if (!this.staffEmailCorrection.password) errors.current_password = "Enter your owner password.";
       return errors;
     },
 
@@ -1402,7 +1410,7 @@ function adminSettings() {
 
       this.staffStatusModal.error = "";
       if (!this.staffStatusModal.password) {
-        this.staffStatusModal.error = "Enter your admin password to confirm.";
+        this.staffStatusModal.error = "Enter your owner password to confirm.";
         return;
       }
       this.staffStatusModal.busy = true;
@@ -1410,9 +1418,9 @@ function adminSettings() {
         await API.updateStaffAccountStatus(staff.id, targetActive, this.staffStatusModal.password);
         this.staffStatusModal.busy = false;
         this.closeStaffStatusModal();
-        const staffName = staff.fullName && staff.fullName !== "Staff account"
+        const staffName = staff.fullName && staff.fullName !== "Account"
           ? staff.fullName
-          : staff.subroleLabel || staff.roleLabel || "Staff account";
+          : staff.subroleLabel || staff.roleLabel || "Account";
         this.showStaffActionToast(targetActive
           ? staff.emailRecovery ? `${staffName} was reactivated. Recovery access remains suspended.` : `${staffName} was reactivated and can sign in again.`
           : `${staffName} was deactivated and signed out.`);
@@ -1459,7 +1467,7 @@ function adminSettings() {
       if (!staff || this.staffSetupModal.busy) return;
       this.staffSetupModal.error = "";
       if (!this.staffSetupModal.password) {
-        this.staffSetupModal.error = "Enter your admin password to confirm.";
+        this.staffSetupModal.error = "Enter your owner password to confirm.";
         return;
       }
       this.staffSetupModal.busy = true;
@@ -1606,7 +1614,7 @@ function adminSettings() {
       this.securityVerification.error = "";
       this.securityVerification.submitting = true;
       try {
-        const confirmChange = this.isStaff
+        const confirmChange = this.isSelfService
           ? API.confirmStaffPasswordChange
           : API.confirmSecurityCredentialChange;
         const response = await confirmChange(
@@ -1622,7 +1630,7 @@ function adminSettings() {
 
         this.stopSecurityVerificationFeedback();
         this.securityVerification = this.emptySecurityVerification(false);
-        if (this.isStaff) {
+        if (this.isSelfService) {
           if (response.security_resolved_at) {
             await this._securityActivityRequest;
             this.applySecurityResolution(response.security_resolved_at);
@@ -1653,7 +1661,7 @@ function adminSettings() {
       this.securityVerification.resending = true;
       this.clearSecurityCode();
       try {
-        const resendCode = this.isStaff
+        const resendCode = this.isSelfService
           ? API.resendStaffPasswordChangeCode
           : API.resendSecurityCredentialChangeCode;
         const response = await resendCode(this.securityVerification.changeId);

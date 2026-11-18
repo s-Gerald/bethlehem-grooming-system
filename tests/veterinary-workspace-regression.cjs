@@ -12,7 +12,7 @@ async function clinicalDefaults() {
     URL, URLSearchParams, Date, Intl, setTimeout, clearTimeout,
     window: {location: new URL('https://example.test/admin/history?pos=2'), history: {state: null}, addEventListener() {}, removeEventListener() {}},
     document: {currentScript: null, addEventListener() {}, removeEventListener() {}},
-    API: {isClinicWorkspace: () => true, getCachedStaffIdentity: () => identity,
+    API: { getGeneralSettings: async () => ({ data: {} }), isClinicWorkspace: () => true, getCachedStaffIdentity: () => identity,
       getStaffIdentity: async () => identity,
       getArchivedClinicAppointments: async () => {requests.push('clinic-history'); return {archived: []};},
       getArchivedBookings: async () => {throw new Error('Grooming history must never load');},

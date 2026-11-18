@@ -11,6 +11,7 @@ use App\Services\PrivilegedCredentialChangeService;
 use App\Support\AccountUsername;
 use App\Support\AccountEmail;
 use App\Support\StaffRole;
+use App\Support\AccountRole;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -40,9 +41,9 @@ class AdminSecurityController extends Controller
     public function accounts(Request $request)
     {
         $admin = $request->user();
-        $staff = User::query()
+        $accounts = User::query()
             ->with(['passwordResetRequest', 'emailRecovery'])
-            ->where('role', 'staff')
+            ->manageableAccount()
             ->where('is_archived', false)
             ->orderBy('first_name')
             ->orderBy('last_name')
@@ -53,7 +54,8 @@ class AdminSecurityController extends Controller
         return response()->json([
             'success' => true,
             'admin' => $this->accountPayload($admin),
-            'staff' => $staff,
+            'accounts' => $accounts,
+            'staff' => $accounts,
         ]);
     }
 
@@ -101,7 +103,7 @@ class AdminSecurityController extends Controller
         try {
             $staff = DB::transaction(function () use ($request, $data): User {
                 $staff = User::query()->lockForUpdate()->findOrFail($request->user()->getKey());
-                abort_unless($staff->role === 'staff' && $staff->is_active && ! $staff->is_archived && ! $staff->requiresPasswordSetup(), 403);
+                abort_unless($staff->hasSelfServiceSecurity() && $staff->is_active && ! $staff->is_archived && ! $staff->requiresPasswordSetup(), 403);
 
                 if ($data['username'] !== $staff->username) {
                     $this->assertStaffUsernameIsAvailable($data['username'], $staff, true);
@@ -178,7 +180,7 @@ class AdminSecurityController extends Controller
     ) {
         $data = $request->validate([
             'current_password' => ['required', 'string'],
-            'password' => AccountPassword::rules('staff', screen: false),
+            'password' => AccountPassword::rules($request->user()->role, screen: false),
             'password_confirmation' => ['bail', 'required', 'string', 'same:password'],
             'username' => ['prohibited'],
             'email' => ['prohibited'],
@@ -207,32 +209,41 @@ class AdminSecurityController extends Controller
         Request $request,
         PendingStaffAccountService $staffAccounts,
     ) {
+        return $this->requestAccount($request, $staffAccounts, legacyStaffRequest: ! $request->has('account_role'));
+    }
+
+    public function requestAccount(Request $request, PendingStaffAccountService $staffAccounts, bool $legacyStaffRequest = false)
+    {
         $firstName = $request->input('first_name');
         $lastName = $request->input('last_name');
-        $staffSubrole = trim((string) $request->input('staff_subrole'));
         $request->merge([
             'first_name' => is_string($firstName) ? User::normalizeName($firstName) : $firstName,
             'last_name' => is_string($lastName) ? User::normalizeName($lastName) : $lastName,
             'email' => AccountEmail::normalize((string) $request->input('email')),
-            'staff_subrole' => $staffSubrole === '' ? null : $staffSubrole,
         ]);
-        $data = $request->validate([
+        if ($legacyStaffRequest) {
+            $request->merge(['staff_subrole' => trim((string) $request->input('staff_subrole')) ?: null]);
+        }
+        $roleRules = $legacyStaffRequest ? [
             'staff_type' => ['required', Rule::in(['clinic', 'grooming'])],
-            'staff_subrole' => [
-                'required',
-                'string',
-                Rule::in(StaffRole::subrolesForType((string) $request->input('staff_type'))),
-            ],
+            'staff_subrole' => ['required', Rule::in(StaffRole::subrolesForType((string) $request->input('staff_type')))],
+        ] : ['account_role' => ['required', Rule::in(AccountRole::manageable())]];
+        $data = $request->validate([
+            ...$roleRules,
             'first_name' => \App\Support\HumanName::rules('first_name'),
             'last_name' => \App\Support\HumanName::rules('last_name'),
             'email' => PendingStaffAccountService::emailRules(),
         ]);
+        $fields = AccountRole::fields($legacyStaffRequest ? $data['staff_subrole'] : $data['account_role']);
+        if ($request->has('staff_type') && $request->input('staff_type') !== $fields['staff_type']) {
+            throw ValidationException::withMessages(['staff_subrole' => 'Choose a staff role that matches the selected staff type.']);
+        }
 
         try {
             $result = $staffAccounts->request(
                 $request->user(),
-                $data['staff_type'],
-                $data['staff_subrole'],
+                $fields['staff_type'] ?? 'manager',
+                $fields['staff_subrole'],
                 $data['first_name'],
                 $data['last_name'],
                 $data['email'],
@@ -253,20 +264,21 @@ class AdminSecurityController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Account setup email sent',
+            'account' => $this->accountPayload($result['staff']),
             'staff' => $this->accountPayload($result['staff']),
         ], 201);
     }
 
     public function updateStaffStatus(Request $request, User $staff)
     {
-        if ($staff->role !== 'staff' || $staff->is_archived) {
+        if (! $staff->isManageableAccount() || $staff->is_archived) {
             abort(404);
         }
 
         if ($staff->requiresPasswordSetup()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Pending staff setup cannot be deactivated or reactivated.',
+                'message' => 'Pending account setup cannot be deactivated or reactivated.',
             ], 422);
         }
 
@@ -288,36 +300,34 @@ class AdminSecurityController extends Controller
         return response()->json([
             'success' => true,
             'message' => $active
-                ? 'Staff account reactivated.'
-                : 'Staff account deactivated.',
+                ? 'Account reactivated.'
+                : 'Account deactivated.',
             'staff' => $this->accountPayload($staff->fresh()->load('emailRecovery')),
         ]);
     }
 
     public function updateStaffRole(Request $request, User $staff)
     {
-        if ($staff->role !== 'staff' || $staff->is_archived) {
+        if (! $staff->isManageableAccount() || $staff->is_archived) {
             abort(404);
         }
 
         $data = $request->validate([
-            'staff_role' => ['required', Rule::in(array_keys(StaffRole::TYPES))],
+            'staff_role' => ['required', Rule::in(AccountRole::manageable())],
         ]);
         $this->verifyAdminPassword($request, 'Incorrect password. Try again.');
-        $roleFields = StaffRole::fields($data['staff_role']);
-        $staffType = $roleFields['staff_type'];
-        $staffSubrole = $roleFields['staff_subrole'];
+        $roleFields = AccountRole::fields($data['staff_role']);
 
-        $updated = DB::transaction(function () use ($staff, $staffType, $staffSubrole): User {
+        $updated = DB::transaction(function () use ($staff, $roleFields): User {
             $target = User::query()->lockForUpdate()->findOrFail($staff->getKey());
-            if ($target->role !== 'staff' || $target->is_archived) {
+            if (! $target->isManageableAccount() || $target->is_archived) {
                 abort(404);
             }
 
-            if ($target->staff_type !== $staffType || $target->staff_subrole !== $staffSubrole) {
-                $target->staff_type = $staffType;
-                $target->staff_subrole = $staffSubrole;
+            $target->fill($roleFields);
+            if ($target->isDirty(array_keys($roleFields))) {
                 $target->save();
+                PrivilegedCredentialChange::query()->where('target_user_id', $target->user_id)->whereNull('confirmed_at')->delete();
                 $target->tokens()->delete();
                 LoginEmailChallenge::query()->where('user_id', $target->user_id)->delete();
             }
@@ -345,7 +355,7 @@ class AdminSecurityController extends Controller
             'email' => PendingStaffAccountService::emailRules(),
             'current_password' => ['required', 'string'],
         ], [
-            'current_password.required' => 'Enter your admin password.',
+            'current_password.required' => 'Enter your owner password.',
         ]);
 
         try {
@@ -368,7 +378,7 @@ class AdminSecurityController extends Controller
 
     public function resendStaffSetupEmail(User $staff, \App\Services\PasswordResetService $passwordResets)
     {
-        if ($staff->role !== 'staff' || $staff->is_archived || ! $staff->requiresPasswordSetup()) {
+        if (! $staff->isManageableAccount() || $staff->is_archived || ! $staff->requiresPasswordSetup()) {
             abort(404);
         }
 
@@ -394,7 +404,7 @@ class AdminSecurityController extends Controller
 
     public function cancelStaffSetup(Request $request, User $staff)
     {
-        if ($staff->role !== 'staff' || $staff->is_archived) {
+        if (! $staff->isManageableAccount() || $staff->is_archived) {
             abort(404);
         }
 
@@ -532,12 +542,12 @@ class AdminSecurityController extends Controller
         ]);
     }
 
-    private function verifyAdminPassword(Request $request, string $incorrectMessage = 'The admin password is incorrect.'): void
+    private function verifyAdminPassword(Request $request, string $incorrectMessage = 'The owner password is incorrect.'): void
     {
         $data = $request->validate([
             'current_password' => ['required', 'string'],
         ], [
-            'current_password.required' => 'Enter your admin password to confirm.',
+            'current_password.required' => 'Enter your owner password to confirm.',
         ]);
 
         if (! Hash::check($data['current_password'], $request->user()->password_hash)) {
@@ -609,6 +619,7 @@ class AdminSecurityController extends Controller
             'username' => $user->username,
             'email' => $user->email,
             'role' => $user->role,
+            'admin_type' => $user->admin_type,
             'staff_type' => $user->staff_type,
             'staff_subrole' => $user->staff_subrole,
             'is_active' => (bool) $user->is_active,

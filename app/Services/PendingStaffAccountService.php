@@ -8,6 +8,7 @@ use App\Models\PasswordResetRequest;
 use App\Models\User;
 use App\Notifications\SetUpStaffPasswordNotification;
 use App\Support\StaffRole;
+use App\Support\AccountRole;
 use App\Support\AccountEmail;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +29,8 @@ class PendingStaffAccountService
         string $email,
     ): array {
         $this->assertAdminIsEligible($requester);
-        StaffRole::assertValid($staffType, $staffSubrole);
+        if ($staffType !== 'manager') StaffRole::assertValid($staffType, $staffSubrole);
+        $roleFields = AccountRole::fields($staffType === 'manager' ? 'manager' : $staffSubrole);
         $normalizedFirstName = User::normalizeName($firstName);
         $normalizedLastName = User::normalizeName($lastName);
         $normalizedEmail = AccountEmail::normalize($email);
@@ -39,8 +41,7 @@ class PendingStaffAccountService
         $plainToken = Str::random(64);
         $tokenHash = hash('sha256', $plainToken);
         $staff = DB::transaction(function () use (
-            $staffType,
-            $staffSubrole,
+            $roleFields,
             $normalizedFirstName,
             $normalizedLastName,
             $normalizedEmail,
@@ -57,9 +58,7 @@ class PendingStaffAccountService
                 'email' => $normalizedEmail,
                 'phone' => null,
                 'password_hash' => User::passwordSetupPlaceholder(),
-                'role' => 'staff',
-                'staff_type' => $staffType,
-                'staff_subrole' => $staffSubrole,
+                ...$roleFields,
                 'customer_tier' => 'new',
                 'is_active' => false,
                 'is_archived' => false,
@@ -123,13 +122,13 @@ class PendingStaffAccountService
                 $admin = User::query()->whereKey($requester->getKey())->lockForUpdate()->first();
                 abort_unless($admin && $this->adminIsEligible($admin), 403);
                 if (! Hash::check($password, $admin->password_hash)) {
-                    throw ValidationException::withMessages(['current_password' => 'The admin password is incorrect.']);
+                    throw ValidationException::withMessages(['current_password' => 'The owner password is incorrect.']);
                 }
 
                 // Match setup completion/resend: lock the issuance before the account.
                 PasswordResetRequest::query()->where('user_id', $staff->getKey())->lockForUpdate()->first();
                 $target = User::query()->whereKey($staff->getKey())->lockForUpdate()->first();
-                abort_if(! $target || $target->role !== 'staff' || $target->is_archived || $target->account_deleted_at !== null, 404);
+                abort_if(! $target || ! $target->isManageableAccount() || $target->is_archived || $target->account_deleted_at !== null, 404);
                 if ($target->is_active || ! $target->requiresPasswordSetup()) {
                     throw ValidationException::withMessages(['account' => 'This account no longer requires initial setup.']);
                 }
@@ -161,18 +160,18 @@ class PendingStaffAccountService
     {
         if (! $this->adminIsEligible($admin)) {
             throw ValidationException::withMessages([
-                'account' => 'This administrator account cannot create staff accounts.',
+                'account' => 'This administrator account cannot create accounts.',
             ]);
         }
     }
 
     private function adminIsEligible(User $admin): bool
     {
-        return $admin->role === 'admin' && $admin->is_active && ! $admin->is_archived;
+        return $admin->isOwner() && $admin->is_active && ! $admin->is_archived;
     }
 
     private function staffLabel(string $staffType): string
     {
-        return $staffType === 'clinic' ? 'Clinic Staff' : 'Grooming Receptionist';
+        return $staffType === 'manager' ? 'Manager' : ($staffType === 'clinic' ? 'Clinic Staff' : 'Grooming Receptionist');
     }
 }

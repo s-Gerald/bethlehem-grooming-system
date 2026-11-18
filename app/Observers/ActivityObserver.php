@@ -116,9 +116,9 @@ class ActivityObserver
                 ? $prefix.($model->is_archived ? '_archived' : '_restored') : ($model->wasChanged($model->getFillable()) ? $prefix.'_updated' : null));
         } elseif ($model instanceof User) {
             $area = $model->role === 'customer' ? 'shared' : 'system';
-            $context = $model->role === 'admin' ? $model->username : trim($model->first_name.' '.$model->last_name);
+            $context = $model->isOwner() ? $model->username : trim($model->first_name.' '.$model->last_name);
             if ($created) {
-                $action = $model->role === 'staff' ? 'staff_created' : ($model->role === 'customer' && $model->email_verified_at ? 'customer_registered' : null);
+                $action = $model->isManageableAccount() ? 'staff_created' : ($model->role === 'customer' && $model->email_verified_at ? 'customer_registered' : null);
             } elseif ($model->role === 'customer') {
                 $action = $model->wasChanged('email_verified_at') && $model->email_verified_at && ! $model->getOriginal('email_verified_at') ? 'customer_registered'
                     : ($model->wasChanged('is_archived') ? ($model->is_archived ? 'customer_archived' : 'customer_restored')
@@ -126,7 +126,7 @@ class ActivityObserver
             } else {
                 $action = $model->wasChanged('password_hash') ? 'password_changed'
                     : ($model->wasChanged('email') ? 'email_changed'
-                    : ($model->wasChanged(['role', 'staff_type', 'staff_subrole']) ? 'staff_role_changed'
+                    : ($model->wasChanged(['role', 'admin_type', 'staff_type', 'staff_subrole']) ? 'staff_role_changed'
                     : ($model->wasChanged('is_active') ? ($model->is_active ? 'staff_activated' : 'staff_deactivated')
                     : ($changes ? 'staff_updated' : null))));
                 // Public password setup/reset/recovery acts on the verified account itself.

@@ -2706,6 +2706,12 @@ async function testStaffSetupUsernameAndResetApiContracts() {
   assert.equal(requests.at(-1).body.username, "Chosen.Staff");
   assert.equal(browser.API.getAdminToken(), "staff-token");
   assert.equal(browser.API.getUserRole(), "staff");
+  const manager = createBrowser({pathname: '/set-up-password', fetchImpl: async () => jsonResponse(200, {
+    completed_setup: true, token: 'manager-token', user: {user_id: 8, role: 'admin', admin_type: 'manager'},
+  })});
+  await manager.API.completeStaffPasswordSetup('setup-token', 'violet orchard meadow', 'violet orchard meadow', 'MaraSantos');
+  assert.equal(manager.API.getAdminToken(), 'manager-token');
+  assert.equal(manager.API.getUserRole(), 'admin', 'Manager setup must retain Admin operational authorization');
   await browser.API.completeStaffPasswordSetup("setup-token", "Password!2345", "Password!2345");
   assert.equal(requests.at(-1).body.username, null);
   await browser.API.resetPassword("reset-token", "Password!2345", "Password!2345");
@@ -2717,7 +2723,7 @@ async function testStaffSetupUsernameAndResetApiContracts() {
 
 async function testStaffSetupUsernameForm() {
   const source = fs.readFileSync(path.join(projectRoot, "scripts/auth/set-up-password.js"), "utf8");
-  async function loadPage({ verificationError = null, completionError = null } = {}) {
+  async function loadPage({ verificationError = null, completionError = null, manager = false } = {}) {
     const elements = new Map();
     const getElement = (id) => {
       if (!elements.has(id)) {
@@ -2768,7 +2774,7 @@ async function testStaffSetupUsernameForm() {
         async completeStaffPasswordSetup(...args) {
           requests.push(args);
           if (error) throw error;
-          return { completed_setup: true, user: { role: "staff" } };
+          return { completed_setup: true, user: manager ? {role: 'admin', admin_type: 'manager'} : {role: 'staff'} };
         },
       },
     });
@@ -2806,6 +2812,9 @@ async function testStaffSetupUsernameForm() {
   assert.deepEqual(page.redirects, ["/admin/dashboard"]);
 
   const blank = await loadPage();
+  const manager = await loadPage({manager: true});
+  await manager.submit('MaraSantos');
+  assert.deepEqual(manager.redirects, ['/admin/dashboard']);
   await blank.submit("   ");
   assert.equal(blank.requests[0][3], null);
   const invalid = await loadPage();

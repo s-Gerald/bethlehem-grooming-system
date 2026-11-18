@@ -22,6 +22,7 @@ class SessionController extends Controller
             'sidebar_revision' => $user->sidebarRevision(),
             'user_id' => $user->user_id,
             'role' => $user->role,
+            'admin_type' => $user->admin_type,
         ] : [];
 
         return response()->json(['success' => true, ...$request->attributes->get('auth_session'), ...$navigation])

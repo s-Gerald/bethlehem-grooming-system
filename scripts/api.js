@@ -131,7 +131,7 @@ var API = (() => {
       catch { /* Invalid cache is a normal first-load path. */ }
     }
     const cached = staffIdentity;
-    if (cached?.version !== 2 || cached.owner !== owner || !Number.isFinite(cached.at)
+    if (cached?.version !== 3 || cached.owner !== owner || !Number.isFinite(cached.at)
       || Date.now() < cached.at || Date.now() - cached.at >= 12 * 60 * 60 * 1000
       || !cached.data?.sidebar_revision || !cached.data?.user?.user_id || !cached.data.user.staff_permissions
       || cached.data.user.role !== getUserRole()
@@ -145,11 +145,11 @@ var API = (() => {
     if (verifiedSidebarRevision && verifiedSidebarRevision !== response.sidebar_revision) return;
     // Navigation presentation only: no contact details, passwords or page data.
     const data = { sidebar_revision: response.sidebar_revision, user: {
-      user_id: user.user_id, role: user.role, first_name: user.first_name, last_name: user.last_name, username: user.username,
+      user_id: user.user_id, role: user.role, admin_type: user.admin_type, first_name: user.first_name, last_name: user.last_name, username: user.username,
       staff_type: user.staff_type, staff_subrole: user.staff_subrole, clinic_permissions: user.clinic_permissions || {}, staff_permissions: user.staff_permissions || {},
     } };
     staffIdentityToken = token;
-    staffIdentity = { version: 2, owner, at: Date.now(), data };
+    staffIdentity = { version: 3, owner, at: Date.now(), data };
     try { sessionStorage.setItem(ADMIN_NAVIGATION_KEY, JSON.stringify(staffIdentity)); }
     catch { /* Storage restrictions retain same-page request sharing. */ }
   }
@@ -2314,8 +2314,8 @@ var API = (() => {
       throw new Error('Sign-in changed while completing setup. Please try again.');
     }
 
-    if (data?.completed_setup && data?.token && data?.user?.role === "staff") {
-      setAuthSession(data.token, "staff", true, data.user.user_id, false, data.session_transport);
+    if (data?.completed_setup && data?.token && (data?.user?.role === "staff" || (data?.user?.role === "admin" && data?.user?.admin_type === "manager"))) {
+      setAuthSession(data.token, data.user.role, true, data.user.user_id, false, data.session_transport);
     }
 
     return data;
@@ -3241,6 +3241,10 @@ var API = (() => {
     );
   }
 
+  async function requestAccount(payload) {
+    return request('POST', '/admin/security/accounts', payload, getAdminToken());
+  }
+
   async function requestStaffAccount(payload) {
     return request(
       "POST",
@@ -3955,6 +3959,7 @@ var API = (() => {
     updateStaffProfile,
     requestStaffPasswordChange,
     requestAdminCredentialChange,
+    requestAccount,
     requestStaffAccount,
     updateStaffAccountStatus,
     updateStaffAccountRole,

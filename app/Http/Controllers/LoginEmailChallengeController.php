@@ -244,6 +244,7 @@ class LoginEmailChallengeController extends Controller
                 'email' => $user->email,
                 'phone' => $user->phone,
                 'role' => $user->role,
+                'admin_type' => $user->admin_type,
                 'staff_type' => $user->staff_type,
                 'staff_subrole' => $user->staff_subrole,
                 'clinic_permissions' => $user->clinicPermissions(),

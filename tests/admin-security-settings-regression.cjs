@@ -37,6 +37,7 @@ global.document = {
   },
 };
 global.API = {
+  getCachedStaffIdentity: () => ({user: {role: API.getUserRole?.() || "admin"}}),
   async emailDeliveryStatus() { return { status: 'failed' }; },
   async getAdminSecurityAccounts() {
     return {
@@ -112,7 +113,7 @@ global.API = {
       confirmation_email: "b**************@gmail.com",
     };
   },
-  async requestStaffAccount(payload) {
+  async requestAccount(payload) {
     calls.push(["add-staff", payload]);
     return {
       message: "Account setup email sent",
@@ -311,8 +312,7 @@ vm.runInThisContext(componentSource, {
   assert.deepEqual(calls.find((call) => call[0] === "add-staff"), [
     "add-staff",
     {
-      staff_type: "clinic",
-      staff_subrole: "veterinarian",
+      account_role: "veterinarian",
       first_name: "John",
       last_name: "Smith",
       email: "clinic.staff@gmail.com",
@@ -368,7 +368,7 @@ vm.runInThisContext(componentSource, {
 
   settings.openStaffStatusModal({
     ...settings.staffAccounts[2],
-    fullName: "Staff account",
+    fullName: "Account",
   });
   settings.staffStatusModal.password = "CurrentAdmin!234";
   await settings.updateStaffStatus();
@@ -616,7 +616,7 @@ vm.runInThisContext(componentSource, {
   settings.addStaffModal.lastName = "Receptionist";
   settings.addStaffModal.email = "new.grooming@gmail.com";
   await settings.requestNewStaffAccount();
-  assert.equal(calls.filter((call) => call[0] === "add-staff").at(-1)[1].staff_subrole, "grooming_receptionist");
+  assert.equal(calls.filter((call) => call[0] === "add-staff").at(-1)[1].account_role, "grooming_receptionist");
   assert.equal(settings.accountRoleLabel({ staff_type: "grooming", staff_subrole: "grooming_receptionist" }), "Grooming Receptionist");
   assert.equal(settings.accountRoleLabel({ staff_type: "grooming", staff_subrole: null }), "Staff");
   settings.openStaffDetails({ staffType: "grooming", staffSubrole: "" });
@@ -717,7 +717,7 @@ vm.runInThisContext(componentSource, {
 
   settings.cancelStaffProfile();
   settings.isStaff = true;
-  settings.isAdmin = false;
+  settings.isAdmin = false; settings.isOwner = false;
   settings.staffLoaded = true;
   settings.applyStaffAccount({ first_name: 'Existing', last_name: 'Staff', username: 'existing', role: 'staff', email: 'old@gmail.com', is_active: true });
   settings.openOwnEmailChange();
@@ -780,7 +780,7 @@ vm.runInThisContext(componentSource, {
   settings.closeOwnEmailChange();
   assert.equal(settings.staffEmailChange.open, true, 'Success stays visible until sign-in action');
 
-  settings.isStaff = false; settings.isAdmin = true;
+  settings.isStaff = false; settings.isAdmin = true; settings.isOwner = true;
   const recoveryStaff = { user_id: 42, first_name: 'Active', last_name: 'Staff', email: 'old@gmail.com',
     staff_type: 'clinic', staff_subrole: 'veterinarian', is_active: true, is_archived: false };
   settings.staffAccounts = [settings.staffAccountFields(recoveryStaff)];
@@ -861,7 +861,7 @@ vm.runInThisContext(componentSource, {
   settings = adminSettings();
   settings.$nextTick = callback => callback();
   settings.staffLoaded = true;
-  settings.isAdmin = true;
+  settings.isAdmin = true; settings.isOwner = true;
   let activityReads = 0;
   const recognized = [];
   API.getSecurityActivity = async () => { activityReads++; return { incidents: [
@@ -883,7 +883,7 @@ vm.runInThisContext(componentSource, {
   document.querySelector = selector => ({ focus() { passwordTargets.push(selector); }, scrollIntoView() {} });
   settings.secureAccount();
   assert.deepEqual(passwordTargets, ['[x-model="adminPassword.current"]']);
-  settings.isAdmin = false;
+  settings.isAdmin = false; settings.isOwner = false;
   settings.secureAccount();
   assert.equal(passwordTargets[1], '[x-model="staffPassword.current"]');
   assert.equal(settings.securityVerification.open, false, 'Secure account focuses the existing form without authorizing a change.');

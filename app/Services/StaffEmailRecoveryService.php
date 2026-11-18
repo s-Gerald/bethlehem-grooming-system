@@ -30,9 +30,9 @@ class StaffEmailRecoveryService
         Validator::make(['email' => $email], ['email' => AccountEmail::rules()])->validate();
         return $this->withAdmin($admin, $targetId, function (User $actor, User $target, PersonalAccessToken $session) use ($data, $email): array {
             $this->password($actor, $data['current_password']);
-            abort_unless($this->eligible($target), 422, 'This staff account is unavailable for recovery.');
+            abort_unless($this->eligible($target), 422, 'This account is unavailable for recovery.');
             if (empty($data['identity_verified']) || ($data['identity_method'] ?? null) !== 'in_person_employment_record') {
-                throw ValidationException::withMessages(['identity_verified' => 'Verify the staff member’s identity in person against trusted employment records.']);
+                throw ValidationException::withMessages(['identity_verified' => 'Verify the account holder’s identity in person against trusted employment records.']);
             }
             if (! in_array($data['reason'], ['inaccessible', 'compromised'], true)) {
                 throw ValidationException::withMessages(['reason' => 'Select a recovery reason.']);
@@ -239,7 +239,7 @@ class StaffEmailRecoveryService
             $admin = $accounts->get($requester->getKey());
             $target = $accounts->get($targetId);
             abort_unless($admin && $this->validAdmin($admin), 403);
-            abort_unless($target && $target->role === 'staff', 404);
+            abort_unless($target && $target->isManageableAccount(), 404);
             $session = $requester->currentAccessToken();
             abort_unless($session instanceof Model && $session->exists, 401);
             $session = PersonalAccessToken::whereKey($session->getKey())->lockForUpdate()->first();
@@ -298,15 +298,15 @@ class StaffEmailRecoveryService
 
     private function eligible(User $user): bool
     {
-        return $user->role === 'staff' && $user->is_active && ! $user->is_archived && ! $user->account_deleted_at && ! $user->requiresPasswordSetup()
-            && (StaffRole::TYPES[$user->staff_subrole] ?? null) === $user->staff_type && $user->staff_type !== null;
+        return $user->isManageableAccount() && $user->is_active && ! $user->is_archived && ! $user->account_deleted_at && ! $user->requiresPasswordSetup()
+            && ($user->isManager() || ((StaffRole::TYPES[$user->staff_subrole] ?? null) === $user->staff_type && $user->staff_type !== null));
     }
 
-    private function validAdmin(User $user): bool { return $user->role === 'admin' && $user->is_active && ! $user->is_archived && ! $user->account_deleted_at; }
+    private function validAdmin(User $user): bool { return $user->isOwner() && $user->is_active && ! $user->is_archived && ! $user->account_deleted_at; }
     private function adminFingerprint(User $user): string { return hash('sha256', $user->email.'|'.$user->password_hash); }
     private function password(User $user, string $password): void
     {
-        if (! Hash::check($password, $user->password_hash)) throw ValidationException::withMessages(['current_password' => 'The admin password is incorrect.']);
+        if (! Hash::check($password, $user->password_hash)) throw ValidationException::withMessages(['current_password' => 'The owner password is incorrect.']);
     }
     private function resendAfter(StaffEmailRecovery $recovery): int { return max(0, $recovery->last_sent_at->timestamp + SecurityCode::RESEND_COOLDOWN_SECONDS - now()->timestamp); }
 

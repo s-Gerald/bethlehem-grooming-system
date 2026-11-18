@@ -76,7 +76,7 @@ async function mutationRace() {
 async function lazySecurity() {
   let accountCalls = 0, activityCalls = 0;
   const c = vm.createContext({ URLSearchParams, document: {}, window: { location: { search: '' } },
-    API: { getUserRole: () => 'admin', getAvailabilitySettings: async () => ({}),
+    API: {getCachedStaffIdentity: () => ({user: {role: 'admin'}}), getGeneralSettings: async () => ({ data: {} }), getUserRole: () => 'admin', getAvailabilitySettings: async () => ({}),
       getSecurityActivity: async () => { activityCalls++; return { incidents: [] }; },
       getAdminSecurityAccounts: async () => { accountCalls++; return { admin: {}, staff: [
         { user_id: 7, first_name: 'Local', last_name: 'Staff', is_active: true },

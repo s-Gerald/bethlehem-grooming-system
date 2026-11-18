@@ -194,13 +194,14 @@ function installAdminAvailabilityNavigation() {
 
 function getAdminSidebarIdentityState(user) {
   if (!user) return {
-    sidebarReady: false, isAdmin: false, canViewAvailability: false, clinicPermissions: {}, canAccessGrooming: false, clinicOnly: false, canViewServices: false,
+    sidebarReady: false, isAdmin: false, isOwner: false, canViewAvailability: false, clinicPermissions: {}, canAccessGrooming: false, clinicOnly: false, canViewServices: false,
     staffDisplayName: '', staffInitials: '', staffRoleLabel: '',
   };
   const first = String(user.first_name || '').trim(), last = String(user.last_name || '').trim();
   return {
     sidebarReady: true,
     isAdmin: user.role === 'admin',
+    isOwner: user.role === 'admin' && (user.admin_type == null || user.admin_type === 'owner'),
     canViewAvailability: user.role === 'admin' || user.staff_permissions?.availability_view === true,
     clinicOnly: user.staff_permissions?.clinic_workspace === true,
     canViewServices: user.role === 'admin' || !!user.clinic_permissions?.services_view || !!user.staff_permissions?.grooming_services_view,
@@ -208,7 +209,7 @@ function getAdminSidebarIdentityState(user) {
     canAccessGrooming: user.role === 'admin' || !!user.staff_permissions?.grooming,
     staffDisplayName: `${first} ${last}`.trim() || 'Staff',
     staffInitials: `${first[0] || ''}${last[0] || ''}`.toUpperCase() || 'ST',
-    staffRoleLabel: user.staff_type === 'clinic'
+    staffRoleLabel: user.role === 'admin' && user.admin_type === 'manager' ? 'Manager' : user.staff_type === 'clinic'
       ? ({ veterinarian: 'Veterinarian', clinic_receptionist: 'Clinic Receptionist' }[user.staff_subrole] || 'Clinic Staff')
       : user.staff_subrole === 'grooming_receptionist' ? 'Grooming Receptionist' : 'Staff',
   };
@@ -234,9 +235,9 @@ function renderCachedAdminSidebar() {
   });
   aside.querySelector('[data-admin-account]')?.setAttribute('aria-busy', String(!state.sidebarReady));
   const text = {
-    "isAdmin ? 'AD' : staffInitials": state.isAdmin ? 'AD' : state.staffInitials,
-    "isAdmin ? 'Admin' : staffDisplayName": state.isAdmin ? 'Admin' : state.staffDisplayName,
-    "isAdmin ? 'Owner' : staffRoleLabel": state.isAdmin ? 'Owner' : state.staffRoleLabel,
+    "isOwner ? 'AD' : staffInitials": state.isOwner ? 'AD' : state.staffInitials,
+    "isOwner ? 'Admin' : staffDisplayName": state.isOwner ? 'Admin' : state.staffDisplayName,
+    "isOwner ? 'Owner' : staffRoleLabel": state.isOwner ? 'Owner' : state.staffRoleLabel,
   };
   aside.querySelectorAll('[x-text]').forEach(el => {
     const value = text[el.getAttribute('x-text')];

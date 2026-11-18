@@ -41,16 +41,16 @@ class ActivityRecorder
         'inventory_restored' => 'Inventory item restored', 'service_created' => 'Service created',
         'service_updated' => 'Service updated', 'service_price_updated' => 'Service price updated',
         'service_activated' => 'Service activated', 'service_deactivated' => 'Service deactivated',
-        'staff_created' => 'Staff account created', 'staff_activated' => 'Staff account activated',
-        'staff_deactivated' => 'Staff account deactivated', 'staff_role_changed' => 'Staff role changed',
-        'staff_updated' => 'Staff profile information updated', 'email_changed' => 'Staff email changed',
+        'staff_created' => 'Account created', 'staff_activated' => 'Account activated',
+        'staff_deactivated' => 'Account deactivated', 'staff_role_changed' => 'Account role changed',
+        'staff_updated' => 'Profile information updated', 'email_changed' => 'Account email changed',
         'password_changed' => 'Password changed', 'recovery_completed' => 'Admin-assisted account recovery completed',
         'sign_in' => 'Signed in', 'sign_in_failed' => 'Sign-in failed', 'settings_updated' => 'System settings changed',
     ];
 
     public const SAFE_CHANGES = ['status', 'quantity_on_hand', 'is_active', 'is_archived', 'booking_date',
         'appointment_date', 'queue_number', 'grooming_state', 'first_name', 'last_name', 'username',
-        'staff_type', 'staff_subrole', 'service_name', 'name', 'base_price', 'price', 'min_price', 'max_price',
+        'role', 'admin_type', 'staff_type', 'staff_subrole', 'service_name', 'name', 'base_price', 'price', 'min_price', 'max_price',
         'price_small', 'price_medium', 'price_large', 'price_extra_large', 'price_min', 'price_max',
         'total_amount', 'payment_status', 'payment_method', 'selling_price', 'unit_cost', 'pet_name', 'species',
         'breed', 'gender', 'birthdate', 'fur_type', 'weight', 'size', 'body_condition', 'color', 'is_neutered', 'neutered_date',
@@ -97,13 +97,13 @@ class ActivityRecorder
         array $changes, bool $operational, ?User $actor, ?string $key, ?int $petId, string $result): array
     {
         $role = $actor ? match ($actor->role) {
-            'admin' => 'Admin',
+            'admin' => $actor->isManager() ? 'Manager' : 'Admin',
             'staff' => match ($actor->staff_subrole) {
                 'grooming_receptionist' => 'Grooming Receptionist', 'clinic_receptionist' => 'Clinic Receptionist',
                 'veterinarian' => 'Veterinarian', default => 'Staff',
             }, default => 'Customer',
         } : null;
-        $display = ! $actor ? 'System' : ($actor->role === 'admin' ? $actor->username
+        $display = ! $actor ? 'System' : ($actor->isOwner() ? $actor->username
             : trim($actor->first_name).' · '.$role);
         return [
             'actor_id' => $actor?->getKey(), 'actor_display' => $display ?: 'Admin', 'actor_role' => $role,

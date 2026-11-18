@@ -101,6 +101,7 @@ class PasswordResetController extends Controller
         return response()->json([
             'success' => true,
             'email' => $result['email'],
+            'password_min_length' => AccountPassword::minimum($result['user']->role),
         ]);
     }
 
@@ -200,7 +201,7 @@ class PasswordResetController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Your staff account is ready.',
+            'message' => 'Your account is ready.',
             'completed_setup' => true,
             'token' => app(\App\Services\AccountSessionService::class)->issue($user),
             'user' => [
@@ -210,6 +211,7 @@ class PasswordResetController extends Controller
                 'username' => $user->username,
                 'email' => $user->email,
                 'role' => $user->role,
+                'admin_type' => $user->admin_type,
             ],
         ]);
     }

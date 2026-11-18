@@ -28,19 +28,19 @@ class AdminSeeder extends Seeder
         $emailOwner = User::whereRaw('LOWER(email) = ?', [Str::lower($email)])->first();
         $usernameOwner = User::whereRaw('LOWER(username) = ?', [Str::lower($username)])->first();
 
-        if ($emailOwner && $emailOwner->role !== 'admin') {
-            throw new InvalidArgumentException('ADMIN_SEED_EMAIL already belongs to a non-admin account.');
+        if ($emailOwner && ! $emailOwner->isOwner()) {
+            throw new InvalidArgumentException('ADMIN_SEED_EMAIL already belongs to an account other than the Owner.');
         }
 
-        if ($usernameOwner && $usernameOwner->role !== 'admin') {
-            throw new InvalidArgumentException('ADMIN_SEED_USERNAME already belongs to a non-admin account.');
+        if ($usernameOwner && ! $usernameOwner->isOwner()) {
+            throw new InvalidArgumentException('ADMIN_SEED_USERNAME already belongs to an account other than the Owner.');
         }
 
         if ($emailOwner && $usernameOwner && ! $emailOwner->is($usernameOwner)) {
-            throw new InvalidArgumentException('ADMIN_SEED_EMAIL and ADMIN_SEED_USERNAME belong to different admin accounts.');
+            throw new InvalidArgumentException('ADMIN_SEED_EMAIL and ADMIN_SEED_USERNAME belong to different Owner accounts.');
         }
 
-        $admin = $emailOwner ?? $usernameOwner ?? new User();
+        $admin = $emailOwner ?? $usernameOwner ?? User::query()->owner()->first() ?? new User();
         Validator::make(['username' => $username], ['username' => AccountUsername::rules(unchanged: $admin->username)])->validate();
         if ($username !== $admin->username && ! AccountUsername::isAvailable($username, $admin->getKey() ?? 0)) {
             throw \Illuminate\Validation\ValidationException::withMessages(['username' => 'That username is already in use.']);
@@ -59,6 +59,7 @@ class AdminSeeder extends Seeder
             'phone' => $credentials['phone'],
             'password_hash' => $changesPassword ? Hash::make($credentials['password']) : $admin->password_hash,
             'role' => 'admin',
+            'admin_type' => 'owner',
             'customer_tier' => 'new',
             'is_active' => 1,
             'is_archived' => 0,

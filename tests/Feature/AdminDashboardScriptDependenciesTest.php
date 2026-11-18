@@ -33,7 +33,7 @@ class AdminDashboardScriptDependenciesTest extends TestCase
             $page,
         );
         $this->assertStringContainsString(
-            "x-text=\"isAdmin ? 'Admin' : staffDisplayName\"",
+            "x-text=\"isOwner ? 'Admin' : staffDisplayName\"",
             $page,
         );
         $this->assertStringContainsString(

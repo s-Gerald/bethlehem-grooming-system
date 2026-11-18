@@ -20,6 +20,7 @@ class ConfirmPrivilegedCredentialChangeCodeNotification extends Notification imp
         public readonly string $purposeLabel,
         public readonly string $targetName,
         public readonly bool $targetsAdmin,
+        public readonly bool $targetsManager = false,
     ) {
         $this->afterCommit();
     }
@@ -38,6 +39,9 @@ class ConfirmPrivilegedCredentialChangeCodeNotification extends Notification imp
         $accountDescription = $this->targetsAdmin
             ? 'your administrator account'
             : "the staff account for {$this->targetName}";
+        if ($this->targetsManager ?? false) {
+            $accountDescription = 'your Manager account';
+        }
 
         return (new MailMessage)
             ->subject("Security code for {$this->purposeLabel} - Bethlehem Animal Clinic")

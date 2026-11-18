@@ -14,6 +14,9 @@ const pages = [
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const profiles = {
   admin: { role: 'admin', first_name: 'Local', last_name: 'Admin', clinic_permissions: {} },
+  manager: { role: 'admin', admin_type: 'manager', first_name: 'Mara', last_name: 'Santos', username: 'MaraSantos',
+    email: 'mara@gmail.com', is_active: true, clinic_permissions: { access: true, services_view: true },
+    staff_permissions: { grooming: true, services_manage: true } },
   vet: { role: 'staff', first_name: 'Local', last_name: 'Vet', staff_type: 'clinic', staff_subrole: 'veterinarian', clinic_permissions: { access: true, services_view: true } },
   grooming: { role: 'staff', first_name: 'Local', last_name: 'Groomer', staff_type: 'grooming', staff_subrole: 'grooming_receptionist',
     clinic_permissions: { access: true, services_view: true, clinical: false }, staff_permissions: { grooming: true, grooming_services_view: true } },
@@ -47,6 +50,7 @@ async function fixture(browser, profile = 'admin', inventory = false, workspaces
     const url = new URL(route.request().url());
     assert.equal(url.origin, origin);
     state.requests.push(url.pathname);
+    if (url.pathname === '/api/admin/security/accounts' && route.request().method() === 'POST') state.createdAccount = route.request().postDataJSON();
     if (url.pathname === '/api/session') await state.sessionHold?.promise;
     if (url.pathname === '/api/me') await state.identityHold?.promise;
     if (url.pathname === '/api/logout') await state.logoutHold?.promise;
@@ -109,6 +113,7 @@ async function visibleShell(page, active) {
 async function accountLabels(page, profile) {
   const expected = {
     admin: ['AD', 'Admin', 'Owner'],
+    manager: ['MS', 'Mara Santos', 'Manager'],
     vet: ['LV', 'Local Vet', 'Veterinarian'],
     grooming: ['LG', 'Local Groomer', 'Grooming Receptionist'],
     clinic: ['LR', 'Local Receptionist', 'Clinic Receptionist'],
@@ -291,7 +296,7 @@ async function cachedRefresh(browser, profile) {
     const count = () => f.state.requests.filter(p => p === '/api/me').length;
     assert.equal(count(), 1);
     for (const [file, active] of pages.filter(([file]) => !process.env.LOCAL_REVIEW_PAGES || process.env.LOCAL_REVIEW_PAGES.split(',').includes(file))) {
-      if ((profile !== 'admin' && active === 'Reports')
+      if ((profiles[profile].role !== 'admin' && active === 'Reports')
         || (profile === 'vet' && active === 'Grooming')) continue;
       f.state.sessionHold = deferred();
       const started = Date.now();
@@ -342,7 +347,7 @@ async function cachedRefresh(browser, profile) {
       await accountLabels(f.page, profile);
     }
     assert.equal(await f.page.locator('aside a[href$="clinic"]').isVisible(), true);
-    assert.equal(await f.page.locator('aside a[href$="reports"]').isVisible(), profile === 'admin');
+    assert.equal(await f.page.locator('aside a[href$="reports"]').isVisible(), profiles[profile].role === 'admin');
     for (const width of [320, 375, 414, 768]) {
       await f.page.setViewportSize({ width, height: 844 });
       await f.page.evaluate(() => Alpine.$data(document.querySelector('[data-admin-shell]')).sidebarOpen = true);
@@ -661,8 +666,8 @@ async function cachedBeforeAlpine(browser, profile) {
         assert.equal(await f.page.evaluate(() => typeof window.Alpine), 'undefined', `${file}: cached highlight is painted before Alpine loads`);
         await accountLabels(f.page, profile);
         assert.equal(await f.page.locator('aside a[href$="clinic"]').isVisible(), true);
-        assert.equal(await f.page.locator('aside a[href$="grooming"]').isVisible(), profile === 'admin');
-        assert.equal(await f.page.locator('aside a[href$="reports"]').isVisible(), profile === 'admin');
+        assert.equal(await f.page.locator('aside a[href$="grooming"]').isVisible(), profiles[profile].role === 'admin');
+        assert.equal(await f.page.locator('aside a[href$="reports"]').isVisible(), profiles[profile].role === 'admin');
         assert.equal(f.state.requests.filter(p => p === '/api/me').length, 1);
         if (section) await inventoryHighlight(f.page, section, true, contextual);
         if (section === 'overview' && !contextual) {
@@ -769,10 +774,64 @@ async function canonicalUrlsAndLegacyBookmarks(browser) {
   } finally { await f.context.close(); }
 }
 
+async function managerAccountSecurity(browser) {
+  for (const [profile, width] of [['admin', 1440], ['manager', 1440], ['admin', 390], ['manager', 390]]) {
+    const f = await fixture(browser, profile, false, true);
+    const errors = [];
+    f.page.on('pageerror', error => errors.push(error.message));
+    await f.page.setViewportSize({width, height: 1000});
+    const account = {user_id: 8, ...profiles.manager};
+    f.state.responses = {
+      '/api/settings/security/account': {account},
+      '/api/admin/security/accounts': {admin: {...profiles.admin, email: 'owner@gmail.com'}, accounts: [account]},
+      '/api/settings/security/activity': {incidents: [{id: 1, status: 'Needs review', title: 'Unsuccessful verification attempts',
+        failure_count: 3, first_occurred_at: '2026-11-18T06:00:00Z', last_occurred_at: '2026-11-18T06:00:00Z'}]},
+    };
+    try {
+      await visit(f.page, 'settings?tab=security'); await ready(f.page);
+      await f.page.getByRole('heading', {name: profile === 'manager' ? 'Your Account' : 'Accounts', exact: true}).waitFor();
+      if (profile === 'manager') {
+        await accountLabels(f.page, 'manager');
+        await f.page.getByRole('heading', {name: 'Your Account', exact: true}).waitFor();
+        assert.equal(await f.page.locator('#staffAccountsHeading').isVisible(), false);
+        assert.equal(f.state.requests.includes('/api/admin/security/accounts'), false);
+        await f.page.getByRole('button', {name: 'Secure account', exact: true}).click();
+        await f.page.waitForFunction(() => document.activeElement?.getAttribute('x-model') === 'staffPassword.current');
+        if (process.env.LOCAL_REVIEW_SCREENSHOTS) await f.page.screenshot({path: process.env.LOCAL_REVIEW_SCREENSHOTS + '/manager-security-' + width + '.png'});
+      } else {
+        await f.page.getByRole('heading', {name: 'Accounts', exact: true}).waitFor();
+        await f.page.getByRole('button', {name: 'Add Account', exact: true}).click();
+        const modal = f.page.getByRole('dialog', {name: 'Add Account', exact: true});
+        await modal.getByRole('button', {name: 'Manager', exact: true}).waitFor();
+        assert.equal(await modal.getByText('Choose account role', {exact: true}).isVisible(), true);
+        await f.page.waitForFunction(() => {
+          const backdrop = document.querySelector('[x-show="addStaffModal.open"]');
+          return backdrop && getComputedStyle(backdrop).opacity === '1' && !backdrop._x_transitioning;
+        });
+        if (process.env.LOCAL_REVIEW_SCREENSHOTS) await f.page.screenshot({path: process.env.LOCAL_REVIEW_SCREENSHOTS + '/owner-add-account-' + width + '.png'});
+        await modal.getByRole('button', {name: 'Manager', exact: true}).click();
+        await modal.locator('#newStaffFirstName').waitFor({state: 'visible'});
+        assert.equal(await modal.locator('input[type="password"]').count(), 0);
+        await modal.locator('#newStaffFirstName').fill('Mara');
+        await modal.locator('#newStaffLastName').fill('Santos');
+        await modal.locator('#newStaffEmail').fill('mara@gmail.com');
+        f.state.responses['/api/admin/security/accounts'] = {account};
+        await modal.getByRole('button', {name: 'Confirm', exact: true}).click();
+        await f.page.getByRole('heading', {name: 'Account setup email sent', exact: true}).waitFor();
+        assert.deepEqual(f.state.createdAccount, {account_role: 'manager', first_name: 'Mara', last_name: 'Santos', email: 'mara@gmail.com'});
+      }
+      assert.deepEqual(errors, [], 'Owner and Manager Security render without browser errors');
+      assert.equal(await f.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Security remains within the viewport');
+      console.log(profile + ' ' + width + 'px: account Security workflow passed');
+    } finally { await f.context.close(); }
+  }
+}
+
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {
     const cases = process.env.LOCAL_REVIEW_CASES?.split(',') || ['cold', 'cache', 'security', 'session', 'invalid', 'pre-alpine', 'inventory', 'services', 'walk-in'];
+    if (cases.includes('manager')) await managerAccountSecurity(browser);
     if (cases.includes('urls')) await canonicalUrlsAndLegacyBookmarks(browser);
     if (cases.includes('cold')) await coldPaint(browser);
     if (cases.includes('cache')) for (const profile of Object.keys(profiles).filter(profile => !process.env.LOCAL_REVIEW_PROFILES || process.env.LOCAL_REVIEW_PROFILES.split(',').includes(profile))) await cachedRefresh(browser, profile);
