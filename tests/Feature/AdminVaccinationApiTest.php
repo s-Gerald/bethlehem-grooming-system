@@ -130,6 +130,7 @@ class AdminVaccinationApiTest extends TestCase
             $table->string('first_name')->nullable();
             $table->string('last_name')->nullable();
             $table->string('role');
+            $table->string('admin_type')->nullable();
             $table->string('staff_type')->nullable();
             $table->string('staff_subrole')->nullable();
             $table->boolean('is_active')->default(true);
@@ -298,6 +299,7 @@ class AdminVaccinationApiTest extends TestCase
             ->assertJsonPath('vaccination.vaccine_name', 'FVRCP Vaccine')
             ->assertJsonPath('vaccination.administered_date', '2026-07-23')
             ->assertJsonPath('vaccination.recorded_by_user_id', $userId)
+            ->assertJsonPath('vaccination.recorded_by_user_name', $role === 'admin' ? 'Admin · Admin' : 'Staff · Veterinarian')
             ->assertJsonPath('vaccination.published_at', null)
             ->assertJsonPath('vaccination.voided_at', null);
 
@@ -352,6 +354,8 @@ class AdminVaccinationApiTest extends TestCase
         DB::listen(function ($event) use (&$queries) { $queries[] = $event->sql; });
         $this->getJson('/api/admin/vaccination-options?clinical_only=1')->assertOk()
             ->assertJsonCount(1, 'veterinarians')->assertJsonPath('veterinarians.0.user_id', 2)
+            ->assertJsonPath('veterinarians.0.name', 'Active Vet')
+            ->assertJsonPath('current_user_name', 'Admin · Admin')
             ->assertJsonPath('current_user_is_veterinarian', false)->assertJsonMissingPath('vaccines')
             ->assertJsonPath('administration_routes', \App\Models\VaccinationRecord::ADMINISTRATION_ROUTES);
         $this->assertFalse(collect($queries)->contains(fn ($query) => str_contains($query, 'inventory')));

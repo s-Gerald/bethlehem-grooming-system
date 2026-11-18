@@ -200,19 +200,24 @@ class User extends Authenticatable
         ], JSON_THROW_ON_ERROR));
     }
 
-    public function paymentAttribution(): ?string
+    public function actorAttribution(): ?string
     {
         $name = trim((string) $this->first_name);
         if ($name === '') return null;
 
-        $role = $this->role === 'admin' ? ($this->isManager() ? 'Manager' : 'Admin') : ($this->role === 'staff' ? match ($this->staff_subrole) {
+        $role = $this->actorRoleLabel();
+
+        return $role ? $name.' · '.$role : $name;
+    }
+
+    public function actorRoleLabel(): ?string
+    {
+        return $this->role === 'admin' ? ($this->isManager() ? 'Manager' : 'Admin') : ($this->role === 'staff' ? match ($this->staff_subrole) {
             'clinic_receptionist' => 'Clinic Receptionist',
             'veterinarian' => 'Veterinarian',
             'grooming_receptionist' => 'Grooming Receptionist',
             default => 'Staff',
         } : null);
-
-        return $role ? $name.' · '.$role : $name;
     }
 
     public function isVeterinarian(): bool

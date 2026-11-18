@@ -109,7 +109,7 @@ assert.equal(ui.groupedTransactions[1].total, 700);
 const clinicTx = {
   id: 2, key: 'clinic-2', transactionType: 'clinic_payment', reference: 'CL-20261003-002',
   ownerName: 'Erwin Francisco', petName: 'Mark', dateKey: '2026-10-03', paidAt: '2026-10-03 14:00:00',
-  paymentMethod: 'cash', paymentMethodLabel: 'Cash', processedByName: 'Admin Bethlehem',
+  paymentMethod: 'cash', paymentMethodLabel: 'Cash', processedByName: 'Gerald · Admin',
   finalPrice: 725.50, amountPaid: 1000, changeGiven: 274.50,
   charges: [{id: 10, description: 'Consultation', quantity: '1.00', unit_price: '500.00', amount: '500.00'},
     {id: 11, description: 'Clinic supplies', quantity: '2.00', unit_price: '112.75', amount: '225.50'}],
@@ -121,7 +121,7 @@ ui.openDetails(clinicTx, {focus() {}});
 assert.equal(ui.receiptModal.caseReference, clinicTx.reference);
 assert.equal(ui.receiptModal.patientName, 'Mark');
 assert.equal(ui.receiptModal.charges[1].amount, '225.50');
-assert.equal(ui.receiptModal.processedBy, 'Admin Bethlehem');
+assert.equal(ui.receiptModal.processedBy, 'Gerald · Admin');
 assert.equal(ui.receiptModal.finalPrice, 725.50);
 assert.equal(ui.receiptModal.amountPaid, 1000);
 assert.equal(ui.receiptModal.pets, undefined);

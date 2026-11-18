@@ -96,15 +96,9 @@ class ActivityRecorder
     private function attributes(string $action, string $area, string $subjectType, string $subjectId, string $context,
         array $changes, bool $operational, ?User $actor, ?string $key, ?int $petId, string $result): array
     {
-        $role = $actor ? match ($actor->role) {
-            'admin' => $actor->isManager() ? 'Manager' : 'Admin',
-            'staff' => match ($actor->staff_subrole) {
-                'grooming_receptionist' => 'Grooming Receptionist', 'clinic_receptionist' => 'Clinic Receptionist',
-                'veterinarian' => 'Veterinarian', default => 'Staff',
-            }, default => 'Customer',
-        } : null;
-        $display = ! $actor ? 'System' : ($actor->isOwner() ? $actor->username
-            : trim($actor->first_name).' · '.$role);
+        $role = $actor ? ($actor->actorRoleLabel() ?? 'Customer') : null;
+        $display = ! $actor ? 'System' : (in_array($actor->role, ['admin', 'staff'], true)
+            ? $actor->actorAttribution() : trim($actor->first_name).' · '.$role);
         return [
             'actor_id' => $actor?->getKey(), 'actor_display' => $display ?: 'Admin', 'actor_role' => $role,
             'actor_identity' => ! $actor ? null : ($actor->role === 'admin' ? (trim($actor->first_name.' '.$actor->last_name) ?: null)

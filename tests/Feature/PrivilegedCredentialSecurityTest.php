@@ -108,9 +108,22 @@ class PrivilegedCredentialSecurityTest extends TestCase
 
         $this->seed(AdminSeeder::class);
 
+        $this->assertSame('Admin', User::sole()->first_name);
+        $this->assertSame('Bethlehem', User::sole()->last_name);
+        User::sole()->update(['first_name' => 'Gerald', 'last_name' => 'Marino']);
         config()->set('app.privileged_seed_accounts.admin.email', 'new-admin@example.test');
         $this->seed(AdminSeeder::class);
 
+        $this->assertSame('Gerald', User::sole()->first_name);
+        $this->assertSame('Marino', User::sole()->last_name);
+        User::sole()->update(['last_name' => '']);
+        $this->seed(AdminSeeder::class);
+        $this->assertSame('Gerald', User::sole()->first_name);
+        $this->assertSame('Bethlehem', User::sole()->last_name);
+        User::sole()->update(['first_name' => '', 'last_name' => 'Marino']);
+        $this->seed(AdminSeeder::class);
+        $this->assertSame('Admin', User::sole()->first_name);
+        $this->assertSame('Marino', User::sole()->last_name);
         $this->assertDatabaseCount('users', 1);
         $this->assertDatabaseHas('users', [
             'username' => 'Admin',

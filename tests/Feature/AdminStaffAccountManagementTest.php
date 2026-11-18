@@ -1651,7 +1651,7 @@ class AdminStaffAccountManagementTest extends TestCase
             'password' => 'violet orchard meadow', 'password_confirmation' => 'violet orchard meadow'])
             ->assertOk()->assertJsonPath('completed_setup', true)->assertJsonPath('user.admin_type', 'manager');
         $this->assertTrue($manager->fresh()->is_active);
-        $this->assertSame('Mara · Manager', $manager->fresh()->paymentAttribution());
+        $this->assertSame('Mara · Manager', $manager->fresh()->actorAttribution());
         $this->signInWithCode($manager->fresh(), 'MaraSantos', 'violet orchard meadow')
             ->assertJsonPath('user.admin_type', 'manager');
         $this->assertTrue($manager->fresh()->clinicPermissions()['services_manage']);

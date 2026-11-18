@@ -212,6 +212,20 @@ class GroomingCancellationTest extends TestCase
         $this->assertNotEmpty($history[0]['cancelledAt']);
     }
 
+    public function test_staff_cancellation_history_uses_compact_actor_attribution(): void
+    {
+        \Illuminate\Support\Facades\Schema::table('users', function (\Illuminate\Database\Schema\Blueprint $table) {
+            $table->string('role')->nullable();
+        });
+        DB::table('users')->where('user_id', 1)->update(['role' => 'admin']);
+        $controller = new AdminBookingController;
+        $controller->cancelPet($this->request(), 1, 1);
+        $controller->cancelPet($this->request(), 1, 2);
+        $history = $controller->archivedIndex(Request::create('/history'))->getData(true)['archived'];
+        $this->assertSame('Gerald · Admin', $history[0]['cancelledBy']);
+        $this->assertSame('Gerald · Admin', $history[0]['pets'][0]['cancelledBy']);
+    }
+
     public function test_walk_in_owner_cancel_has_no_customer_notification(): void
     {
         DB::table('bookings')->update(['user_id' => null]);

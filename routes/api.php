@@ -207,6 +207,8 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::post('/admin/pet-groomers', [\App\Http\Controllers\PetGroomerController::class, 'store'])->middleware('staff:availability_manage');
         Route::patch('/admin/pet-groomers/{id}', [\App\Http\Controllers\PetGroomerController::class, 'update'])->middleware('staff:availability_manage');
         Route::get('/settings/security/account', [AdminSecurityController::class, 'ownAccount']);
+        Route::patch('/settings/security/owner-profile', [AdminSecurityController::class, 'updateOwnerProfile'])
+            ->middleware(['owner', 'throttle:10,1']);
         Route::post('/settings/security/email-change', [\App\Http\Controllers\StaffEmailChangeController::class, 'start'])
             ->middleware(['security.self-service', 'throttle:3,10,staff-email-start'])->name('staff.email-change.start');
         Route::post('/settings/security/email-change/{change}/confirm', [\App\Http\Controllers\StaffEmailChangeController::class, 'confirm'])

@@ -18,7 +18,7 @@ class TransactionHistorySearchTest extends TestCase
         DB::table('pets')->insert(['pet_id' => 2, 'pet_name' => 'Rigby']);
         $group = \App\Models\ClinicVisitGroup::create([
             'user_id' => 1, 'source' => 'pre_registered', 'service_day' => '2026-10-03',
-            'total_amount' => 750, 'payment_method' => 'cash', 'paid_at' => '2026-10-03 15:00:00',
+            'total_amount' => 750, 'payment_method' => 'cash', 'paid_at' => '2026-10-03 15:00:00', 'paid_by_user_id' => 1,
         ]);
         foreach ([1 => 500, 2 => 250] as $id => $amount) {
             DB::table('clinic_appointments')->insert([
@@ -32,6 +32,7 @@ class TransactionHistorySearchTest extends TestCase
             $this->assertSame(1, $result['total']);
             $this->assertSame(750, $result['collection_total']);
             $this->assertCount(2, $result['transactions'][0]['patients']);
+            $this->assertSame('Gerald · Admin', $result['transactions'][0]['processedByName']);
         }
     }
 
@@ -141,13 +142,15 @@ class TransactionHistorySearchTest extends TestCase
         (require database_path('migrations/2026_07_05_100003_create_pos_transaction_items_table.php'))->up();
         (require database_path('migrations/2026_10_07_100000_add_product_snapshot_to_pos_items.php'))->up();
 
-        DB::table('users')->insert(['user_id' => 1, 'first_name' => 'Gerald', 'last_name' => 'Senining']);
+        Schema::table('payments', fn (Blueprint $table) => $table->unsignedInteger('processed_by')->nullable());
+
+        DB::table('users')->insert(['user_id' => 1, 'first_name' => 'Gerald', 'last_name' => 'Senining', 'role' => 'admin']);
         DB::table('pets')->insert(['pet_id' => 1, 'pet_name' => 'Hopper']);
         foreach ([1 => '2026-10-03', 2 => '2026-10-02', 3 => '2026-10-03'] as $id => $date) {
             DB::table('bookings')->insert(['booking_id' => $id, 'user_id' => 1, 'booking_reference' => 'BAC-'.$id]);
             DB::table('booking_pets')->insert(['booking_id' => $id, 'pet_id' => 1]);
             DB::table('payments')->insert([
-                'payment_id' => $id, 'booking_id' => $id, 'total_amount' => 850,
+                'payment_id' => $id, 'booking_id' => $id, 'total_amount' => 850, 'processed_by' => 1,
                 'amount_tendered' => 1000, 'change_amount' => 150, 'payment_method' => 'cash',
                 'payment_status' => $id === 3 ? 'pending' : 'paid', 'paid_at' => $date.' 12:00:00',
             ]);
@@ -167,6 +170,7 @@ class TransactionHistorySearchTest extends TestCase
             $this->assertSame(850, $data['transactions'][0]['finalPrice']);
             $this->assertSame(1000, $data['transactions'][0]['amountPaid']);
             $this->assertSame(150, $data['transactions'][0]['changeGiven']);
+            $this->assertSame('Gerald · Admin', $data['transactions'][0]['processedByName']);
         }
         $this->assertSame(0, $this->search(['search' => 'BAC-3'])['total'], 'Pending payments stay out of history');
         $this->assertSame(0, $this->search(['search' => 'missing'])['total']);
@@ -201,7 +205,7 @@ class TransactionHistorySearchTest extends TestCase
         $sale = $sales['transactions'][0];
         $this->assertSame('Product Sale', $sale['transactionTypeLabel']);
         $this->assertSame('POS-000001', $sale['reference']);
-        $this->assertSame('Gerald Senining', $sale['processedByName']);
+        $this->assertSame('Gerald · Admin', $sale['processedByName']);
         $this->assertSame('Recorded Shampoo', $sale['items'][0]['item_name']);
         $this->assertSame('250.00', $sale['items'][0]['price_at_sale']);
         $this->assertArrayNotHasKey('ownerName', $sale);

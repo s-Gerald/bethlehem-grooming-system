@@ -233,6 +233,26 @@ class PaymentSchemaCompatibilityTest extends TestCase
         return [['pay'], ['pay-now']];
     }
 
+    public function test_new_qr_verifier_snapshots_use_owner_and_manager_attribution(): void
+    {
+        $this->createHistoricalPaymentSchema();
+        $this->configureQr();
+        $actor = User::findOrFail(7);
+        $actor->first_name = 'Gerald';
+        $actor->last_name = 'Marino';
+        $payable = \App\Models\Booking::findOrFail(1);
+        $data = ['qr_settings_version' => 1, 'payment_source' => 'GCash', 'external_reference' => 'OWNER123456'];
+        $ownerSnapshot = app(\App\Services\QrPaymentVerificationService::class)->verify($payable, $data, '1160.00', $actor);
+        $this->assertSame('Gerald · Admin', $ownerSnapshot->verified_by_name);
+        $actor->first_name = 'Maria';
+        $actor->admin_type = 'manager';
+        $payable->booking_id = 2;
+        $data['external_reference'] = 'MANAGER123456';
+        $managerSnapshot = app(\App\Services\QrPaymentVerificationService::class)->verify($payable, $data, '1160.00', $actor);
+        $this->assertSame('Maria · Manager', $managerSnapshot->verified_by_name);
+        $this->assertSame('Gerald · Admin', $ownerSnapshot->fresh()->verified_by_name);
+    }
+
     public function test_concurrent_qr_confirmations_record_one_payment_and_one_stock_deduction(): void
     {
         $this->createHistoricalPaymentSchema();

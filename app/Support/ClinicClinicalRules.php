@@ -41,7 +41,7 @@ final class ClinicClinicalRules
         return [
             'field' => $field, 'value' => trim((string) $value), 'reason' => trim($reason),
             'verified_by_user_id' => (int) $actor->user_id,
-            'verified_by_name' => trim($actor->first_name.' '.$actor->last_name), 'verified_at' => now()->toIso8601String(),
+            'verified_by_name' => $actor->actorAttribution(), 'verified_at' => now()->toIso8601String(),
         ];
     }
 

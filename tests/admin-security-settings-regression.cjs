@@ -622,6 +622,45 @@ vm.runInThisContext(componentSource, {
   settings.openStaffDetails({ staffType: "grooming", staffSubrole: "" });
   assert.equal(settings.savedStaffRole, "");
 
+  const ownerProfileCalls = [];
+  API.updateOwnerProfile = async payload => {
+    ownerProfileCalls.push(payload);
+    return { account: { first_name: 'Gerald', last_name: 'Marino' } };
+  };
+  settings = adminSettings();
+  settings.$nextTick = callback => callback();
+  await settings.loadSecurityAccounts();
+  assert.equal(settings.ownerProfile.firstName, 'Admin');
+  await settings.submitOwnerProfile();
+  assert.equal(ownerProfileCalls.length, 0, 'Unchanged names are not submitted');
+  settings.ownerProfile.firstName = 'Gerald123';
+  await settings.submitOwnerProfile();
+  assert.equal(ownerProfileCalls.length, 0);
+  assert.equal(settings.ownerProfile.errors.first_name, "Numbers aren't allowed.");
+  settings.ownerProfile.firstName = ' GERALD ';
+  settings.ownerProfile.lastName = 'MARINO';
+  API.updateOwnerProfile = async payload => { ownerProfileCalls.push(payload); throw { errors: { last_name: ['Enter a valid last name.'] } }; };
+  await settings.submitOwnerProfile();
+  assert.equal(settings.ownerProfile.firstName, ' GERALD ', 'Failed saves preserve entered values');
+  assert.equal(settings.ownerProfile.lastName, 'MARINO');
+  assert.equal(settings.ownerProfile.errors.last_name, 'Enter a valid last name.');
+  let finishOwnerProfile;
+  API.updateOwnerProfile = payload => { ownerProfileCalls.push(payload); return new Promise(resolve => { finishOwnerProfile = resolve; }); };
+  const ownerSave = settings.submitOwnerProfile();
+  await settings.submitOwnerProfile();
+  assert.equal(ownerProfileCalls.length, 2, 'Concurrent submissions are blocked');
+  assert.deepEqual(ownerProfileCalls[1], { first_name: 'Gerald', last_name: 'Marino' });
+  finishOwnerProfile({ account: { first_name: 'Gerald', last_name: 'Marino' } });
+  await ownerSave;
+  assert.equal(settings.adminAccount.firstName, 'Gerald');
+  assert.equal(settings.ownerProfileChanged, false);
+  assert.equal(settings.securityVerification.open, false, 'Profile saving never opens credential OTP');
+  assert.equal(settings.adminPassword.current, '');
+  settings.isOwner = false;
+  settings.ownerProfile.firstName = 'Other';
+  await settings.submitOwnerProfile();
+  assert.equal(ownerProfileCalls.length, 2);
+
   API.getUserRole = () => 'staff';
   const savedAccount = { user_id: 7, first_name: 'Grooming', last_name: 'Staff', username: 'groomingstaff',
     role: 'staff', staff_type: 'grooming', staff_subrole: 'grooming_receptionist', email: 'staff@gmail.com', is_active: true, is_archived: false };

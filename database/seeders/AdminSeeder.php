@@ -54,8 +54,8 @@ class AdminSeeder extends Seeder
         $admin->fill([
             'username' => $username,
             'email' => $email,
-            'first_name' => 'Admin',
-            'last_name' => 'Bethlehem',
+            'first_name' => filled($admin->first_name) ? $admin->first_name : 'Admin',
+            'last_name' => filled($admin->last_name) ? $admin->last_name : 'Bethlehem',
             'phone' => $credentials['phone'],
             'password_hash' => $changesPassword ? Hash::make($credentials['password']) : $admin->password_hash,
             'role' => 'admin',

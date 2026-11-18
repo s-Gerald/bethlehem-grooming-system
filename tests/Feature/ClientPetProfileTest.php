@@ -140,7 +140,7 @@ class ClientPetProfileTest extends TestCase
             $activity = \App\Models\ActivityLog::where('action', 'pet_updated')->where('pet_id', $id)->sole();
             $this->assertSame($actorId, $activity->actor_id);
             $this->assertSame($roleLabel, $activity->actor_role);
-            $this->assertSame($role === 'admin' ? 'clinic-admin' : "Jamie · $roleLabel", $activity->actor_display);
+            $this->assertSame("Jamie · $roleLabel", $activity->actor_display);
             $this->assertStringContainsString('Jamie Santos', $activity->actor_identity);
             $this->assertSame('pet', $activity->subject_type);
             $this->assertSame((string) $id, $activity->subject_id);

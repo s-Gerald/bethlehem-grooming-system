@@ -60,7 +60,7 @@ class QrPaymentVerificationService
             'payable_type' => $payable->getMorphClass(), 'payable_id' => $payable->getKey(),
             'external_reference' => $reference, 'received_amount' => $total,
             'transaction_at' => $data['transaction_at'] ?? null, 'verification_source' => 'receiving_history',
-            'verified_by' => $actor->user_id, 'verified_by_name' => trim($actor->first_name.' '.$actor->last_name),
+            'verified_by' => $actor->user_id, 'verified_by_name' => $actor->actorAttribution() ?? '',
             'verified_at' => now(), 'paying_app' => $data['paying_app'] ?? null, 'payment_source' => $data['payment_source'],
             'settings_version' => $settings->version, 'merchant_name' => $settings->merchant_name,
             'qr_image_hash' => $settings->image_hash,

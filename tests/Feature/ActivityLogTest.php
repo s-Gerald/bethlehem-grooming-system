@@ -20,7 +20,7 @@ class ActivityLogTest extends TestCase
         (require base_path('database/migrations/2026_10_25_000004_create_activity_logs_table.php'))->up();
         Schema::create('users', function (Blueprint $table) {
             $table->increments('user_id');
-            foreach (['first_name', 'last_name', 'username', 'role', 'staff_type', 'staff_subrole', 'password_hash', 'email'] as $field) $table->string($field)->nullable();
+            foreach (['first_name', 'last_name', 'username', 'role', 'admin_type', 'staff_type', 'staff_subrole', 'password_hash', 'email'] as $field) $table->string($field)->nullable();
             $table->boolean('is_active')->default(true); $table->boolean('is_archived')->default(false);
         });
         Schema::create('pets', function (Blueprint $table) {
@@ -36,6 +36,29 @@ class ActivityLogTest extends TestCase
             'staff_subrole' => $subrole, 'is_active' => true]);
         Sanctum::actingAs($user);
         return $user;
+    }
+
+    public function test_owner_and_manager_attribution_preserves_historical_snapshots_and_filter_options(): void
+    {
+        $owner = $this->actor();
+        $old = $this->event();
+        DB::table('activity_logs')->where('id', $old->id)->update(['actor_display' => 'old-owner-username']);
+        $historical = $old->fresh()->getAttributes();
+        $owner->update(['first_name' => 'Gerald', 'last_name' => 'Marino']);
+        $new = $this->event();
+        $this->assertSame('Gerald · Admin', $new->actor_display);
+        $this->assertSame('old-owner-username', $old->fresh()->actor_display);
+        $manager = User::create(['first_name' => 'Maria', 'last_name' => 'Santos', 'username' => 'manager',
+            'role' => 'admin', 'admin_type' => 'manager', 'is_active' => true]);
+        Sanctum::actingAs($manager);
+        $event = $this->event();
+        $this->assertSame('Maria · Manager', $event->actor_display);
+        $this->getJson('/api/admin/activity-log/options')->assertOk()->assertJsonFragment([
+            'actor_id' => $manager->getKey(), 'actor_display' => 'Maria · Manager',
+        ]);
+        $this->getJson('/api/admin/activity-log?staff='.$manager->getKey())->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.actor_display', 'Maria · Manager');
+        $this->assertSame($historical, $old->fresh()->getAttributes());
     }
 
     private function event(string $area = 'grooming', bool $operational = true): ActivityLog
@@ -114,7 +137,7 @@ class ActivityLogTest extends TestCase
             ['quantity_on_hand' => ['before' => 20, 'after' => 15], 'password' => ['before' => 'secret', 'after' => 'secret']], false, $actor);
         $this->getJson('/api/admin/activity-log/'.$event->id)->assertOk()->assertJsonMissing(['secret'])
             ->assertJsonPath('changes.quantity_on_hand.before', 20)->assertJsonMissingPath('changes.password');
-        $this->assertSame('clinic-admin', $event->actor_display);
+        $this->assertSame('Angelyn · Admin', $event->actor_display);
     }
 
     public function test_real_transitions_no_op_saves_and_stock_before_after(): void
@@ -298,7 +321,7 @@ class ActivityLogTest extends TestCase
             ->assertJsonPath('actor_display', 'Angelyn · Grooming Receptionist')
             ->assertJsonMissingPath('actor_identity')->assertJsonMissingPath('actor_id')->assertJsonMissingPath('actor_role');
         $admin = $this->event();
-        $this->getJson('/api/admin/activity-log/'.$admin->id)->assertOk()->assertJsonPath('actor_display', 'clinic-admin')
+        $this->getJson('/api/admin/activity-log/'.$admin->id)->assertOk()->assertJsonPath('actor_display', 'Angelyn · Admin')
             ->assertJsonPath('account_name', 'Angelyn Reyes');
         DB::table('activity_logs')->where('id', $admin->id)->update(['actor_identity' => null]);
         $this->getJson('/api/admin/activity-log/'.$admin->id)->assertOk()->assertJsonPath('account_name', null);

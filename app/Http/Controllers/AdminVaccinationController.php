@@ -28,9 +28,9 @@ class AdminVaccinationController extends Controller
     public const RESPONSE_RELATIONS = [
         'clinicAppointment:id,appointment_reference',
         'inventoryItem:item_id,item_name,category,unit',
-        'recordedBy:user_id,first_name,last_name',
-        'publishedBy:user_id,first_name,last_name',
-        'voidedBy:user_id,first_name,last_name',
+        'recordedBy:user_id,first_name,last_name,role,admin_type,staff_subrole',
+        'publishedBy:user_id,first_name,last_name,role,admin_type,staff_subrole',
+        'voidedBy:user_id,first_name,last_name,role,admin_type,staff_subrole',
     ];
 
     public function __construct(
@@ -48,7 +48,7 @@ class AdminVaccinationController extends Controller
                     ->get(['user_id', 'first_name', 'last_name'])
                     ->map(fn (User $user) => ['user_id' => $user->user_id, 'name' => $this->formatUserName($user) ?? "User #{$user->user_id}"]),
                 'current_user_id' => $actor->user_id,
-                'current_user_name' => $this->formatUserName($actor),
+                'current_user_name' => $actor->actorAttribution(),
                 'current_user_is_veterinarian' => $actor->isVeterinarian(),
                 'administration_routes' => VaccinationRecord::ADMINISTRATION_ROUTES,
             ]);
@@ -714,16 +714,16 @@ class AdminVaccinationController extends Controller
             'route' => $record->route,
             'administration_site' => $record->administration_site,
             'recorded_by_user_id' => $record->recorded_by_user_id,
-            'recorded_by_user_name' => $this->formatUserName($record->recordedBy),
+            'recorded_by_user_name' => $record->recordedBy?->actorAttribution(),
             'notes' => $record->notes,
             'state' => $this->recordState($record),
             'due_status' => $record->dueStatus(),
             'published_at' => $record->published_at?->toIso8601String(),
             'published_by_user_id' => $record->published_by_user_id,
-            'published_by_user_name' => $this->formatUserName($record->publishedBy),
+            'published_by_user_name' => $record->publishedBy?->actorAttribution(),
             'voided_at' => $record->voided_at?->toIso8601String(),
             'voided_by_user_id' => $record->voided_by_user_id,
-            'voided_by_user_name' => $this->formatUserName($record->voidedBy),
+            'voided_by_user_name' => $record->voidedBy?->actorAttribution(),
             'void_reason' => $record->void_reason,
             'created_at' => $record->created_at?->toIso8601String(),
             'updated_at' => $record->updated_at?->toIso8601String(),

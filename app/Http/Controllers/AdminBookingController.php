@@ -10,6 +10,7 @@ use App\Models\ClinicSetting;
 use App\Models\CustomerNotification;
 use App\Models\Notification;
 use App\Models\Payment;
+use App\Models\User;
 use App\Support\PetWeightSize;
 use App\Support\PetBodyCondition;
 use App\Services\GroomingCompletionSmsService;
@@ -1462,7 +1463,7 @@ class AdminBookingController extends Controller
             'cancellationReason' => $booking->cancellation_reason,
             'cancelledAt' => $booking->cancelled_at?->toIso8601String(),
             'cancelledBy' => $booking->relationLoaded('cancelledBy') && $booking->cancelledBy
-                ? trim($booking->cancelledBy->first_name.' '.$booking->cancelledBy->last_name) : null,
+                ? $this->cancellationActorName($booking->cancelledBy) : null,
             'status' => $booking->status === 'cancelled' || $booking->cancel_count > 0 || trim((string) $booking->cancellation_reason) !== ''
                 ? 'cancelled' : $this->mapStatus($booking->status),
             // Extra fields for the View Details modal
@@ -1553,7 +1554,7 @@ class AdminBookingController extends Controller
                     'cancellationReason' => $bp->cancellation_reason,
                     'cancelledAt' => $bp->cancelled_at?->toIso8601String(),
                     'cancelledBy' => $bp->relationLoaded('cancelledBy') && $bp->cancelledBy
-                        ? trim($bp->cancelledBy->first_name.' '.$bp->cancelledBy->last_name) : null,
+                        ? $this->cancellationActorName($bp->cancelledBy) : null,
                     'groomingState' => $groomingState,
                     'grooming_state' => $groomingState,
                     'groomingStateLabel' => $this->groomingStateLabel($groomingState),
@@ -1820,6 +1821,12 @@ class AdminBookingController extends Controller
             ->where('payment_status', 'paid')
             ->orderByDesc('paid_at')
             ->first();
+    }
+
+    private function cancellationActorName(User $actor): ?string
+    {
+        return in_array($actor->role, ['admin', 'staff'], true)
+            ? $actor->actorAttribution() : trim($actor->first_name.' '.$actor->last_name);
     }
 
     private function petNames(Booking $booking): string

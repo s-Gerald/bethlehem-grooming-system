@@ -93,7 +93,7 @@ async function isolationAndRaces() {
   verifyIdentity(nextIdentity);
   await pending;
   assert.equal(next.API.getCachedStaffIdentity().user.user_id, 9);
-  assert.equal(nextSidebar.staffDisplayName, 'New Veterinarian');
+  assert.equal(nextSidebar.staffDisplayName, 'New');
   assert.equal(nextSidebar.staffRoleLabel, 'Veterinarian');
   assert.equal(nextSidebar.canAccessGrooming, false, 'The former receptionist permissions cannot survive the switch');
   const navigation = e.sessionStorage.getItem('bethlehem.admin.navigation.v1');
@@ -109,7 +109,7 @@ async function independentRendering() {
   sidebar.$nextTick = fn => fn();
   const pending = sidebar.init();
   assert.equal(sidebar.sidebarReady, true, 'Cached navigation is available immediately');
-  assert.equal(sidebar.staffDisplayName, 'Test Staff');
+  assert.equal(sidebar.staffDisplayName, 'Test');
   await Promise.resolve();
   await pending;
   assert.equal(statusCalls, 0, 'Sidebar initialization does not read intake status');
@@ -118,7 +118,7 @@ async function independentRendering() {
 }
 async function rolesAndInvalidCache() {
   const cases = [
-    [{ role: 'admin', staff_type: null, staff_subrole: null }, true, true, 'Staff'],
+    [{ role: 'admin', staff_type: null, staff_subrole: null }, true, true, 'Admin'],
     [{ staff_type: 'clinic', staff_subrole: 'veterinarian' }, false, false, 'Veterinarian'],
     [{ staff_type: 'clinic', staff_subrole: 'clinic_receptionist' }, false, true, 'Clinic Receptionist'],
     [{ staff_type: 'grooming', staff_subrole: 'grooming_receptionist', staff_permissions: {grooming: false} }, false, false, 'Grooming Receptionist'],
@@ -152,11 +152,11 @@ async function rolesAndInvalidCache() {
 }
 async function cachedAccountLabels() {
   for (const [user, expected] of [
-    [{ role: 'admin', staff_type: null, staff_subrole: null }, ['AD', 'Admin', 'Owner']],
-    [{ role: 'admin', admin_type: 'manager', staff_type: null, staff_subrole: null, first_name: 'Mara', last_name: 'Santos' }, ['MS', 'Mara Santos', 'Manager']],
-    [{ staff_subrole: 'veterinarian' }, ['TS', 'Test Staff', 'Veterinarian']],
-    [{ staff_subrole: 'clinic_receptionist' }, ['TS', 'Test Staff', 'Clinic Receptionist']],
-    [{ staff_type: 'grooming', staff_subrole: 'grooming_receptionist' }, ['TS', 'Test Staff', 'Grooming Receptionist']],
+    [{ role: 'admin', staff_type: null, staff_subrole: null, first_name: 'Gerald', last_name: 'Marino' }, ['GM', 'Gerald', 'Admin']],
+    [{ role: 'admin', admin_type: 'manager', staff_type: null, staff_subrole: null, first_name: 'Mara', last_name: 'Santos' }, ['MS', 'Mara', 'Manager']],
+    [{ staff_subrole: 'veterinarian' }, ['TS', 'Test', 'Veterinarian']],
+    [{ staff_subrole: 'clinic_receptionist' }, ['TS', 'Test', 'Clinic Receptionist']],
+    [{ staff_type: 'grooming', staff_subrole: 'grooming_receptionist' }, ['TS', 'Test', 'Grooming Receptionist']],
   ]) {
     const e = environment();
     if (user.role === 'admin') e.c.API.setUserRole('admin');
@@ -164,7 +164,7 @@ async function cachedAccountLabels() {
     await e.c.API.getStaffIdentity();
     // The pre-Alpine renderer must recognize the same bindings as the templates.
     for (const c of [e.c, e.page()]) {
-      const labels = ["isOwner ? 'AD' : staffInitials", "isOwner ? 'Admin' : staffDisplayName", "isOwner ? 'Owner' : staffRoleLabel"]
+      const labels = ['staffInitials', 'staffDisplayName', 'staffRoleLabel']
         .map(expression => ({ textContent: '', getAttribute: () => expression }));
       const account = { setAttribute(name, value) { this[name] = value; } };
       const aside = { querySelector: () => account, closest: () => null, setAttribute() {}, removeAttribute() {},
@@ -272,7 +272,7 @@ async function sharedReceptionistSwitchReplacesTheFormerAccountDocument() {
     const sidebar = e.c.adminSidebar();
     sidebar.$nextTick = callback => callback();
     await sidebar.init();
-    assert.equal(sidebar.staffDisplayName, 'Former Receptionist');
+    assert.equal(sidebar.staffDisplayName, 'Former');
     assert.ok(e.c.API.readAdminCache('/inventory/items?page=1'));
     const cachedNavigation = e.sessionStorage.getItem('bethlehem.admin.navigation.v1');
     let reloads = 0;
@@ -314,7 +314,7 @@ async function sharedReceptionistSwitchReplacesTheFormerAccountDocument() {
     assert.equal(next.adminSidebar().staffDisplayName, '');
     await next.API.getStaffIdentity();
     const nextSidebar = next.adminSidebar();
-    assert.equal(nextSidebar.staffDisplayName, 'New Receptionist');
+    assert.equal(nextSidebar.staffDisplayName, 'New');
     assert.equal(nextSidebar.staffRoleLabel, subroles[1] === 'clinic_receptionist' ? 'Clinic Receptionist' : 'Grooming Receptionist');
     assert.equal(nextSidebar.canAccessGrooming, subroles[1] === 'grooming_receptionist');
     assert.equal(nextSidebar.clinicPermissions.access, subroles[1] === 'clinic_receptionist');
@@ -323,35 +323,41 @@ async function sharedReceptionistSwitchReplacesTheFormerAccountDocument() {
     sidebar.destroy();
   }
 }
-async function profileIdentitySynchronization() {
+async function profileIdentitySynchronization(owner = false) {
   const e = environment();
+  if (owner) { e.c.API.setUserRole('admin'); e.respond(() => identity({role: 'admin', admin_type: 'owner'})); }
+  const method = owner ? 'updateOwnerProfile' : 'updateStaffProfile';
   await e.c.API.getStaffIdentity();
   const sidebar = e.c.adminSidebar();
   sidebar.$nextTick = fn => fn();
   await sidebar.init();
   let lateIdentity;
   e.respond(url => url.endsWith('/me') ? new Promise(resolve => { lateIdentity = resolve; }) : ({
-    ...identity({ first_name: 'Updated', last_name: 'Person', username: 'updated.staff' }, 'revision-updated'),
-    account: { first_name: 'Updated', last_name: 'Person', username: 'updated.staff' }, success: true,
+    ...identity({ ...(owner ? {role: 'admin', admin_type: 'owner'} : {}), first_name: 'Updated', last_name: 'Person', username: owner ? 'teststaff' : 'updated.staff' }, 'revision-updated'),
+    account: { first_name: 'Updated', last_name: 'Person', username: owner ? 'teststaff' : 'updated.staff' }, success: true,
   }));
-  const oldMe = e.c.API.getMe('staff');
+  const oldMe = e.c.API.getMe(owner ? 'admin' : 'staff');
   const epoch = e.c.API.getAdminDataRevision('grooming');
-  await e.c.API.updateStaffProfile({ first_name: 'Updated', last_name: 'Person', username: 'updated.staff', current_password: 'Test!234' });
-  assert.equal(sidebar.staffDisplayName, 'Updated Person');
+  await e.c.API[method]({ first_name: 'Updated', last_name: 'Person', ...(!owner ? {username: 'updated.staff', current_password: 'Test!234'} : {}) });
+  assert.equal(sidebar.staffRoleLabel, owner ? 'Admin' : 'Veterinarian');
+  assert.ok(e.calls.some(c => c.url.endsWith(owner ? '/settings/security/owner-profile' : '/settings/security/profile')));
+  assert.equal(sidebar.staffDisplayName, 'Updated');
   assert.equal(sidebar.staffInitials, 'UP');
   assert.equal(sidebar.clinicPermissions.clinical, true);
   assert.equal(e.c.API.getAdminToken(), '17|test-secret');
   assert.equal(e.c.API.getAdminDataRevision('grooming'), epoch, 'Profile updates preserve operational cache epochs');
-  lateIdentity(identity());
+  lateIdentity(identity(owner ? {role: 'admin', admin_type: 'owner'} : {}));
   await oldMe;
   assert.equal(e.c.API.getCachedStaffIdentity().user.first_name, 'Updated', 'Late GET /me cannot restore old cache');
   const next = e.page();
   const updated = await next.API.getStaffIdentity();
-  assert.equal(updated.user.username, 'updated.staff');
-  assert.equal(next.adminSidebar().staffDisplayName, 'Updated Person');
+  assert.equal(updated.user.username, owner ? 'teststaff' : 'updated.staff');
+  assert.equal(next.adminSidebar().staffDisplayName, 'Updated');
   assert.equal(e.calls.filter(c => c.url.endsWith('/me')).length, 2, 'Saving/navigation do not fetch identity again');
   sidebar.destroy();
 }
+
+async function ownerProfileIdentitySynchronization() { await profileIdentitySynchronization(true); }
 
 async function profileSessionSwitchRace() {
   const e = environment();
@@ -450,7 +456,7 @@ async function privateSecurityAlertRendersOnce() {
 }
 
 (async () => {
-  for (const test of [cachedAccountLabels, servicesNavigationAndPageGuardForAuthorizedRoles, reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, sharedReceptionistSwitchReplacesTheFormerAccountDocument, profileIdentitySynchronization, profileSessionSwitchRace, activityLogNavigationUsesVerifiedAdminIdentity, availabilityNavigationForAuthorizedRoles, privateSecurityAlertRendersOnce]) {
+  for (const test of [cachedAccountLabels, servicesNavigationAndPageGuardForAuthorizedRoles, reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, sharedReceptionistSwitchReplacesTheFormerAccountDocument, profileIdentitySynchronization, ownerProfileIdentitySynchronization, profileSessionSwitchRace, activityLogNavigationUsesVerifiedAdminIdentity, availabilityNavigationForAuthorizedRoles, privateSecurityAlertRendersOnce]) {
     await test(); console.log(test.name + ' passed');
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -80,8 +80,7 @@ class PosTransaction extends Model
             'payment_method_label' => $this->gatewayPayment?->methodLabel() ?? GatewayPayment::labelFor($this->payment_method ?? 'cash'),
             'is_test' => $this->gatewayPayment ? ! $this->gatewayPayment->livemode : false,
             'cashier_id' => $this->cashier_id,
-            'cashier_name' => $this->cashier
-                ? trim($this->cashier->first_name.' '.$this->cashier->last_name) : null,
+            'cashier_name' => $this->cashier?->actorAttribution(),
             'total_amount' => $this->total_amount,
             'amount_tendered' => $this->amount_tendered,
             'change_amount' => $this->change_amount,

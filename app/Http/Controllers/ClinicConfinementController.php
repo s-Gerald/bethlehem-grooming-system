@@ -80,13 +80,13 @@ class ClinicConfinementController extends Controller
     public function observations(int $id)
     {
         $episode = ClinicAppointment::findOrFail($id)->confinement()->firstOrFail();
-        return response()->json($episode->observations()->orderBy('recorded_at')->orderBy('id')->paginate(20));
+        return response()->json($episode->observations()->with('recordedBy')->orderBy('recorded_at')->orderBy('id')->paginate(20));
     }
 
     public function recordObservation(Request $request, int $id, ClinicConfinementService $service)
     {
         $entry = $service->recordObservation($id, $request->all(), $request->user());
-        return response()->json(['data' => $entry], $entry->wasRecentlyCreated ? 201 : 200);
+        return response()->json(['data' => $entry->load('recordedBy')], $entry->wasRecentlyCreated ? 201 : 200);
     }
 
     public function preview(int $id, ClinicConfinementService $service)

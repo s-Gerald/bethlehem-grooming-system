@@ -35,8 +35,58 @@ function adminSettings() {
     _securityActivityRequest: null,
     _securityActivityRevision: 0,
     adminAccount: {
+      firstName: "",
+      lastName: "",
       email: "Admin email",
       username: "",
+    },
+    ownerProfile: { firstName: '', lastName: '', submitting: false, errors: {}, error: '', success: '' },
+    ownerProfileValues() {
+      return { first_name: this.ownerProfile.firstName === this.adminAccount.firstName ? this.ownerProfile.firstName : HumanName.normalize(this.ownerProfile.firstName),
+        last_name: this.ownerProfile.lastName === this.adminAccount.lastName ? this.ownerProfile.lastName : HumanName.normalize(this.ownerProfile.lastName) };
+    },
+    get ownerProfileChanged() {
+      const values = this.ownerProfileValues();
+      return values.first_name !== this.adminAccount.firstName || values.last_name !== this.adminAccount.lastName;
+    },
+    bindOwnerProfile() {
+      this.$nextTick(() => {
+        for (const [id, field] of [['ownerProfileFirstName', 'first_name'], ['ownerProfileLastName', 'last_name']]) {
+          HumanName.bind(document.getElementById(id), message => {
+            if (message) this.ownerProfile.errors[field] = message;
+            else delete this.ownerProfile.errors[field];
+          });
+        }
+      });
+    },
+    async submitOwnerProfile() {
+      const form = this.ownerProfile;
+      if (!this.isOwner || !this.staffLoaded || form.submitting) return;
+      const values = this.ownerProfileValues();
+      form.errors = {}; form.error = ''; form.success = '';
+      for (const field of ['first_name', 'last_name']) {
+        const message = HumanName.validate(values[field], { type: field });
+        if (message) form.errors[field] = message;
+      }
+      if (Object.keys(form.errors).length) {
+        document.getElementById(form.errors.first_name ? 'ownerProfileFirstName' : 'ownerProfileLastName')?.focus();
+        return;
+      }
+      if (!this.ownerProfileChanged) return;
+      form.submitting = true;
+      try {
+        const { account } = await API.updateOwnerProfile(values);
+        this.adminAccount.firstName = form.firstName = account.first_name;
+        this.adminAccount.lastName = form.lastName = account.last_name;
+        form.success = 'Profile updated successfully.';
+      } catch (error) {
+        form.errors = Object.fromEntries(Object.entries(error.errors || {}).map(([field, messages]) => [field, [].concat(messages)[0]]));
+        form.error = Object.keys(form.errors).length ? '' : error.message || 'Could not update profile.';
+        for (const [field, id] of [['first_name', 'ownerProfileFirstName'], ['last_name', 'ownerProfileLastName']]) {
+          if (form.errors[field]) HumanName.showError(document.getElementById(id), form.errors[field], { server: true });
+        }
+        if (Object.keys(form.errors).length) document.getElementById(form.errors.first_name ? 'ownerProfileFirstName' : 'ownerProfileLastName')?.focus();
+      } finally { form.submitting = false; }
     },
     adminPassword: {
       username: "",
@@ -705,10 +755,15 @@ function adminSettings() {
       const pending = API.getAdminSecurityAccounts().then(response => {
         if (revision !== this._securityRevision) return;
         this.adminAccount = {
+          firstName: response?.admin?.first_name || '',
+          lastName: response?.admin?.last_name || '',
           email: response?.admin?.email || "Admin email",
           username: response?.admin?.username || "",
         };
         this.adminPassword.username = this.adminAccount.username;
+        this.ownerProfile.firstName = this.adminAccount.firstName;
+        this.ownerProfile.lastName = this.adminAccount.lastName;
+        this.bindOwnerProfile();
         this.staffAccounts = (response?.accounts || response?.staff || []).map((staff) => this.staffAccountFields(staff));
         this.staffLoaded = true;
       }).catch(error => {

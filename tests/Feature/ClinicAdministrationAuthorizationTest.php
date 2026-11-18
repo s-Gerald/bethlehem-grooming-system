@@ -3816,7 +3816,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->insertClinicAppointment('in_consultation');
         $this->postJson('/api/admin/clinic-appointments/1/record', ['recorded_by_user_id' => 99, 'recorded_by_name' => 'Spoofed'])
             ->assertOk()->assertJsonPath('record.primary_veterinarian_id', null)
-            ->assertJsonPath('record.recorded_by_user_id', 1)->assertJsonPath('record.recorded_by_name', 'Admin User');
+            ->assertJsonPath('record.recorded_by_user_id', 1)->assertJsonPath('record.recorded_by_name', 'Admin · Admin');
         $vitals = ['weight_kg' => 24, 'temperature_c' => 38.5, 'heart_rate_bpm' => 80, 'respiratory_rate_bpm' => 20];
         $this->postJson('/api/admin/clinic-appointments/1/record', [...$vitals, 'finish_case' => true])
             ->assertUnprocessable()->assertJsonValidationErrors('primary_veterinarian_id');

@@ -15,8 +15,8 @@
     <link rel="stylesheet" href="/css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="/css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="/scripts/components/admin-loading.js?v=universal-20261018&urls=20261103&credentials=20261107"></script>
-    <link rel="preload" as="script" href="/scripts/api.js?security-history=20261118&public-information=20261117&auth-reliability=20261107&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&manager=20261118" />
-    <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110&manager=20261118" />
+    <link rel="preload" as="script" href="/scripts/api.js?security-history=20261118&public-information=20261117&auth-reliability=20261107&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&manager=20261118&owner-identity=20261118" />
+    <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110&manager=20261118&owner-identity=20261118" />
     <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -117,11 +117,11 @@
 
         <div class="admin-sidebar-footer p-4" data-admin-navigation inert>
           <div data-admin-account aria-busy="true" :aria-busy="String(!sidebarReady)" class="mb-4 flex items-center gap-3 rounded-2xl bg-[#355c84] p-3">
-            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold text-white" x-text="isOwner ? 'AD' : staffInitials"></div>
+            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold text-white" x-text="staffInitials"></div>
             <div class="min-w-0">
               <!-- BACKEND: Replace with logged-in admin data. -->
-              <p class="truncate font-bold text-white" x-text="isOwner ? 'Admin' : staffDisplayName"></p>
-              <p class="truncate text-sm text-white/80" x-text="isOwner ? 'Owner' : staffRoleLabel"></p>
+              <p class="truncate font-bold text-white" x-text="staffDisplayName"></p>
+              <p class="truncate text-sm text-white/80" x-text="staffRoleLabel"></p>
             </div>
           </div>
 
@@ -132,8 +132,8 @@
         </div>
       </aside>
       <script src="/scripts/utils/human-name.js?v=20261028-names-v2&name-policy=20261110"></script>
-    <script src="/scripts/api.js?security-history=20261118&public-information=20261117&auth-reliability=20261107&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&manager=20261118"></script>
-      <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110&manager=20261118"></script>
+    <script src="/scripts/api.js?security-history=20261118&public-information=20261117&auth-reliability=20261107&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&manager=20261118&owner-identity=20261118"></script>
+      <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110&manager=20261118&owner-identity=20261118"></script>
 
       <!-- Main Content -->
       <div class="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-[280px]">
@@ -428,7 +428,32 @@
                   </div>
                 </div>
 
+                <form @submit.prevent="submitOwnerProfile()" class="border-b border-[#e8f0f8] px-5 py-5 lg:px-6" aria-labelledby="ownerProfileHeading" novalidate>
+                  <h4 id="ownerProfileHeading" class="mb-4 text-base font-bold text-[#1f3850]">Profile information</h4>
+                  <fieldset :disabled="!staffLoaded || ownerProfile.submitting" class="grid min-w-0 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label for="ownerProfileFirstName" class="mb-1.5 block text-sm font-semibold text-slate-600">First Name</label>
+                      <input id="ownerProfileFirstName" type="text" x-model="ownerProfile.firstName" data-human-name="first_name" required autocomplete="given-name" @input="ownerProfile.error = ''; ownerProfile.success = ''" :aria-invalid="Boolean(ownerProfile.errors.first_name)" aria-describedby="ownerProfileFirstNameError" :class="ownerProfile.errors.first_name ? '!border-red-400' : ''" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-70" />
+                      <p id="ownerProfileFirstNameError" x-show="ownerProfile.errors.first_name" x-text="ownerProfile.errors.first_name" class="mt-2 text-xs text-red-700" aria-live="polite"></p>
+                    </div>
+                    <div>
+                      <label for="ownerProfileLastName" class="mb-1.5 block text-sm font-semibold text-slate-600">Last Name</label>
+                      <input id="ownerProfileLastName" type="text" x-model="ownerProfile.lastName" data-human-name="last_name" required autocomplete="family-name" @input="ownerProfile.error = ''; ownerProfile.success = ''" :aria-invalid="Boolean(ownerProfile.errors.last_name)" aria-describedby="ownerProfileLastNameError" :class="ownerProfile.errors.last_name ? '!border-red-400' : ''" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-70" />
+                      <p id="ownerProfileLastNameError" x-show="ownerProfile.errors.last_name" x-text="ownerProfile.errors.last_name" class="mt-2 text-xs text-red-700" aria-live="polite"></p>
+                    </div>
+                  </fieldset>
+                  <div class="mt-5 flex justify-end">
+                    <button type="submit" :disabled="!staffLoaded || !ownerProfileChanged || ownerProfile.submitting" :aria-busy="ownerProfile.submitting" class="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67] disabled:cursor-not-allowed disabled:opacity-70">
+                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#floppy-disk"></use></svg>
+                      <span x-text="ownerProfile.submitting ? 'Saving...' : 'Save Profile'">Save Profile</span>
+                    </button>
+                  </div>
+                  <p x-show="ownerProfile.error" x-text="ownerProfile.error" class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600" role="alert"></p>
+                  <p x-show="ownerProfile.success" x-text="ownerProfile.success" class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700" role="status"></p>
+                </form>
+
                 <div class="px-5 py-5 lg:px-6">
+                  <h4 class="mb-4 text-base font-bold text-[#1f3850]">Credentials</h4>
                   <div class="grid gap-4 sm:grid-cols-2">
                     <label class="block">
                       <span class="mb-1.5 block text-sm font-semibold text-slate-600">Username</span>
@@ -1256,7 +1281,7 @@
     <script src="/scripts/auth/email-delivery.js?v=otp-resend-20261021"></script>
     <script src="/scripts/utils/account-email.js?v=email-entry-20261028"></script>
     <script src="/scripts/utils/credential-policy.js?v=20261107"></script>
-    <script src="/scripts/components/admin-settings.js?security-history=20261118&public-information=20261117&availability=20261027&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=legacy-off-20261026&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024&legacy-qr=off-20261026&email-entry=20261028&names=20261028-v2&auth-hardening=20261030&urls=20261103&credentials=20261107&name-policy=20261110&manager=20261118"></script>
+    <script src="/scripts/components/admin-settings.js?security-history=20261118&public-information=20261117&availability=20261027&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=legacy-off-20261026&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024&legacy-qr=off-20261026&email-entry=20261028&names=20261028-v2&auth-hardening=20261030&urls=20261103&credentials=20261107&name-policy=20261110&manager=20261118&owner-identity=20261118"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261111&urls=20261103&inventory-expiry=20261111&credentials=20261107"></script>
   </body>

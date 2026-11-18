@@ -207,9 +207,9 @@ function getAdminSidebarIdentityState(user) {
     canViewServices: user.role === 'admin' || !!user.clinic_permissions?.services_view || !!user.staff_permissions?.grooming_services_view,
     clinicPermissions: user.clinic_permissions || {},
     canAccessGrooming: user.role === 'admin' || !!user.staff_permissions?.grooming,
-    staffDisplayName: `${first} ${last}`.trim() || 'Staff',
+    staffDisplayName: first || 'Staff',
     staffInitials: `${first[0] || ''}${last[0] || ''}`.toUpperCase() || 'ST',
-    staffRoleLabel: user.role === 'admin' && user.admin_type === 'manager' ? 'Manager' : user.staff_type === 'clinic'
+    staffRoleLabel: user.role === 'admin' ? (user.admin_type === 'manager' ? 'Manager' : 'Admin') : user.staff_type === 'clinic'
       ? ({ veterinarian: 'Veterinarian', clinic_receptionist: 'Clinic Receptionist' }[user.staff_subrole] || 'Clinic Staff')
       : user.staff_subrole === 'grooming_receptionist' ? 'Grooming Receptionist' : 'Staff',
   };
@@ -235,9 +235,9 @@ function renderCachedAdminSidebar() {
   });
   aside.querySelector('[data-admin-account]')?.setAttribute('aria-busy', String(!state.sidebarReady));
   const text = {
-    "isOwner ? 'AD' : staffInitials": state.isOwner ? 'AD' : state.staffInitials,
-    "isOwner ? 'Admin' : staffDisplayName": state.isOwner ? 'Admin' : state.staffDisplayName,
-    "isOwner ? 'Owner' : staffRoleLabel": state.isOwner ? 'Owner' : state.staffRoleLabel,
+    staffInitials: state.staffInitials,
+    staffDisplayName: state.staffDisplayName,
+    staffRoleLabel: state.staffRoleLabel,
   };
   aside.querySelectorAll('[x-text]').forEach(el => {
     const value = text[el.getAttribute('x-text')];

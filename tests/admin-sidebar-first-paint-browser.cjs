@@ -55,6 +55,12 @@ async function fixture(browser, profile = 'admin', inventory = false, workspaces
     if (url.pathname === '/api/me') await state.identityHold?.promise;
     if (url.pathname === '/api/logout') await state.logoutHold?.promise;
     let data = state.responses?.[url.pathname] || {};
+    if (url.pathname === '/api/settings/security/owner-profile') {
+      if (state.profileError) return route.fulfill({status: 422, contentType: 'application/json', body: JSON.stringify({errors: {last_name: ['Enter a valid last name.']}})});
+      state.user = {...state.user, ...route.request().postDataJSON()};
+      state.revision = 'owner-profile-revision';
+      data = {success: true, account: state.user, user: state.user, sidebar_revision: state.revision};
+    }
     if (url.pathname === '/api/session' && state.statusFailure) {
       return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Temporarily unavailable' }) });
     }
@@ -112,11 +118,11 @@ async function visibleShell(page, active) {
 }
 async function accountLabels(page, profile) {
   const expected = {
-    admin: ['AD', 'Admin', 'Owner'],
-    manager: ['MS', 'Mara Santos', 'Manager'],
-    vet: ['LV', 'Local Vet', 'Veterinarian'],
-    grooming: ['LG', 'Local Groomer', 'Grooming Receptionist'],
-    clinic: ['LR', 'Local Receptionist', 'Clinic Receptionist'],
+    admin: ['LA', 'Local', 'Admin'],
+    manager: ['MS', 'Mara', 'Manager'],
+    vet: ['LV', 'Local', 'Veterinarian'],
+    grooming: ['LG', 'Local', 'Grooming Receptionist'],
+    clinic: ['LR', 'Local', 'Clinic Receptionist'],
   };
   const account = page.locator('[data-admin-account]');
   assert.deepEqual(await account.locator('[x-text]').allTextContents(), expected[profile], 'Account identity remains consistent before and after Alpine hydration');
@@ -774,6 +780,53 @@ async function canonicalUrlsAndLegacyBookmarks(browser) {
   } finally { await f.context.close(); }
 }
 
+async function ownerProfileSecurity(browser) {
+  for (const width of [320, 375, 414, 768, 1440]) {
+    const f = await fixture(browser, 'admin', false, true);
+    const errors = [];
+    f.page.on('pageerror', error => errors.push(error.message));
+    f.state.responses = {
+      '/api/admin/security/accounts': {admin: {...f.state.user, email: 'owner@gmail.com', username: 'Owner'}, accounts: []},
+      '/api/settings/security/activity': {incidents: []},
+    };
+    try {
+      await f.page.setViewportSize({width, height: 1000});
+      await visit(f.page, 'settings?tab=security'); await ready(f.page);
+      const form = f.page.locator('form[aria-labelledby="ownerProfileHeading"]');
+      const first = form.getByLabel('First Name', {exact: true});
+      const last = form.getByLabel('Last Name', {exact: true});
+      const save = f.page.getByRole('button', {name: 'Save Profile', exact: true});
+      await first.waitFor();
+      assert.equal(await first.inputValue(), 'Local');
+      assert.equal(await save.isDisabled(), true);
+      const bounds = await Promise.all([first.boundingBox(), last.boundingBox()]);
+      assert.equal(Math.abs(bounds[0].y - bounds[1].y) < 2, width >= 640, 'Profile fields stack only at narrow widths');
+      assert.equal(await f.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Settings has no horizontal overflow');
+      await first.fill('');
+      await save.click();
+      assert.equal(f.state.requests.includes('/api/settings/security/owner-profile'), false);
+      await first.fill('Gerald'); await last.fill('Marino');
+      f.state.profileError = true;
+      await save.click();
+      await f.page.locator('#ownerProfileLastNameError').getByText('Enter a valid last name.').waitFor();
+      assert.equal(await first.inputValue(), 'Gerald');
+      assert.equal(await last.inputValue(), 'Marino');
+      f.state.profileError = false;
+      await last.fill('Marinoo'); await last.fill('Marino');
+      const meReads = f.state.requests.filter(path => path === '/api/me').length;
+      await save.click();
+      await f.page.getByRole('status').filter({hasText: 'Profile updated successfully.'}).waitFor();
+      assert.deepEqual(await f.page.locator('[data-admin-account] [x-text]').allTextContents(), ['GM', 'Gerald', 'Admin']);
+      assert.equal(f.state.requests.filter(path => path === '/api/me').length, meReads);
+      assert.equal(await save.isDisabled(), true);
+      assert.equal(f.state.requests.some(path => path.includes('credential-change')), false);
+      if (process.env.LOCAL_REVIEW_SCREENSHOTS) await f.page.screenshot({path: process.env.LOCAL_REVIEW_SCREENSHOTS + '/owner-profile-' + width + '.png', fullPage: true});
+      assert.deepEqual(errors, []);
+      console.log('Owner profile ' + width + 'px: validation, failed input preservation, independent save and sidebar refresh passed');
+    } finally { await f.context.close(); }
+  }
+}
+
 async function managerAccountSecurity(browser) {
   for (const [profile, width] of [['admin', 1440], ['manager', 1440], ['admin', 390], ['manager', 390]]) {
     const f = await fixture(browser, profile, false, true);
@@ -831,6 +884,7 @@ async function managerAccountSecurity(browser) {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {
     const cases = process.env.LOCAL_REVIEW_CASES?.split(',') || ['cold', 'cache', 'security', 'session', 'invalid', 'pre-alpine', 'inventory', 'services', 'walk-in'];
+    if (cases.includes('owner-profile')) await ownerProfileSecurity(browser);
     if (cases.includes('manager')) await managerAccountSecurity(browser);
     if (cases.includes('urls')) await canonicalUrlsAndLegacyBookmarks(browser);
     if (cases.includes('cold')) await coldPaint(browser);

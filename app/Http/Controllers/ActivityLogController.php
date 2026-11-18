@@ -64,7 +64,7 @@ class ActivityLogController extends Controller
     public function options()
     {
         // Historical identities, including deactivated/renamed actors. No user-table joins.
-        $latest = ActivityLog::whereNotNull('actor_id')->whereIn('actor_role', ['Admin', 'Grooming Receptionist', 'Clinic Receptionist', 'Veterinarian', 'Staff'])
+        $latest = ActivityLog::whereNotNull('actor_id')->whereIn('actor_role', ['Admin', 'Manager', 'Grooming Receptionist', 'Clinic Receptionist', 'Veterinarian', 'Staff'])
             ->selectRaw('MAX(id) as id')->groupBy('actor_id');
         $actors = ActivityLog::whereIn('id', $latest)->select('actor_id', 'actor_display')->orderBy('actor_display')->get();
         return response()->json(['staff' => $actors, 'type_groups' => ActivityPresentation::typeGroups()])->header('Cache-Control', 'no-store, private');

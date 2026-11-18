@@ -826,7 +826,7 @@ class AdminClinicController extends Controller
                     'primary_veterinarian_id' => $primary?->user_id,
                     'primary_veterinarian_name' => $primary ? $name($primary) : null,
                     'recorded_by_user_id' => $actor->user_id,
-                    'recorded_by_name' => $name($actor),
+                    'recorded_by_name' => $actor->actorAttribution(),
                     'diagnosis' => array_key_exists('working_diagnosis', $data) || array_key_exists('diagnosis', $data)
                         ? $clinical['working_diagnosis'] : $existing?->diagnosis,
                     'findings' => array_key_exists('physical_exam_findings', $data) || array_key_exists('findings', $data)
@@ -909,7 +909,7 @@ class AdminClinicController extends Controller
                 ['chief_complaint' => $appt->chief_complaint,
                     'primary_veterinarian_id' => $actor->isVeterinarian() ? $actor->user_id : null,
                     'primary_veterinarian_name' => $actor->isVeterinarian() ? $actorName : null,
-                    'recorded_by_user_id' => $actor->user_id, 'recorded_by_name' => $actorName]
+                    'recorded_by_user_id' => $actor->user_id, 'recorded_by_name' => $actor->actorAttribution()]
             );
 
             $file = $data['file'];
@@ -1066,7 +1066,7 @@ class AdminClinicController extends Controller
             'cash_received' => $a->cash_received,
             'change' => $a->cash_received !== null ? round((float) $a->cash_received - (float) $a->total_amount, 2) : null,
             'paid_at' => $a->paid_at?->toIso8601String(),
-            'processed_by' => ['name' => $a->relationLoaded('paidBy') ? $a->paidBy?->paymentAttribution() : null],
+            'processed_by' => ['name' => $a->relationLoaded('paidBy') ? $a->paidBy?->actorAttribution() : null],
             'notes' => $a->notes,
             'checked_in_at' => $a->checked_in_at?->toIso8601String(),
             'consultation_started_at' => $a->consultation_started_at?->toIso8601String(),

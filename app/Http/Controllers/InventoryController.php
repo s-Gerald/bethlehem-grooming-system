@@ -210,9 +210,7 @@ class InventoryController extends Controller
             },
             'notes'                 => $t->notes,
             'performed_by'          => $t->performed_by,
-            'performed_by_name'     => $t->performedBy
-                ? trim("{$t->performedBy->first_name} {$t->performedBy->last_name}")
-                : null,
+            'performed_by_name'     => $t->performedBy?->actorAttribution(),
             'created_at'            => $t->created_at,
         ];
         if ($this->requireAuth()->isVeterinarian()) {

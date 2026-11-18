@@ -534,7 +534,7 @@ class ClinicConfinementTest extends TestCase
         Carbon::setTestNow(now()->addHour());
         $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $this->monitoringPayload(['heart_rate_bpm' => '95']))->assertCreated();
         $this->postJson('/api/admin/clinic-cases/1/confinement/observations', ['request_key' => (string) Str::uuid()])->assertUnprocessable();
-        $this->getJson('/api/admin/clinic-cases/1/confinement/observations')->assertOk()->assertJsonPath('data.0.notes', $notes)->assertJsonPath('data.1.heart_rate_bpm', 95);
+        $this->getJson('/api/admin/clinic-cases/1/confinement/observations')->assertOk()->assertJsonPath('data.0.recorded_by_name', 'Attending · Veterinarian')->assertJsonPath('data.0.notes', $notes)->assertJsonPath('data.1.heart_rate_bpm', 95);
         $this->assertEquals($before, DB::table('clinic_vitals')->first()); $this->assertDatabaseCount('clinic_charges', 0);
     }
 
@@ -622,7 +622,7 @@ class ClinicConfinementTest extends TestCase
             $this->assertSame($payload[$entry['field']], $entry['value']);
             $this->assertSame($payload['vital_exceptions'][$entry['field']]['reason'], $entry['reason']);
             $this->assertSame(1, $entry['verified_by_user_id']);
-            $this->assertSame('Attending Vet', $entry['verified_by_name']);
+            $this->assertSame('Attending · Veterinarian', $entry['verified_by_name']);
             $this->assertSame(now()->toIso8601String(), $entry['verified_at']);
         }
         $this->assertSame($history, \App\Models\ClinicConfinementObservation::first()->verification_history);

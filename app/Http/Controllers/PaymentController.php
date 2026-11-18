@@ -842,8 +842,7 @@ class PaymentController extends Controller
             'transactionType' => 'grooming_payment',
             'transactionTypeLabel' => 'Grooming Payment',
             'processedBy' => $payment->processed_by,
-            'processedByName' => $payment->processedBy
-                ? trim($payment->processedBy->first_name.' '.$payment->processedBy->last_name) : null,
+            'processedByName' => $payment->processedBy?->actorAttribution(),
             'bookingId' => $booking?->booking_id,
             'reference' => $booking?->booking_reference ?? '—',
             'ownerName' => $booking?->groomingOwnerName() ?: '—',
@@ -898,7 +897,7 @@ class PaymentController extends Controller
             'isTest' => $appointment->gatewayPayment ? ! $appointment->gatewayPayment->livemode : false,
             'paymentMethodLabel' => $appointment->gatewayPayment?->methodLabel() ?? GatewayPayment::labelFor($appointment->payment_method),
             'processedBy' => $appointment->paid_by_user_id,
-            'processedByName' => $appointment->paidBy?->paymentAttribution(),
+            'processedByName' => $appointment->paidBy?->actorAttribution(),
             'paidAt' => $appointment->paid_at?->format('Y-m-d H:i:s'),
             'dateKey' => $appointment->paid_at?->toDateString() ?? 'unknown',
             'charges' => $appointment->charges->map(fn ($charge) => [

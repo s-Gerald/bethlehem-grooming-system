@@ -97,6 +97,22 @@ class AdminSecurityController extends Controller
         return response()->json(['success' => true]);
     }
 
+    public function updateOwnerProfile(Request $request)
+    {
+        abort_unless($request->user()->isOwner(), 403);
+        $this->assertProfileFields($request, ['first_name', 'last_name']);
+        $data = $this->profileNameData($request);
+        $owner = DB::transaction(function () use ($request, $data): User {
+            $owner = User::query()->lockForUpdate()->findOrFail($request->user()->getKey());
+            abort_unless($owner->isOwner() && $owner->is_active && ! $owner->is_archived, 403);
+            $owner->fill($data);
+            if ($owner->isDirty()) $owner->save();
+            return $owner;
+        }, 3);
+
+        return $this->profileResponse($owner);
+    }
+
     public function updateStaffProfile(Request $request)
     {
         $data = $this->staffProfileData($request);
@@ -133,6 +149,11 @@ class AdminSecurityController extends Controller
             Log::info('Staff profile updated.', ['user_id' => $staff->getKey(), 'fields' => array_keys($staff->getChanges())]);
         }
 
+        return $this->profileResponse($staff);
+    }
+
+    private function profileResponse(User $staff)
+    {
         return response()->json([
             'success' => true,
             'message' => 'Profile updated successfully.',
@@ -146,25 +167,37 @@ class AdminSecurityController extends Controller
 
     private function staffProfileData(Request $request): array
     {
-        $unexpected = array_diff(array_keys($request->all()), ['first_name', 'last_name', 'username', 'current_password']);
+        $this->assertProfileFields($request, ['first_name', 'last_name', 'username', 'current_password']);
+        if (is_string($request->input('username'))) $request->merge(['username' => trim($request->input('username'))]);
+
+        return $this->profileNameData($request, [
+            'username' => AccountUsername::rules(unchanged: $request->user()->username),
+            'current_password' => ['nullable', 'string'],
+        ]);
+    }
+
+    private function assertProfileFields(Request $request, array $allowed): void
+    {
+        $unexpected = array_diff(array_keys($request->all()), $allowed);
         if ($unexpected) {
             throw ValidationException::withMessages(array_fill_keys($unexpected, 'This field cannot be changed.'));
         }
-        foreach (['first_name', 'last_name', 'username'] as $field) {
+    }
+
+    private function profileNameData(Request $request, array $additionalRules = []): array
+    {
+        foreach (['first_name', 'last_name'] as $field) {
             if (is_string($request->input($field))) {
                 $value = $request->input($field);
-                $request->merge([$field => $field === 'username' ? trim($value) : ($value === $request->user()->$field ? $value : User::normalizeName($value))]);
+                $request->merge([$field => $value === $request->user()->$field ? $value : User::normalizeName($value)]);
             }
         }
 
         return $request->validate([
-            'first_name' => \App\Support\HumanName::rules('first_name', unchanged: $request->user()->first_name),
-            'last_name' => \App\Support\HumanName::rules('last_name', unchanged: $request->user()->last_name),
-            'username' => AccountUsername::rules(unchanged: $request->user()->username),
-            'current_password' => ['nullable', 'string'],
-        ], [
-            'username.required' => 'Enter a username.',
-        ]);
+            'first_name' => \App\Support\HumanName::rules('first_name', unchanged: $request->user()->hasSelfServiceSecurity() ? $request->user()->first_name : null),
+            'last_name' => \App\Support\HumanName::rules('last_name', unchanged: $request->user()->hasSelfServiceSecurity() ? $request->user()->last_name : null),
+            ...$additionalRules,
+        ], ['username.required' => 'Enter a username.']);
     }
 
     private function assertStaffUsernameIsAvailable(string $username, User $staff, bool $lockForUpdate = false): void

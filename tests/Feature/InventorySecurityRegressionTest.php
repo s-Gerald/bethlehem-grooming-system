@@ -512,7 +512,7 @@ class InventorySecurityRegressionTest extends TestCase
 
         $actorDetails = [
             'performed_by' => $actor->user_id,
-            'performed_by_name' => 'Staff Inventory Tester',
+            'performed_by_name' => 'Staff · Staff',
         ];
 
         $history = $this->getJson('/api/inventory/transactions')
@@ -2123,7 +2123,7 @@ class InventorySecurityRegressionTest extends TestCase
             'items' => [['item_id' => $id, 'quantity' => 1], ['item_id' => $id, 'quantity' => 2]],
             'amount_tendered' => 500, 'cashier_id' => 999, 'customer_id' => 999,
         ])->assertCreated()->assertJsonPath('data.reference', 'POS-20261031-001')
-            ->assertJsonPath('data.cashier_id', $actor->user_id)->assertJsonPath('data.cashier_name', 'Staff Inventory Tester')
+            ->assertJsonPath('data.cashier_id', $actor->user_id)->assertJsonPath('data.cashier_name', 'Staff · Staff')
             ->assertJsonPath('data.total_amount', '376.50')->assertJsonPath('data.change_amount', '123.50')
             ->assertJsonCount(1, 'data.items');
         $this->assertDatabaseCount('pos_transactions', 1);

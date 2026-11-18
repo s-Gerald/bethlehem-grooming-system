@@ -3192,9 +3192,17 @@ var API = (() => {
     return request("POST", "/settings/security/profile/validate", payload, getAdminToken());
   }
 
-  async function updateStaffProfile(payload) {
+  function updateStaffProfile(payload) {
+    return updateProfileIdentity('/settings/security/profile', payload);
+  }
+
+  function updateOwnerProfile(payload) {
+    return updateProfileIdentity('/settings/security/owner-profile', payload);
+  }
+
+  async function updateProfileIdentity(endpoint, payload) {
     const token = getAdminToken(), epoch = staffIdentityEpoch;
-    const response = await request("PATCH", "/settings/security/profile", payload, token);
+    const response = await request("PATCH", endpoint, payload, token);
     if (token !== getAdminToken() || epoch !== staffIdentityEpoch) throw new Error('Session changed while saving profile.');
     // Supersede older identity reads without clearing operational data or fetching /me again.
     staffIdentityEpoch++;
@@ -3957,6 +3965,7 @@ var API = (() => {
     recognizeSecurityActivity,
     validateStaffProfile,
     updateStaffProfile,
+    updateOwnerProfile,
     requestStaffPasswordChange,
     requestAdminCredentialChange,
     requestAccount,

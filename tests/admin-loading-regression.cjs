@@ -75,12 +75,13 @@ async function mutationRace() {
 }
 async function lazySecurity() {
   let accountCalls = 0, activityCalls = 0;
-  const c = vm.createContext({ URLSearchParams, document: {}, window: { location: { search: '' } },
+  const c = vm.createContext({ URLSearchParams, document: {getElementById: () => null, addEventListener() {}}, window: { location: { search: '' } },
     API: {getCachedStaffIdentity: () => ({user: {role: 'admin'}}), getGeneralSettings: async () => ({ data: {} }), getUserRole: () => 'admin', getAvailabilitySettings: async () => ({}),
       getSecurityActivity: async () => { activityCalls++; return { incidents: [] }; },
       getAdminSecurityAccounts: async () => { accountCalls++; return { admin: {}, staff: [
         { user_id: 7, first_name: 'Local', last_name: 'Staff', is_active: true },
       ] }; } } });
+  vm.runInContext(read('scripts/utils/human-name.js'), c);
   vm.runInContext(read('scripts/components/admin-settings.js'), c);
   const ui = c.adminSettings(); ui.$nextTick = fn => fn();
   await ui.init();

@@ -14,6 +14,65 @@ use Tests\TestCase;
 
 class AdminCredentialChangeTest extends TestCase
 {
+    public function test_owner_profile_changes_only_names_and_returns_identity_without_revoking_session(): void
+    {
+        Notification::fake();
+        $owner = $this->createUser('admin', 'owner@gmail.com', '09170009123', 'Owner');
+        $owner->update(['admin_type' => 'owner']);
+        $before = $owner->fresh()->getAttributes();
+        $revision = $owner->sidebarRevision();
+        $token = $owner->createToken('owner')->plainTextToken;
+        $this->useEmailToken($token);
+        $this->patchJson('/api/settings/security/owner-profile', ['first_name' => ' GERALD ', 'last_name' => 'MARINO'])
+            ->assertOk()->assertJsonPath('account.first_name', 'Gerald')->assertJsonPath('account.last_name', 'Marino')
+            ->assertJsonPath('user.first_name', 'Gerald')->assertJsonPath('user.admin_type', 'owner')
+            ->assertJsonPath('user.clinic_permissions', $owner->clinicPermissions())
+            ->assertJsonPath('user.staff_permissions', $owner->staffPermissions())
+            ->assertJsonPath('sidebar_revision', $owner->fresh()->sidebarRevision());
+        $this->assertNotSame($revision, $owner->fresh()->sidebarRevision());
+        $this->assertSame(array_diff_key($before, array_flip(['first_name', 'last_name'])),
+            array_diff_key($owner->fresh()->getAttributes(), array_flip(['first_name', 'last_name'])));
+        $this->assertSame(1, $owner->tokens()->count());
+        $this->useEmailToken($token);
+        $this->getJson('/api/settings/security/account')->assertOk()->assertJsonPath('account.first_name', 'Gerald');
+        $this->patchJson('/api/settings/security/profile', ['first_name' => 'Gerald', 'last_name' => 'Marino', 'username' => 'Owner'])->assertForbidden();
+        $this->assertDatabaseCount('privileged_credential_changes', 0);
+        Notification::assertNothingSent();
+    }
+
+    public function test_owner_profile_rejects_invalid_names_and_unexpected_fields(): void
+    {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        $owner = $this->createUser('admin', 'owner@gmail.com', '09170009123', 'Owner');
+        Sanctum::actingAs($owner);
+        foreach (['', '   ', 'Gerald123', '<Admin>', ['Gerald'], str_repeat('a', 101)] as $invalid) {
+            foreach (['first_name', 'last_name'] as $field) {
+                $this->patchJson('/api/settings/security/owner-profile', array_replace(['first_name' => 'Gerald', 'last_name' => 'Marino'], [$field => $invalid]))
+                    ->assertUnprocessable()->assertJsonValidationErrors($field);
+            }
+        }
+        foreach (['username', 'email', 'password', 'password_hash', 'current_password', 'role', 'admin_type', 'is_active', 'staff_subrole'] as $field) {
+            $this->patchJson('/api/settings/security/owner-profile', ['first_name' => 'Gerald', 'last_name' => 'Marino', $field => 'changed'])
+                ->assertUnprocessable()->assertJsonValidationErrors($field);
+        }
+        $this->assertSame('Admin', $owner->fresh()->first_name);
+        $this->assertSame('Bethlehem', $owner->fresh()->last_name);
+        $owner->update(['first_name' => 'Legacy123']);
+        $this->patchJson('/api/settings/security/owner-profile', ['first_name' => 'Legacy123', 'last_name' => 'Marino'])
+            ->assertUnprocessable()->assertJsonValidationErrors('first_name');
+    }
+
+    public function test_owner_profile_is_forbidden_to_staff_and_managers(): void
+    {
+        foreach (['staff', 'manager', 'customer'] as $index => $role) {
+            $user = $this->createUser($role === 'manager' ? 'admin' : $role, "person{$index}@gmail.com", '0917000912'.$index, 'Person'.$index);
+            if ($role === 'manager') $user->update(['admin_type' => 'manager']);
+            Sanctum::actingAs($user);
+            $this->patchJson('/api/settings/security/owner-profile', ['first_name' => 'Gerald', 'last_name' => 'Marino'])->assertForbidden();
+            $this->assertSame('Bethlehem', $user->fresh()->last_name);
+        }
+    }
+
     public function test_username_only_change_does_not_screen_a_password(): void
     {
         Notification::fake();
