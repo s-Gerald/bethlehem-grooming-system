@@ -10,6 +10,7 @@ use App\Notifications\StaffEmailRecoveryNotice;
 use App\Notifications\VerifyAdminStaffRecoveryNotification;
 use App\Support\AccountEmail;
 use App\Support\SecurityCode;
+use App\Support\ProgressiveAuthThrottle;
 use App\Support\StaffRole;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -46,7 +47,6 @@ class StaffEmailRecoveryService
             $previous ??= StaffEmailRecovery::where('user_id', $target->getKey())->whereNull('authorized_at')
                 ->where('code_expires_at', '>', now())->orderByDesc('created_at')->lockForUpdate()->first();
             $retained = $previous && now()->lt($previous->code_expires_at);
-            if ($retained && $previous->admin_attempts >= SecurityCode::MAX_ATTEMPTS) return ['status' => 'locked'];
             if ($previous && ($retry = $this->resendAfter($previous))) return ['status' => 'cooldown', 'retry_after' => $retry];
             if ($previous?->active_user_id) {
                 $this->recordExpiration($previous);
@@ -80,12 +80,14 @@ class StaffEmailRecoveryService
                 $this->recordExpiration($recovery);
                 return ['status' => 'expired'];
             }
-            if ($recovery->admin_attempts >= SecurityCode::MAX_ATTEMPTS) return ['status' => 'locked'];
+            $key = ProgressiveAuthThrottle::key('staff-recovery-admin-code', $actor->getKey());
+            if ($blocked = ProgressiveAuthThrottle::blocked($key)) return $blocked;
             if (! Hash::check('staff-recovery|'.$code, $recovery->code_hash)) {
                 $recovery->increment('admin_attempts');
                 $this->audit($recovery, 'admin_code_rejected', $actor->getKey());
-                return ['status' => $recovery->admin_attempts >= SecurityCode::MAX_ATTEMPTS ? 'locked' : 'invalid_code'];
+                return ProgressiveAuthThrottle::recordFailure($key) ?? ['status' => 'invalid_code'];
             }
+            ProgressiveAuthThrottle::clear($key);
             AccountEmail::assertAvailable($recovery->new_email, $target, true);
             $recovery->update(['status' => 'pending', 'authorized_at' => now(), 'code_hash' => null]);
             $target->forceFill(['email_recovery_id' => $recovery->id])->save();
@@ -103,7 +105,6 @@ class StaffEmailRecoveryService
             $recovery = $this->locked($target, $id);
             if (! $this->validAuthorization($recovery, $actor, $target, $session)) return ['status' => 'invalid'];
             if (now()->gte($recovery->code_expires_at)) { $this->recordExpiration($recovery); return ['status' => 'expired']; }
-            if ($recovery->admin_attempts >= SecurityCode::MAX_ATTEMPTS) return ['status' => 'locked'];
             if ($retry = $this->resendAfter($recovery)) return ['status' => 'cooldown', 'retry_after' => $retry];
             do { $code = SecurityCode::generate(); } while (Hash::check('staff-recovery|'.$code, $recovery->code_hash));
             $recovery->update(['code_hash' => Hash::make('staff-recovery|'.$code), 'last_sent_at' => now()]);
@@ -118,7 +119,6 @@ class StaffEmailRecoveryService
             $this->password($actor, $password);
             $recovery = $this->locked($target, $id);
             if (! $this->validRecovery($recovery, $target)) return ['status' => 'invalid'];
-            if ($recovery->failed_attempts >= SecurityCode::MAX_ATTEMPTS) return ['status' => 'locked'];
             if ($retry = $this->resendAfter($recovery)) return ['status' => 'cooldown', 'retry_after' => $retry];
             $this->recordExpiration($recovery);
             AccountEmail::assertAvailable($recovery->new_email, $target, true);
@@ -166,11 +166,14 @@ class StaffEmailRecoveryService
     {
         return $this->withToken($token, function (StaffEmailRecovery $recovery, User $target) use ($password): array {
             if (! $this->usableLink($recovery, $target)) return ['status' => 'invalid'];
+            $key = ProgressiveAuthThrottle::key('staff-recovery-password', $target->getKey());
+            if ($blocked = ProgressiveAuthThrottle::blocked($key)) return $blocked;
             if (! Hash::check($password, $target->password_hash)) {
                 $recovery->increment('failed_attempts');
                 $this->audit($recovery, 'staff_password_rejected', null);
-                return ['status' => $recovery->failed_attempts >= SecurityCode::MAX_ATTEMPTS ? 'locked' : 'invalid_password'];
+                return ProgressiveAuthThrottle::recordFailure($key) ?? ['status' => 'invalid_password'];
             }
+            ProgressiveAuthThrottle::clear($key);
             app(AccountEmailChangeService::class)->complete($target, $recovery->new_email);
             $target->forceFill(['email_recovery_id' => null])->save();
             $recovery->update(['status' => 'completed', 'active_user_id' => null, 'token_hash' => null, 'resolved_at' => now()]);
@@ -218,18 +221,18 @@ class StaffEmailRecoveryService
         return ['id' => $recovery->id, 'status' => in_array($recovery->status, ['authorizing', 'pending'], true) && now()->gte($expiry) ? 'expired' : $recovery->status,
             'new_email' => $recovery->new_email, 'expires_at' => $expiry->toIso8601String(), 'resend_after' => $this->resendAfter($recovery),
             'confirmation_email' => app(PasswordResetService::class)->maskEmail($recovery->admin_email),
-            'attempts_remaining' => max(0, SecurityCode::MAX_ATTEMPTS - ($recovery->status === 'authorizing' ? $recovery->admin_attempts : $recovery->failed_attempts))];
+            'retry_after' => ProgressiveAuthThrottle::blocked(ProgressiveAuthThrottle::key($recovery->status === 'authorizing' ? 'staff-recovery-admin-code' : 'staff-recovery-password', $recovery->status === 'authorizing' ? $recovery->admin_user_id : $recovery->user_id))['retry_after'] ?? 0];
     }
 
     public function canDeliver(StaffEmailRecovery $recovery, string $kind): bool
     {
         $target = User::find($recovery->user_id);
         if (! $target) return false;
-        if ($kind === 'link') return $this->validRecovery($recovery, $target) && now()->lt($recovery->expires_at) && $recovery->failed_attempts < SecurityCode::MAX_ATTEMPTS;
+        if ($kind === 'link') return $this->validRecovery($recovery, $target) && now()->lt($recovery->expires_at);
         $admin = User::find($recovery->admin_user_id);
         $session = PersonalAccessToken::find($recovery->session_token_id);
         return $admin && $session && $this->validAuthorization($recovery, $admin, $target, $session)
-            && app(AccountSessionService::class)->isUsable($session, $admin) && now()->lt($recovery->code_expires_at) && $recovery->admin_attempts < SecurityCode::MAX_ATTEMPTS;
+            && app(AccountSessionService::class)->isUsable($session, $admin) && now()->lt($recovery->code_expires_at);
     }
 
     private function withAdmin(User $requester, int $targetId, callable $action): array
@@ -293,7 +296,7 @@ class StaffEmailRecoveryService
     private function usableLink(StaffEmailRecovery $recovery, User $target): bool
     {
         $this->recordExpiration($recovery);
-        return $this->validRecovery($recovery, $target) && now()->lt($recovery->expires_at) && $recovery->failed_attempts < SecurityCode::MAX_ATTEMPTS;
+        return $this->validRecovery($recovery, $target) && now()->lt($recovery->expires_at);
     }
 
     private function eligible(User $user): bool
@@ -308,7 +311,7 @@ class StaffEmailRecoveryService
     {
         if (! Hash::check($password, $user->password_hash)) throw ValidationException::withMessages(['current_password' => 'The owner password is incorrect.']);
     }
-    private function resendAfter(StaffEmailRecovery $recovery): int { return max(0, $recovery->last_sent_at->timestamp + SecurityCode::RESEND_COOLDOWN_SECONDS - now()->timestamp); }
+    private function resendAfter(StaffEmailRecovery $recovery): int { return max(0, $recovery->last_sent_at->timestamp + SecurityCode::RESEND_COOLDOWN_SECONDS - now()->timestamp, app(AuthenticationEmailPolicy::class)->status($recovery->authorized_at ? $recovery->new_email : $recovery->admin_email, 'privileged_change')['resend_after']); }
 
     private function sendCode(StaffEmailRecovery $recovery, string $code): string
     {

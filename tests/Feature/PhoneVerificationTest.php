@@ -271,10 +271,13 @@ class PhoneVerificationTest extends TestCase
             'password_hash' => \Illuminate\Support\Facades\Hash::make('Current-password-123')]);
         Http::fake();
         for ($i = 0; $i < 5; $i++) {
-            $this->postJson('/api/phone-verification/send', ['phone' => '0917123456'.$i, 'current_password' => 'wrong'])->assertUnprocessable();
+            $this->postJson('/api/phone-verification/send', ['phone' => '0917123456'.$i, 'current_password' => 'wrong'])->assertStatus($i === 4 ? 429 : 422);
         }
         $this->postJson('/api/phone-verification/send', ['phone' => '09171234567', 'current_password' => 'Current-password-123'])->assertStatus(429);
         Http::assertNothingSent();
+        $this->travel(60)->seconds();
+        $this->fakeSend();
+        $this->postJson('/api/phone-verification/send', ['phone' => '09171234567', 'current_password' => 'Current-password-123'])->assertOk();
     }
 
     public function test_email_queue_failure_does_not_undo_successful_replacement(): void
@@ -500,12 +503,13 @@ class PhoneVerificationTest extends TestCase
         $this->fakeSend('654321', '09911234567');
         $new = $this->postJson('/api/phone-verification/send', ['phone' => '09911234567'])->assertOk()->json('challenge_id');
         $this->assertSame(4, DB::table('phone_verification_attempts')->value('failed_attempts'));
-        $this->verify($new, '000000')->assertUnprocessable();
+        $this->verify($new, '000000')->assertTooManyRequests()->assertJsonPath('retry_after', 60);
         $this->verify($new, '654321')->assertStatus(429);
         $this->travel(60)->seconds();
         $this->postJson('/api/phone-verification/send', ['phone' => '09761234567'])->assertStatus(429);
         Http::assertSentCount(1);
         $this->assertNull($this->customer->fresh()->phone_verified_at);
+        $this->verify($new, '654321')->assertOk();
     }
 
     public function test_resend_supersedes_generation_and_retains_failed_attempt_budget(): void
@@ -520,11 +524,12 @@ class PhoneVerificationTest extends TestCase
         $next = $this->postJson('/api/phone-verification/resend', ['challenge_id' => $id])->assertOk()->json('challenge_id');
         $this->assertNotSame($id, $next);
         $this->verify($id)->assertStatus(409);
-        $this->verify($next, '123456')->assertUnprocessable();
+        $this->verify($next, '123456')->assertTooManyRequests()->assertJsonPath('retry_after', 60);
         $this->verify($next, '654321')->assertStatus(429);
         $this->travel(60)->seconds();
         $this->postJson('/api/phone-verification/resend', ['challenge_id' => $next])->assertStatus(429);
         $this->assertNull($this->customer->fresh()->phone_verified_at);
+        $this->verify($next, '654321')->assertOk();
     }
 
     public function test_expired_and_foreign_challenges_cannot_verify(): void
@@ -877,7 +882,63 @@ class PhoneVerificationTest extends TestCase
 
     public static function sendLimitSettings(): array
     {
-        return array_map(fn ($v) => [$v], ['user_hourly_limit', 'phone_hourly_limit', 'ip_hourly_limit', 'global_hourly_limit', 'global_daily_limit', 'user_daily_limit', 'phone_daily_limit']);
+        return array_map(fn ($v) => [$v], ['ip_hourly_limit', 'global_hourly_limit', 'global_daily_limit']);
+    }
+
+    public function test_phone_code_cooldowns_are_progressive_capped_and_survive_resends(): void
+    {
+        $this->fakeSend(); $id = $this->send();
+        foreach ([60, 180, 300, 300] as $seconds) {
+            foreach (range(1, 4) as $i) $this->verify($id, '000000')->assertUnprocessable();
+            $this->verify($id, '000000')->assertTooManyRequests()->assertJsonPath('retry_after', $seconds)->assertHeader('Retry-After', (string) $seconds);
+            $this->travel($seconds)->seconds();
+            // The provider's five-minute OTP expiry remains authoritative.
+            if ($seconds === 300) {
+                $this->fakeSend();
+                $id = $this->postJson('/api/phone-verification/resend', ['challenge_id' => $id])->assertOk()->json('challenge_id');
+            }
+        }
+        $this->verify($id)->assertOk();
+    }
+
+    public function test_cancelled_phone_challenge_does_not_reset_resend_or_guessing_progression(): void
+    {
+        $this->fakeSend(); $id = $this->send();
+        foreach (range(1, 4) as $i) $this->verify($id, '000000')->assertUnprocessable();
+        $this->postJson('/api/phone-verification/cancel', ['challenge_id' => $id])->assertOk();
+        $this->postJson('/api/phone-verification/send', ['phone' => '09171234567'])->assertTooManyRequests()->assertJsonPath('retry_after', 60);
+        $this->travel(60)->seconds(); $this->fakeSend();
+        $next = $this->postJson('/api/phone-verification/send', ['phone' => '09171234567'])->assertOk()->assertJsonPath('resend_after', 180)->json('challenge_id');
+        $this->verify($next, '000000')->assertTooManyRequests()->assertJsonPath('retry_after', 60);
+        $this->travel(60)->seconds();
+        $this->verify($next)->assertOk();
+    }
+
+    public function test_failed_sms_issuance_does_not_advance_resend_progression(): void
+    {
+        Http::fake(['*' => Http::response(['status' => 'error'], 200)]);
+        $this->postJson('/api/phone-verification/send', ['phone' => '09171234567'])->assertStatus(503);
+        $this->travel(60)->seconds(); $this->fakeSend();
+        $sent = $this->postJson('/api/phone-verification/send', ['phone' => '09171234567'])->assertOk()->assertJsonPath('resend_after', 60);
+        $this->travel(60)->seconds();
+        Http::swap(new Factory); Http::fake(['*' => Http::response(['status' => 'error'], 200)]);
+        $this->postJson('/api/phone-verification/resend', ['challenge_id' => $sent->json('challenge_id')])->assertStatus(503);
+        $this->travel(60)->seconds(); $this->fakeSend();
+        $this->postJson('/api/phone-verification/send', ['phone' => '09171234567'])->assertOk()->assertJsonPath('resend_after', 180);
+    }
+
+    public function test_sms_resends_progress_without_old_user_or_phone_hour_day_limits(): void
+    {
+        $this->fakeSend(); $id = $this->send();
+        foreach (range(1, 25) as $send) {
+            $seconds = [1 => 60, 2 => 180][$send] ?? 300;
+            $this->getJson('/api/phone-verification/state')->assertOk()->assertJsonPath('challenge.resend_after', $seconds);
+            $this->postJson('/api/phone-verification/resend', ['challenge_id' => $id])->assertTooManyRequests()->assertHeader('Retry-After', (string) $seconds);
+            $this->travel($seconds)->seconds();
+            $this->fakeSend();
+            $id = $this->postJson('/api/phone-verification/resend', ['challenge_id' => $id])->assertOk()->json('challenge_id');
+        }
+        $this->verify($id)->assertOk();
     }
 
     public function test_disabled_and_available_only_flags_preserve_submission_validation(): void

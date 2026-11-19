@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Support\ProgressiveAuthThrottle;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\NullStore;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -10,7 +11,6 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -96,14 +96,14 @@ class CustomerPhoneVerificationService
                 self::fail('This verification has changed. Start again.', 409);
             }
             if ($user->phone_verified_at && $generation === null) {
-                $key = 'sms:password:'.$user->getKey();
-                if (RateLimiter::tooManyAttempts($key, 5)) self::fail('Too many attempts. Try again later.', 429);
+                $key = ProgressiveAuthThrottle::key('phone-password', $user->getKey());
+                if ($blocked = ProgressiveAuthThrottle::blocked($key)) ProgressiveAuthThrottle::reject($blocked);
                 if (! $password || ! Hash::check($password, (string) $user->password_hash)) {
-                    RateLimiter::hit($key, 3600);
+                    if ($blocked = ProgressiveAuthThrottle::recordFailure($key)) ProgressiveAuthThrottle::reject($blocked);
                     throw ValidationException::withMessages(['current_password' => 'Current password is incorrect.']);
                 }
+                ProgressiveAuthThrottle::clear($key);
             }
-            $this->budget($attempt);
             if ($attempt && Carbon::parse($attempt->resend_at)->isFuture()) {
                 self::fail('Please wait before sending another code.', 429, 'resend_cooldown', [
                     'resend_after' => max(1, (int) ceil(now()->diffInSeconds(Carbon::parse($attempt->resend_at), false))),
@@ -114,15 +114,18 @@ class CustomerPhoneVerificationService
                 ->where('expires_at', '>', now())->whereNotIn('status', ['consumed', 'superseded'])->exists()) {
                 self::fail('This number has an active verification. Try again later.', 409);
             }
+            $sendKeys = ['sms:resend:user:'.$user->getKey(), 'sms:resend:phone:'.hash('sha256', $phone)];
+            $wait = max(array_map(fn ($key) => ProgressiveAuthThrottle::resendAfter(Cache::get($key, [])), $sendKeys));
+            if ($wait) self::fail('Please wait before sending another code.', 429, 'resend_cooldown', ['retry_after' => $wait, 'resend_after' => $wait]);
             app(SmsSendBudget::class)->reserve($user->getKey(), $phone, $ip);
             $id = (string) Str::uuid();
             $reset = ! $attempt || Carbon::parse($attempt->attempts_reset_at)->lte(now());
             $values = [
-                'phone' => $phone, 'generation' => $id, 'status' => 'sending', 'code_fingerprint' => null,
+                'user_id' => $user->getKey(), 'phone' => $phone, 'generation' => $id, 'status' => 'sending', 'code_fingerprint' => null,
                 'original_phone' => $user->phone, 'original_verified_at' => $user->getRawOriginal('phone_verified_at'),
                 'expires_at' => now()->addMinutes(5), 'resend_at' => now()->addSeconds(config('services.sms_verification.resend_seconds', 60)),
                 'failed_attempts' => $reset ? 0 : $attempt->failed_attempts,
-                'attempts_reset_at' => $reset ? now()->addSeconds(config('services.sms_verification.attempt_window_seconds', 3600)) : $attempt->attempts_reset_at,
+                'attempts_reset_at' => $reset ? now()->addSeconds(ProgressiveAuthThrottle::RESET_SECONDS) : $attempt->attempts_reset_at,
                 'updated_at' => now(),
             ];
             DB::table('phone_verification_attempts')->updateOrInsert(['user_id' => $user->getKey()], [...$values, 'created_at' => now()]);
@@ -143,6 +146,12 @@ class CustomerPhoneVerificationService
                 self::fail('This verification has changed. Start again.', 409);
             }
 
+            foreach ($sendKeys as $key) {
+                $history = array_values(array_filter(Cache::get($key, []), fn ($at) => $at > now()->timestamp - ProgressiveAuthThrottle::RESET_SECONDS));
+                Cache::put($key, [...$history, now()->timestamp], ProgressiveAuthThrottle::RESET_SECONDS);
+            }
+            $wait = max(array_map(fn ($key) => ProgressiveAuthThrottle::resendAfter(Cache::get($key, [])), $sendKeys));
+            DB::table('phone_verification_attempts')->where('generation', $id)->update(['resend_at' => now()->addSeconds($wait)]);
             return $this->timing($this->attempt($user->getKey()));
         });
     }
@@ -175,17 +184,19 @@ class CustomerPhoneVerificationService
                 self::fail('Code expired. Send a new code.', 422);
             }
             $matches = hash_equals((string) $attempt->code_fingerprint, $this->provider->fingerprint($generation, $code));
+            $key = ProgressiveAuthThrottle::key('phone-code', $user->getKey());
             if ($attempt->status !== 'confirmed' || ! $matches) {
-                $this->budget($attempt);
+                if ($blocked = ProgressiveAuthThrottle::blocked($key)) ProgressiveAuthThrottle::reject($blocked);
             }
             if (! $matches) {
                 DB::table('phone_verification_attempts')->where('generation', $generation)->increment('failed_attempts');
+                if ($blocked = ProgressiveAuthThrottle::recordFailure($key)) ProgressiveAuthThrottle::reject($blocked);
                 self::fail('Incorrect code. Please try again.', 422);
             }
             $this->usable(User::findOrFail($user->getKey()));
             if ($attempt->status !== 'confirmed') {
                 DB::table('phone_verification_attempts')->where('generation', $generation)->where('status', 'active')
-                    ->update(['status' => 'verifying', 'failed_attempts' => $attempt->failed_attempts + 1]);
+                    ->update(['status' => 'verifying']);
                 if (! $this->provider->verify($attempt->phone, $code)) {
                     DB::table('phone_verification_attempts')->where('generation', $generation)->where('status', 'verifying')->update(['status' => 'active']);
                     self::fail('Code could not be verified. Check it or send a new code.', 503);
@@ -219,6 +230,9 @@ class CustomerPhoneVerificationService
                 self::fail('Verification could not be saved. Retry the same code before it expires, or start again.', 503);
             }
 
+            ProgressiveAuthThrottle::clear($key);
+            Cache::forget('sms:resend:user:'.$user->getKey());
+            Cache::forget('sms:resend:phone:'.hash('sha256', $attempt->phone));
             if ($replacement) {
                 try {
                     $recipient = $user->fresh();
@@ -262,14 +276,6 @@ class CustomerPhoneVerificationService
         }
     }
 
-    private function budget(?object $attempt): void
-    {
-        if ($attempt && Carbon::parse($attempt->attempts_reset_at)->isFuture()
-            && $attempt->failed_attempts >= config('services.sms_verification.max_attempts', 5)) {
-            self::fail('Too many attempts. Try again later.', 429, 'attempts_exceeded');
-        }
-    }
-
     private function locked(int $userId, string $phone, callable $callback): array
     {
         $userLock = Cache::lock('sms:user:'.$userId, 30);
@@ -294,12 +300,12 @@ class CustomerPhoneVerificationService
     private function timing(object $attempt): array
     {
         $active = in_array($attempt->status, ['active', 'confirmed'], true) && Carbon::parse($attempt->expires_at)->isFuture();
-        $locked = Carbon::parse($attempt->attempts_reset_at)->isFuture() && $attempt->failed_attempts >= config('services.sms_verification.max_attempts', 5)
-            && $attempt->status !== 'confirmed';
+        $retry = ProgressiveAuthThrottle::blocked(ProgressiveAuthThrottle::key('phone-code', $attempt->user_id ?? request()->user()?->getKey() ?? 0))['retry_after'] ?? 0;
         return ['success' => true, 'message' => 'Verification code sent.', 'challenge_id' => $attempt->generation,
             'masked_destination' => substr($attempt->phone, 0, 4).' •••• '.substr($attempt->phone, -3),
-            'status' => $locked ? 'locked' : ($active ? 'active' : (Carbon::parse($attempt->expires_at)->lte(now()) ? 'expired' : $attempt->status)),
-            'can_verify' => $active && ! $locked,
+            'status' => $active ? 'active' : (Carbon::parse($attempt->expires_at)->lte(now()) ? 'expired' : $attempt->status),
+            'retry_after' => $retry,
+            'can_verify' => $active,
             'replacement' => $attempt->original_verified_at !== null && $attempt->original_phone !== $attempt->phone,
             'expires_in' => max(0, (int) ceil(now()->diffInSeconds(Carbon::parse($attempt->expires_at), false))),
             'resend_after' => max(0, (int) ceil(now()->diffInSeconds(Carbon::parse($attempt->resend_at), false)))];
@@ -307,6 +313,9 @@ class CustomerPhoneVerificationService
 
     private static function fail(string $message, int $status, string $code = 'phone_verification_failed', array $extra = []): never
     {
-        throw new HttpResponseException(response()->json(['success' => false, 'code' => $code, 'message' => $message, ...$extra], $status));
+        if ($status === 429) $extra['retry_after'] ??= $extra['resend_after'] ?? 1;
+        $response = response()->json(['success' => false, 'code' => $code, 'message' => $message, ...$extra], $status);
+        if ($status === 429) $response->header('Retry-After', (string) $extra['retry_after'])->header('Cache-Control', 'no-store');
+        throw new HttpResponseException($response);
     }
 }

@@ -4,7 +4,6 @@ namespace App\Support;
 
 final class SecurityCode
 {
-    public const MAX_ATTEMPTS = 5;
     public const RESEND_COOLDOWN_SECONDS = 60;
 
     public static function generate(): string

@@ -19,11 +19,9 @@ return [
     ],
     'email' => [
         'cooldown' => (int) env('AUTH_EMAIL_COOLDOWN_SECONDS', 60),
-        'hour' => (int) env('AUTH_EMAIL_HOURLY_LIMIT', 12),
-        'day' => (int) env('AUTH_EMAIL_DAILY_LIMIT', 50),
         'ip_hour' => (int) env('AUTH_EMAIL_IP_HOURLY_LIMIT', 60),
         'ip_day' => (int) env('AUTH_EMAIL_IP_DAILY_LIMIT', 200),
-        // Aggregate windows above remain authoritative across every purpose.
+        // Source-IP emergency windows remain separate from interactive resend pacing.
         'purposes' => [
             'registration' => [],
             'login' => [],

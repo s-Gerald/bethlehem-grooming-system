@@ -83,11 +83,11 @@ class StaffEmailRecoveryController extends Controller
         }
         $message = match ($result['status']) {
             'invalid_code' => 'The code is incorrect.', 'expired' => 'This code has expired. Start a new request.',
-            'invalid_password' => 'The current account password is incorrect.', 'locked' => 'Too many attempts. Contact the clinic administrator.',
+            'invalid_password' => 'The current account password is incorrect.', 'verification_cooldown' => 'Too many attempts. Please wait before trying again.',
             'cooldown' => 'Please wait before requesting another email.',
             default => 'This recovery is expired or unavailable. Contact the clinic administrator.',
         };
-        $response = response()->json(['message' => $message, ...$result], $result['status'] === 'cooldown' ? 429 : 422)->header('Cache-Control', 'no-store');
+        $response = response()->json(['message' => $message, ...$result], isset($result['retry_after']) ? 429 : 422)->header('Cache-Control', 'no-store');
         if (isset($result['retry_after'])) $response->header('Retry-After', (string) $result['retry_after']);
         return $response;
     }

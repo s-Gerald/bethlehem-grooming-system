@@ -269,7 +269,7 @@ class GroomingCompletionSmsTest extends TestCase
     }
 
     #[DataProvider('walkinBudgetLimits')]
-    public function test_walkin_delivery_obeys_shared_send_budget(string $setting, string $priorPhone): void
+    public function test_walkin_delivery_obeys_emergency_budgets_without_removed_phone_quotas(string $setting, string $priorPhone): void
     {
         config(['services.sms_verification.'.$setting => 1]);
         DB::table('bookings')->update(['user_id' => null]);
@@ -279,8 +279,10 @@ class GroomingCompletionSmsTest extends TestCase
 
         $this->deliver();
 
-        $this->assertDatabaseHas('grooming_completion_sms', ['booking_id' => 1, 'status' => 'failed']);
-        Http::assertNothingSent();
+        $removed = in_array($setting, ['phone_hourly_limit', 'phone_daily_limit'], true);
+        $this->assertDatabaseHas('grooming_completion_sms', ['booking_id' => 1, 'status' => $removed ? 'accepted' : 'failed']);
+        if ($removed) Http::assertSentCount(1);
+        else Http::assertNothingSent();
     }
 
     public static function walkinBudgetLimits(): array

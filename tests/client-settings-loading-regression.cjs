@@ -256,6 +256,38 @@ async function testEmailChangeCanResumeAndCancelWithoutStartingAnotherRequest() 
   assert.equal(page('settingsEmailAction').textContent, 'Change');
 }
 
+async function testSecurityCodeCountdownRecoversWithoutSendingOrSubmitting() {
+  for (const seconds of [60, 180, 300]) {
+    let confirms = 0, sends = 0;
+    const challenge = { id: 'email-challenge', kind: 'email', email: 'new@gmail.com',
+      expires_at: '2099-01-01', retry_after: seconds, attempts_remaining: 0, resend_after: seconds };
+    const page = createPage(async () => ({ user: { email: 'current@gmail.com' } }), {
+      getCustomerSecurityChange: async kind => ({ challenge: kind === 'email' ? challenge : null }),
+      confirmCustomerSecurityChange: async () => { confirms++; throw {status: 429, retryAfter: seconds}; },
+      resendCustomerSecurityChange: async () => { sends++; },
+    });
+    await flush();
+    await page('settingsEmailAction').dispatch('click');
+    page('settingsVerificationCode').value = '012345';
+    await page('settingsVerificationCode').dispatch('input');
+    assert.equal(page('settingsConfirmationSubmit').disabled, true);
+    assert.equal(page('settingsVerificationCode').disabled, true);
+    page.advanceSeconds(seconds - 1);
+    assert.match(page('settingsConfirmationSubmit').textContent, /1s/);
+    page.advanceSeconds(1);
+    assert.equal(page('settingsConfirmationSubmit').disabled, false);
+    assert.equal(Boolean(page('settingsVerificationCode').disabled), false);
+    assert.equal(page('settingsVerificationResend').disabled, false);
+    assert.equal(confirms + sends, 0, 'Countdown completion makes no requests');
+    await page('settingsConfirmationForm').dispatch('submit');
+    assert.equal(confirms, 1);
+    assert.equal(page('settingsConfirmationSubmit').disabled, true);
+    page.advanceSeconds(seconds);
+    assert.equal(page('settingsConfirmationSubmit').disabled, false);
+    assert.equal(confirms, 1);
+  }
+}
+
 async function testPasswordPolicyErrorsStayBesideTheirFields() {
   for (const [old, password, confirmation, field, message] of [
     ['', 'violet meadow river passphrase', 'violet meadow river passphrase', 'currentPassword', 'Enter your current password.'],
@@ -442,6 +474,7 @@ async function testConfirmedPhoneRefreshUpdatesExistingSettingsFields() {
   await testSettingsWaitsForProfile();
   await testPasswordChangeSubmissionAndErrors();
   await testEmailChangeCanResumeAndCancelWithoutStartingAnotherRequest();
+  await testSecurityCodeCountdownRecoversWithoutSendingOrSubmitting();
   await testPasswordPolicyErrorsStayBesideTheirFields();
   await testPasswordInputCorrectionRefreshesInlineErrors();
   await testSettingsFailureKeepsFormHiddenUntilRetry();

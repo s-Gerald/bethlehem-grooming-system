@@ -80,9 +80,9 @@ class PasswordResetTest extends TestCase
         $this->freezeTime();
         Notification::fake();
         $user = $this->createUser('customer');
-        config(['authentication.email.hour' => 2]);
+        config(['authentication.email.ip_hour' => 2]);
         app(\App\Services\AuthenticationEmailPolicy::class)->send($user->email, fn () => null, 'login');
-        app(\App\Services\AuthenticationEmailPolicy::class)->send($user->email, fn () => null, 'privileged_change');
+        app(\App\Services\AuthenticationEmailPolicy::class)->send('other@example.test', fn () => null, 'privileged_change');
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertTooManyRequests();
         $this->postJson('/api/password/forgot', ['email' => 'unknown@example.test'])->assertUnprocessable()->assertJsonPath('code', 'account_not_found');
         Notification::assertNothingSent();
@@ -304,31 +304,25 @@ class PasswordResetTest extends TestCase
         $this->assertDatabaseCount('password_reset_requests', 0);
     }
 
-    public function test_wrong_or_other_account_code_cannot_continue_and_five_failures_lock_the_request(): void
+    public function test_recovery_otp_progresses_and_same_unexpired_code_works_after_cooldown(): void
     {
+        $this->freezeTime();
         Notification::fake();
         $user = $this->createUser('customer');
-        $other = $this->createUser('customer', 'other@example.test');
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
         $code = $this->resetCodeSentTo($user);
-
-        $this->postJson('/api/password/code/verify', [
-            'email' => $other->email,
-            'code' => $code,
-        ])->assertUnprocessable()->assertJsonPath('message', 'Invalid or expired verification code.');
-
+        $other = $this->createUser('customer', 'other@example.test');
+        $this->postJson('/api/password/code/verify', ['email' => $other->email, 'code' => $code])->assertUnprocessable();
         $wrong = $code === '000000' ? '000001' : '000000';
-        for ($attempt = 0; $attempt < 5; $attempt++) {
-            $this->postJson('/api/password/code/verify', [
-                'email' => $user->email,
-                'code' => $wrong,
-            ])->assertUnprocessable()->assertJsonPath('message', 'Invalid or expired verification code.');
+        foreach ([60, 180, 300, 300] as $seconds) {
+            foreach (range(1, 4) as $i) $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $wrong])->assertUnprocessable();
+            $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $wrong])
+                ->assertTooManyRequests()->assertJsonPath('retry_after', $seconds)->assertHeader('Retry-After', (string) $seconds);
+            $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $code])->assertTooManyRequests();
+            $this->travel($seconds)->seconds();
         }
-        $this->assertSame(5, PasswordResetRequest::query()->sole()->verification_attempts);
-        $this->postJson('/api/password/code/verify', [
-            'email' => $user->email,
-            'code' => $code,
-        ])->assertUnprocessable();
+        $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $code])->assertOk();
+        $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $code])->assertUnprocessable();
     }
 
     public function test_expired_password_reset_code_cannot_change_the_password(): void
@@ -575,7 +569,7 @@ class PasswordResetTest extends TestCase
         preg_match('/set-up-password#token=([a-zA-Z0-9]+)/', $messages[0]->getOriginalMessage()->getHtmlBody(), $matches);
         $this->assertNotEmpty($matches);
         $this->assertSame('valid', $service->inspectStaffSetup($matches[1])['status']);
-        $this->travel(61)->seconds();
+        $this->travel(181)->seconds();
         $service->resendStaffSetupLink($user);
         $this->travel(25)->hours();
         $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
@@ -603,13 +597,15 @@ class PasswordResetTest extends TestCase
         $this->assertSame($before, PasswordResetRequest::query()->sole()->getAttributes());
     }
 
-    public function test_public_recovery_resend_uses_the_sixty_second_cooldown_for_repeated_requests(): void
+    public function test_public_recovery_resend_progresses_only_when_a_message_is_issued(): void
     {
         $this->freezeTime();
-        foreach (range(1, 4) as $attempt) {
-            $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertUnprocessable()->assertJsonPath('resend_after', 60);
-            $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertTooManyRequests()->assertHeader('Retry-After', '60');
-            $this->travel(60)->seconds();
+        Notification::fake();
+        $user = $this->createUser('customer');
+        foreach ([60, 180, 300, 300] as $seconds) {
+            $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()->assertJsonPath('resend_after', $seconds);
+            $this->postJson('/api/password/forgot', ['email' => $user->email])->assertTooManyRequests()->assertHeader('Retry-After', (string) $seconds);
+            $this->travel($seconds)->seconds();
         }
     }
 
@@ -625,7 +621,7 @@ class PasswordResetTest extends TestCase
         $service->sendCode($user->email);
         $this->assertSame(2, $request->fresh()->verification_attempts);
         $before = $request->fresh()->getAttributes();
-        $this->travel(61)->seconds();
+        $this->travel(181)->seconds();
         $this->mock(\Illuminate\Contracts\Notifications\Dispatcher::class, fn ($mock) => $mock->shouldReceive('send')->once()->andThrow(new \RuntimeException('queue unavailable')));
         try {
             $service->sendCode($user->email);
@@ -649,14 +645,14 @@ class PasswordResetTest extends TestCase
         $this->assertDatabaseCount('jobs', 1);
     }
 
-    public function test_locked_password_reset_issuance_is_not_mailed(): void
+    public function test_verification_cooldown_does_not_suppress_valid_reset_mail(): void
     {
         $this->useDatabaseMailQueue();
         $user = $this->createUser('customer');
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
-        PasswordResetRequest::query()->update(['verification_attempts' => 5]);
+        foreach (range(1, 5) as $i) \App\Support\ProgressiveAuthThrottle::recordFailure(\App\Support\ProgressiveAuthThrottle::key('password-reset', $user->getKey()));
         $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+        $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
     }
 
     #[DataProvider('passwordResetRoles')]
@@ -731,25 +727,24 @@ class PasswordResetTest extends TestCase
         Notification::assertNotSentTo($user, PasswordChangedNotification::class);
     }
 
-    public function test_five_failures_cannot_be_bypassed_by_resending_but_expiry_allows_recovery(): void
+    public function test_recovery_resend_rotates_code_without_resetting_failure_progression(): void
     {
-        Notification::fake();
+        $this->freezeTime(); Notification::fake();
         $user = $this->createUser('customer');
         $service = app(\App\Services\PasswordResetService::class);
         $service->sendCode($user->email);
-        for ($attempt = 0; $attempt < 5; $attempt++) {
-            $service->verifyCode($user->email, '000000');
-        }
-        $before = PasswordResetRequest::query()->sole();
-        $this->travel(61)->seconds();
-        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.41'])
-            ->postJson('/api/password/forgot', ['email' => $user->email])->assertTooManyRequests();
-        $this->assertSame($before->getAttributes(), $before->fresh()->getAttributes());
-        Notification::assertSentToTimes($user, PasswordResetCodeNotification::class, 1);
-        $this->travelTo($before->expires_at);
+        $old = $this->resetCodeSentTo($user);
+        $wrong = $old === '000000' ? '000001' : '000000';
+        foreach (range(1, 5) as $i) $service->verifyCode($user->email, $wrong);
+        $this->travel(60)->seconds();
         $service->sendCode($user->email);
-        $this->assertSame(0, $before->fresh()->verification_attempts);
-        $this->assertSame('valid', $service->verifyCode($user->email, $this->resetCodeSentTo($user))['status']);
+        $code = $this->resetCodeSentTo($user);
+        $this->assertNotSame($old, $code);
+        $this->assertSame('invalid', $service->verifyCode($user->email, $old)['status']);
+        foreach (range(1, 3) as $i) $service->verifyCode($user->email, $old);
+        $this->assertSame(180, $service->verifyCode($user->email, $old)['retry_after']);
+        $this->travel(180)->seconds();
+        $this->assertSame('valid', $service->verifyCode($user->email, $code)['status']);
     }
 
     public function test_password_change_confirmation_is_encrypted_queued_and_contains_no_credentials(): void

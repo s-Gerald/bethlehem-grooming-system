@@ -113,6 +113,7 @@ class CustomerPasswordChangeTest extends TestCase
             'verified_token_hash' => hash('sha256', str_repeat('g', 64)), 'expires_at' => now()->addMinutes(15), 'last_sent_at' => now()]);
         $pendingOld = $this->postJson('/api/sign-in', ['identifier' => $this->customer->email, 'password' => self::OLD])->assertAccepted();
         $oldCode = Notification::sent($this->customer, ConfirmLoginNotification::class)->last()->code;
+        $this->travel(60)->seconds();
         $started = $this->change()->assertAccepted()->assertJsonPath('status', 'pending');
         $this->assertTrue(Hash::check(self::OLD, $this->customer->fresh()->password_hash));
         $this->assertDatabaseCount('personal_access_tokens', 2);
@@ -227,26 +228,61 @@ class CustomerPasswordChangeTest extends TestCase
         $this->customerSession()->postJson($path, [...$request, 'email' => 'different@gmail.com'])->assertTooManyRequests();
     }
 
-    public function test_password_codes_expire_resend_and_lock_without_changing_the_password(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('cacheStores')]
+    public function test_customer_security_code_progresses_and_recovers_without_invalidating_the_code(string $store): void
     {
+        $this->freezeTime();
+        if ($store === 'database') (require base_path('database/migrations/0001_01_01_000001_create_cache_table.php'))->up();
+        config(['cache.default' => $store]);
+        $started = $this->change()->assertAccepted();
+        $code = $this->code()->code;
+        $wrong = $code === '000000' ? '000001' : '000000';
+        foreach ([60, 180, 300] as $seconds) {
+            foreach (range(1, 4) as $i) $this->confirmChange($started, $wrong)->assertUnprocessable();
+            $this->confirmChange($started, $wrong)->assertTooManyRequests()->assertJsonPath('retry_after', $seconds)->assertHeader('Retry-After', (string) $seconds);
+            $this->confirmChange($started, $code)->assertTooManyRequests();
+            $this->travel($seconds)->seconds();
+        }
+        $this->assertTrue(Hash::check(self::OLD, $this->customer->fresh()->password_hash));
+        $this->confirmChange($started, $code)->assertOk();
+        $this->assertTrue(Hash::check(self::NEW, $this->customer->fresh()->password_hash));
+    }
+
+    public function test_cancel_and_resend_cannot_reset_customer_code_failure_progression(): void
+    {
+        $this->freezeTime();
         $started = $this->change()->assertAccepted();
         $id = $started->json('challenge.id');
-        $path = '/api/customer/security-changes/password/'.$id;
+        $code = $this->code()->code;
+        $wrong = $code === '000000' ? '000001' : '000000';
+        foreach (range(1, 4) as $i) $this->confirmChange($started, $wrong)->assertUnprocessable();
+        $this->travel(60)->seconds();
+        $this->customerSession()->postJson('/api/customer/security-changes/password/'.$id.'/resend')->assertOk()->assertJsonPath('challenge.resend_after', 180);
+        $this->assertNotSame($code, $this->code()->code);
+        $this->confirmChange($started, $code)->assertTooManyRequests()->assertJsonPath('retry_after', 60);
+        $this->customerSession()->deleteJson('/api/customer/security-changes/password/'.$id)->assertOk();
+        $this->travel(180)->seconds();
+        $replacement = $this->change()->assertAccepted();
+        $wrong = $this->code()->code === '000000' ? '000001' : '000000';
+        foreach (range(1, 4) as $i) $this->confirmChange($replacement, $wrong)->assertUnprocessable();
+        $this->confirmChange($replacement, $wrong)->assertTooManyRequests()->assertJsonPath('retry_after', 180);
+    }
+
+    public function test_customer_code_expiration_resend_and_cancellation_preserve_pending_password_safety(): void
+    {
+        $this->freezeTime();
+        $started = $this->change()->assertAccepted();
+        $path = '/api/customer/security-changes/password/'.$started->json('challenge.id');
         $oldCode = $this->code()->code;
-        $change = \App\Models\CustomerSecurityChange::findOrFail($id);
+        $change = \App\Models\CustomerSecurityChange::findOrFail($started->json('challenge.id'));
         $this->assertTrue(Hash::check(self::NEW, $change->new_password_hash));
         $this->assertTrue(Hash::check($oldCode, $change->code_hash));
         $this->assertStringNotContainsString(self::NEW, $started->getContent());
-        $this->customerSession()->postJson($path.'/resend')->assertTooManyRequests();
         $this->travel(11)->minutes();
         $this->confirmChange($started, $oldCode)->assertUnprocessable()->assertJsonPath('code', 'expired');
         $this->customerSession()->postJson($path.'/resend')->assertOk();
         $this->assertNotSame($oldCode, $this->code()->code);
-        for ($attempt = 0; $attempt < 5; $attempt++) {
-            $this->confirmChange($started, $oldCode)->assertUnprocessable()
-                ->assertJsonPath('code', $attempt === 4 ? 'locked' : 'invalid_code');
-        }
-        $this->confirmChange($started)->assertUnprocessable()->assertJsonPath('code', 'locked');
+        $this->confirmChange($started, $oldCode)->assertUnprocessable();
         $this->customerSession()->deleteJson($path)->assertOk();
         $this->assertNull($change->fresh()->new_password_hash);
         $this->assertTrue(Hash::check(self::OLD, $this->customer->fresh()->password_hash));
@@ -267,15 +303,25 @@ class CustomerPasswordChangeTest extends TestCase
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('cacheStores')]
-    public function test_account_throttle_survives_ip_changes_and_expires(string $store): void
+    public function test_account_flood_throttle_is_ten_per_minute_across_sources(string $store): void
     {
+        $this->freezeTime();
         if ($store === 'database') (require base_path('database/migrations/0001_01_01_000001_create_cache_table.php'))->up();
         config(['cache.default' => $store]);
-        for ($i = 0; $i < 5; $i++) $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.'.($i + 1)])->change(['current_password' => 'wrong'])->assertUnprocessable();
-        $response = $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.99'])->change()->assertStatus(429);
-        $this->assertGreaterThan(0, (int) $response->headers->get('Retry-After'));
-        $this->assertTrue(Hash::check(self::OLD, $this->customer->fresh()->password_hash));
-        $this->travel(301)->seconds();
+        for ($i = 0; $i < 10; $i++) $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.'.($i + 1)])->change(['current_password' => 'wrong'])->assertUnprocessable();
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.99'])->change()->assertTooManyRequests()->assertHeader('Retry-After', '60');
+        $this->travel(60)->seconds();
+        $this->change()->assertAccepted();
+    }
+
+    public function test_wrong_current_password_uses_progressive_source_scoped_cooldowns(): void
+    {
+        $this->freezeTime();
+        foreach ([60, 180, 300, 300] as $seconds) {
+            foreach (range(1, 4) as $i) $this->change(['current_password' => 'wrong'])->assertUnprocessable();
+            $this->change(['current_password' => 'wrong'])->assertTooManyRequests()->assertJsonPath('retry_after', $seconds)->assertHeader('Retry-After', (string) $seconds);
+            $this->travel($seconds)->seconds();
+        }
         $this->change()->assertAccepted();
     }
 
@@ -306,6 +352,7 @@ class CustomerPasswordChangeTest extends TestCase
         $this->postJson('/api/sign-in', ['identifier' => $this->customer->email, 'password' => $legacy])->assertAccepted();
         $this->change(['current_password' => trim($legacy)])->assertUnprocessable()->assertJsonValidationErrors('current_password');
         Http::assertNothingSent();
+        $this->travel(60)->seconds();
         $this->confirmChange($this->change(['current_password' => $legacy])->assertAccepted())->assertOk();
         $this->assertTrue(Hash::check(self::NEW, $this->customer->fresh()->password_hash));
         Http::assertSentCount(1);
@@ -313,7 +360,7 @@ class CustomerPasswordChangeTest extends TestCase
 
     public function test_ip_throttle_limits_attempts_across_accounts(): void
     {
-        for ($i = 0; $i < 20; $i++) {
+        for ($i = 0; $i < 30; $i++) {
             // Each genuinely separate account remains below its account budget.
             $user = User::create(['first_name' => 'Customer', 'last_name' => 'Budget', 'username' => 'budget'.$i,
                 'email' => 'budget'.$i.'@example.test', 'phone' => '0917000'.str_pad((string) $i, 4, '0', STR_PAD_LEFT),
@@ -360,6 +407,7 @@ class CustomerPasswordChangeTest extends TestCase
     {
         $stale = $this->customer->fresh();
         $this->confirmChange($this->change()->assertAccepted())->assertOk();
+        $this->travel(60)->seconds();
         try {
             app(\App\Services\LoginEmailChallengeService::class)->send($stale, true);
             $this->fail('An old password verification must not create a new login challenge.');
@@ -373,6 +421,7 @@ class CustomerPasswordChangeTest extends TestCase
     {
         $this->postJson('/api/password/forgot', ['email' => $this->customer->email])->assertAccepted();
         $code = Notification::sent($this->customer, \App\Notifications\PasswordResetCodeNotification::class)->last()->code;
+        $this->travel(60)->seconds();
         $this->confirmChange($this->change()->assertAccepted())->assertOk();
         $this->withHeader('Authorization', '')->postJson('/api/password/code/verify', ['email' => $this->customer->email, 'code' => $code])->assertUnprocessable();
     }

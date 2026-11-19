@@ -925,6 +925,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
             (require base_path('database/migrations/2026_09_28_000002_add_code_verification_to_password_reset_requests.php'))->up();
             (require base_path('database/migrations/2026_11_07_000001_create_customer_security_changes.php'))->up();
             $public = $this->login('customer', true);
+            $this->travel(60)->seconds();
             \Illuminate\Support\Facades\Http::fake(['api.pwnedpasswords.com/*' => \Illuminate\Support\Facades\Http::response(str_repeat('A', 35).':0', 200)]);
             $started = $this->requestAs($public, 'POST', '/api/customer/password', [
                     'current_password' => 'SessionTest!123', 'password' => 'violet lantern meadow river', 'password_confirmation' => 'violet lantern meadow river',

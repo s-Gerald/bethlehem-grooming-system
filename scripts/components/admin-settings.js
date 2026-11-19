@@ -450,6 +450,7 @@ function adminSettings() {
       this.pendingStaffEmailChange = pending;
       Object.assign(this.staffEmailChange, { stage: pending.stage, newEmail: pending.new_email, digits: ['', '', '', '', '', ''], errors: {}, error: '' });
       this.startSecurityResendCountdown(pending.resend_after || 0, this.staffEmailChange, '_staffEmailResendTimer');
+      if (pending.retry_after > 0) this.startSecurityActionCountdown({ retryAfter: pending.retry_after }, this.staffEmailChange);
       this.focusSecurityCodeDigit(0, 'ownEmailCodeDigit');
     },
 
@@ -480,7 +481,6 @@ function adminSettings() {
         if (resending) this.startSecurityResendCountdown(error.retryAfter, form, '_staffEmailResendTimer', error);
         else this.startSecurityActionCountdown(error, form);
       }
-      if (error.data?.status === 'locked' && this.pendingStaffEmailChange) this.pendingStaffEmailChange.attempts_remaining = 0;
     },
 
     focusOwnEmailDialog() {
@@ -1193,6 +1193,7 @@ function adminSettings() {
       const recovery = this.staffDetailsModal.staff.emailRecovery;
       this.staffDetailsModal.view = recovery ? 'recovery-manage' : 'recovery';
       if (recovery) this.startSecurityResendCountdown(recovery.resend_after || 0, this.staffRecovery, '_staffRecoveryResendTimer');
+      if (recovery?.retry_after > 0) this.startSecurityActionCountdown({ retryAfter: recovery.retry_after }, this.staffRecovery);
       this.$nextTick(() => document.getElementById(recovery ? 'recoveryAdminPassword' : 'recoveryNewEmail')?.focus());
     },
 

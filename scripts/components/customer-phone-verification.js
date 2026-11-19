@@ -2,7 +2,7 @@ import "../auth/verification-code.js?v=auth-feedback-20261028";
 import "../utils/philippine-mobile.js?v=mobile-policy-20261110";
 
 let dialog, trigger, codeControl, phoneControl, timer;
-let busy = false, challenge = null, resendAt = 0, expiresAt = 0, session = 0;
+let busy = false, challenge = null, resendAt = 0, expiresAt = 0, session = 0, verifyAt = 0;
 let navigate = true, canVerify = false, challengeStatus = null;
 let step = "entry", candidatePhone = "", maskedDestination = "", replacing = false;
 let allowedPrefixes = [];
@@ -35,18 +35,20 @@ function updateControls() {
     if (step === "challenge") showChallenge();
   }
   const waiting = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
-  const locked = challengeStatus === "locked";
-  field("Next").disabled = busy || locked || waiting > 0 || Boolean(phoneValidation(field("Phone").value));
-  field("Next").textContent = busy ? "Please wait…" : waiting ? `Send Code in ${window.VerificationCode.formatCountdown(waiting)}` : "Send Code";
+  const verifyWait = Math.max(0, Math.ceil((verifyAt - Date.now()) / 1000));
+  if (verifyAt && !verifyWait) { verifyAt = 0; message(""); }
+  field("Next").disabled = busy || verifyWait > 0 || waiting > 0 || Boolean(phoneValidation(field("Phone").value));
+  const sendWait = Math.max(waiting, verifyWait);
+  field("Next").textContent = busy ? "Please wait…" : sendWait ? `Send Code in ${window.VerificationCode.formatCountdown(sendWait)}` : "Send Code";
   field("Next").setAttribute("aria-busy", String(busy));
   field("Phone").disabled = busy;
   field("Password").disabled = busy;
-  field("Code").disabled = busy;
-  field("Verify").disabled = busy || !canVerify || field("Code").value.length !== 6 || Date.now() >= expiresAt;
+  field("Code").disabled = busy || verifyWait > 0;
+  field("Verify").disabled = busy || verifyWait > 0 || !canVerify || field("Code").value.length !== 6 || Date.now() >= expiresAt;
   field("Verify").setAttribute("aria-busy", String(busy));
-  field("VerifyLabel").textContent = busy ? "Please wait…" : "Verify and Continue";
+  field("VerifyLabel").textContent = busy ? "Please wait…" : verifyWait ? `Try again in ${window.VerificationCode.formatCountdown(verifyWait)}` : "Verify and Continue";
   field("Spinner").hidden = !busy;
-  field("Resend").disabled = busy || waiting > 0 || locked;
+  field("Resend").disabled = busy || waiting > 0;
   field("Resend").textContent = waiting ? `Resend Code in ${window.VerificationCode.formatCountdown(waiting)}` : "Resend Code";
   const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
   field("Expiry").textContent = canVerify && remaining ? `Code expires in ${window.VerificationCode.formatCountdown(remaining)}` : "";
@@ -58,13 +60,14 @@ function updateControls() {
   field("Change").disabled = busy;
   field("Back").hidden = step !== "entry" || !canVerify;
   field("Back").disabled = busy;
-  field("Retry").disabled = busy || locked || waiting > 0;
+  field("Retry").disabled = busy || waiting > 0;
   field("Retry").setAttribute("aria-busy", String(busy));
   field("Retry").textContent = busy ? "Please wait…" : waiting
     ? `Try Again in ${window.VerificationCode.formatCountdown(waiting)}` : "Try Again";
   if (moveExpiredFocus && dialog.open) focusStep();
 }
 function setTiming(data) {
+  verifyAt = Date.now() + Math.max(0, Number(data.retry_after) || 0) * 1000;
   challenge = data.challenge_id;
   challengeStatus = data.status || "active";
   canVerify = data.can_verify !== false && challengeStatus === "active" && data.expires_in > 0;
@@ -82,7 +85,10 @@ function applyCooldown(error) {
   }
 }
 function showError(error) {
-  applyCooldown(error);
+  if (error.data?.code === "verification_cooldown" || error.code === "verification_cooldown") {
+    verifyAt = Date.now() + Math.max(0, Number(error.data?.retry_after ?? error.retryAfter) || 0) * 1000;
+    window.clearInterval(timer); timer = window.setInterval(updateControls, 1000);
+  } else applyCooldown(error);
   const passwordError = error.errors?.current_password?.[0];
   const phoneError = error.errors?.phone?.[0];
   const text = passwordError || phoneError || error.message || "Unable to connect. Please try again.";
@@ -90,16 +96,12 @@ function showError(error) {
     if (step === "challenge") showPhoneEntry(true);
     message(""); phoneMessage(phoneError); return;
   }
-  if (error.data?.code === "attempts_exceeded" || error.code === "attempts_exceeded") {
-    challengeStatus = "locked"; canVerify = false;
-    if (step === "challenge") showChallenge();
-  }
   message(text, passwordError ? field("Password") : challenge ? field("Code") : field("Phone"));
 }
 function showChallenge() {
   step = "challenge";
   phoneMessage();
-  const unavailable = !canVerify && !["expired", "locked"].includes(challengeStatus);
+  const unavailable = !canVerify && challengeStatus !== "expired";
   field("Title").textContent = unavailable ? "Verification Unavailable" : "Verify Phone Number";
   field("Description").textContent = unavailable ? (challengeStatus === "failed"
     ? "SMS could not be sent. Try again or use another number." : "SMS could not be confirmed. Try again or use another number.")
@@ -109,8 +111,7 @@ function showChallenge() {
   field("Next").type = "button";
   field("PasswordField").hidden = true;
   field("Password").value = "";
-  message(challengeStatus === "locked" ? "Too many attempts. Try again later."
-    : challengeStatus === "expired" ? "Code expired. Send a new code." : "");
+  message(challengeStatus === "expired" ? "Code expired. Send a new code." : "");
 }
 function showPhoneEntry(force = false) {
   if (busy && force !== true) return;
@@ -123,7 +124,7 @@ function showPhoneEntry(force = false) {
   field("Password").value = "";
   field("Next").type = "submit";
   codeControl.clear();
-  message(challengeStatus === "locked" ? "Too many attempts. Try again later." : "");
+  message("");
   updateControls(); field("Phone").focus();
 }
 function focusStep() {
@@ -143,7 +144,7 @@ function confirmedSend(data, phone = candidatePhone) {
   if (data.replacement) window.dispatchEvent(new CustomEvent("customer-phone:pending"));
 }
 async function requestCode(resend = false) {
-  if (busy || challengeStatus === "locked" || Date.now() < resendAt) return;
+  if (busy || Date.now() < resendAt) return;
   const phone = resend || step === "challenge" ? candidatePhone : window.PhilippineMobile.unformat(field("Phone").value);
   if (!resend && phoneValidation(phone)) {
     message(""); phoneMessage(phoneValidation(phone)); field("Phone").focus(); return;
@@ -268,7 +269,7 @@ function createDialog() {
     showChallenge(); updateControls(); focusStep();
   });
   field("Retry").addEventListener("click", () => {
-    if (busy || challengeStatus === "locked" || Date.now() < resendAt) return;
+    if (busy || Date.now() < resendAt) return;
     if (!challenge && (!candidatePhone || replacing)) { showPhoneEntry(); return; }
     return requestCode(Boolean(challenge));
   });

@@ -535,6 +535,7 @@ class VerifyFirstRegistrationTest extends \Tests\TestCase
         $this->approve();
         $this->postJson('/api/register/finalize',$this->details(['email'=>'Gerald+Clinic@GMAIL.COM']))->assertOk()
             ->assertJsonPath('user.email','Gerald+Clinic@gmail.com');
+        $this->travel(60)->seconds();
         $this->postJson('/api/sign-in',['identifier'=>'GERALD+CLINIC@gmail.com','password'=>'strong-password'])->assertAccepted()
             ->assertJsonPath('requires_login_confirmation',true);
     }

@@ -12,6 +12,7 @@ use App\Notifications\PasswordChangedNotification;
 use App\Notifications\VerifyCustomerSecurityChangeNotification;
 use App\Support\AccountEmail;
 use App\Support\SecurityCode;
+use App\Support\ProgressiveAuthThrottle;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -24,8 +25,6 @@ use Throwable;
 
 class CustomerSecurityChangeService
 {
-    private const MAX_SENDS = 3;
-
     public function pending(User $user, string $kind): ?array
     {
         $token = $user->currentAccessToken();
@@ -38,9 +37,7 @@ class CustomerSecurityChangeService
     public function start(User $requester, string $kind, string $currentPassword, string $proposed): array
     {
         return $this->withAccount($requester, function (User $user, PersonalAccessToken $token) use ($kind, $currentPassword, $proposed): array {
-            if (! Hash::check($currentPassword, $user->password_hash)) {
-                throw ValidationException::withMessages(['current_password' => 'Incorrect current password.']);
-            }
+            if ($error = $this->checkCurrentPassword($user, $currentPassword)) return $error;
 
             if ($kind === 'email') {
                 if (strcasecmp($proposed, $user->email) === 0) {
@@ -54,13 +51,12 @@ class CustomerSecurityChangeService
             $previous = CustomerSecurityChange::where('user_id', $user->getKey())->where('kind', $kind)->lockForUpdate()->first();
             $retained = $previous && now()->lt($previous->expires_at);
             if ($retained) {
-                if ($previous->failed_attempts >= SecurityCode::MAX_ATTEMPTS) return ['status' => 'locked'];
                 if ($this->isPending($previous, $user, $token) && ($kind === 'email'
                     ? strcasecmp($proposed, $previous->new_email) === 0
                     : Hash::check($proposed, $previous->new_password_hash))) {
                     return ['status' => 'pending', 'challenge' => $this->payload($previous, $user)];
                 }
-                if ($blocked = $this->sendLimit($previous)) return $blocked;
+                if ($blocked = $this->sendLimit($previous, $user)) return $blocked;
             }
 
             $change = new CustomerSecurityChange([
@@ -83,8 +79,7 @@ class CustomerSecurityChangeService
         return $this->withAccount($requester, function (User $user, PersonalAccessToken $token) use ($kind, $id): array {
             $change = $this->findPending($user, $token, $kind, $id);
             if (! $change) return ['status' => 'invalid'];
-            if ($change->failed_attempts >= SecurityCode::MAX_ATTEMPTS) return ['status' => 'locked'];
-            if ($blocked = $this->sendLimit($change)) return $blocked;
+            if ($blocked = $this->sendLimit($change, $user)) return $blocked;
 
             return $this->issueCode($change, $user, $change->code_hash);
         });
@@ -108,15 +103,16 @@ class CustomerSecurityChangeService
             return $this->withAccount($requester, function (User $user, PersonalAccessToken $token) use ($kind, $id, $code): array {
                 $change = $this->findPending($user, $token, $kind, $id);
                 if (! $change) return ['status' => 'invalid'];
-                if ($change->failed_attempts >= SecurityCode::MAX_ATTEMPTS) return ['status' => 'locked'];
                 if (now()->gte($change->code_expires_at)) return ['status' => 'expired'];
                 if ($change->delivery_receipt && AuthenticationMailDelivery::status($change->delivery_receipt) === 'failed') {
                     return ['status' => 'delivery_failed'];
                 }
+                $key = ProgressiveAuthThrottle::key('customer-security-code', $user->getKey());
+                if ($blocked = ProgressiveAuthThrottle::blocked($key)) return $blocked;
                 if (! Hash::check($code, $change->code_hash)) {
                     $change->increment('failed_attempts');
 
-                    return ['status' => $change->failed_attempts >= SecurityCode::MAX_ATTEMPTS ? 'locked' : 'invalid_code'];
+                    return ProgressiveAuthThrottle::recordFailure($key) ?? ['status' => 'invalid_code'];
                 }
 
                 $oldEmail = $user->email;
@@ -130,6 +126,7 @@ class CustomerSecurityChangeService
                     LoginEmailChallenge::where('user_id', $user->getKey())->delete();
                 }
                 CustomerSecurityChange::where('user_id', $user->getKey())->delete();
+                ProgressiveAuthThrottle::clear($key);
                 DB::afterCommit(function () use ($user, $kind, $oldEmail): void {
                     try {
                         if ($kind === 'email') {
@@ -161,7 +158,19 @@ class CustomerSecurityChangeService
         $token = PersonalAccessToken::find($change->session_token_id);
 
         return $user && $token && app(AccountSessionService::class)->isUsable($token, $user)
-            && $this->isPending($change, $user, $token) && $change->failed_attempts < SecurityCode::MAX_ATTEMPTS;
+            && $this->isPending($change, $user, $token);
+    }
+
+    public function checkCurrentPassword(User $user, string $password): ?array
+    {
+        $key = ProgressiveAuthThrottle::key('customer-security-password', $user->getKey());
+        if ($blocked = ProgressiveAuthThrottle::blocked($key)) return $blocked;
+        if (! Hash::check($password, $user->password_hash)) {
+            return ProgressiveAuthThrottle::recordFailure($key) ?? ['status' => 'invalid_password',
+                'errors' => ['current_password' => ['Incorrect current password.']]];
+        }
+        ProgressiveAuthThrottle::clear($key);
+        return null;
     }
 
     private function withAccount(User $requester, callable $action): array
@@ -201,19 +210,17 @@ class CustomerSecurityChangeService
         return hash('sha256', $user->email.'|'.$user->password_hash);
     }
 
-    private function sendLimit(CustomerSecurityChange $change): ?array
+    private function sendLimit(CustomerSecurityChange $change, User $user): ?array
     {
-        if ($change->send_count >= self::MAX_SENDS) {
-            return ['status' => 'send_limit', 'retry_after' => max(1, $change->expires_at->timestamp - now()->timestamp)];
-        }
-        $wait = $this->resendAfter($change);
+        $wait = $this->resendAfter($change, $user);
 
         return $wait ? ['status' => 'cooldown', 'retry_after' => $wait] : null;
     }
 
-    private function resendAfter(CustomerSecurityChange $change): int
+    private function resendAfter(CustomerSecurityChange $change, User $user): int
     {
-        return max(0, $change->last_sent_at->timestamp + SecurityCode::RESEND_COOLDOWN_SECONDS - now()->timestamp);
+        return max(0, $change->last_sent_at->timestamp + SecurityCode::RESEND_COOLDOWN_SECONDS - now()->timestamp,
+            app(AuthenticationEmailPolicy::class)->status($change->new_email ?? $user->email, 'customer_security_change')['resend_after']);
     }
 
     private function issueCode(CustomerSecurityChange $change, User $user, ?string $oldHash): array
@@ -238,9 +245,9 @@ class CustomerSecurityChangeService
         return [
             'id' => $change->id, 'kind' => $change->kind, 'email' => $change->new_email ?? $user->email,
             'expires_at' => $change->expires_at->toIso8601String(), 'code_expires_at' => $change->code_expires_at->toIso8601String(),
-            'resend_after' => $this->resendAfter($change),
-            'attempts_remaining' => max(0, SecurityCode::MAX_ATTEMPTS - $change->failed_attempts),
-            'resends_remaining' => max(0, self::MAX_SENDS - $change->send_count),
+            'resend_after' => $this->resendAfter($change, $user),
+            'attempts_remaining' => ProgressiveAuthThrottle::attemptsRemaining(ProgressiveAuthThrottle::key('customer-security-code', $user->getKey())),
+            'retry_after' => ProgressiveAuthThrottle::blocked(ProgressiveAuthThrottle::key('customer-security-code', $user->getKey()))['retry_after'] ?? 0,
             'email_delivery_token' => $change->delivery_receipt,
         ];
     }

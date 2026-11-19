@@ -40,43 +40,36 @@ class AuthenticationEmailPolicyTest extends TestCase
         }
     }
 
-    public function test_purpose_cooldowns_are_independent_but_share_the_destination_quota(): void
+    public function test_interactive_sends_progress_across_purposes_without_destination_hour_or_day_limits(): void
     {
         $this->freezeTime();
         $policy = app(AuthenticationEmailPolicy::class);
-        config(['authentication.email.hour' => 2]);
-        $policy->send('customer@gmail.com', fn () => 'queued', 'login');
-        $this->assertSame(0, $policy->status('customer@gmail.com', 'password_recovery')['resend_after']);
-        $this->assertSame('queued', $policy->send('customer@gmail.com', fn () => 'queued', 'password_recovery'));
-        $this->assertSame(3600, $policy->status('customer@gmail.com', 'privileged_change')['resend_after']);
-        $this->assertRejected($policy, 3600, 'email_rate_limited');
+        foreach (range(1, 55) as $i) {
+            $seconds = [1 => 60, 2 => 180][$i] ?? 300;
+            $policy->send('Customer@GMAIL.COM', fn () => 'queued', $i % 2 ? 'login' : 'password_recovery');
+            $this->assertSame($seconds, $policy->status('customer@gmail.com', 'privileged_change')['resend_after']);
+            $this->assertRejected($policy, $seconds, 'email_cooldown');
+            $this->travel($seconds)->seconds();
+        }
+        $this->travel(1800)->seconds();
+        $policy->send('customer@gmail.com', fn () => 'queued');
+        $this->assertSame(60, $policy->status('customer@gmail.com')['resend_after']);
     }
 
-    public function test_repeated_sends_one_minute_apart_do_not_hit_a_quarter_hour_quota(): void
+    public function test_rejected_or_failed_issuance_does_not_advance_resend_progression(): void
     {
-        $this->travelTo(now()->startOfSecond());
+        $this->freezeTime();
         $policy = app(AuthenticationEmailPolicy::class);
-        foreach (range(1, 4) as $i) {
-            $policy->send('Customer@GMAIL.COM', fn () => 'queued');
-            $this->assertSame(60, $policy->status('customer@gmail.com')['resend_after']);
-            $this->assertRejected($policy, 60, 'email_cooldown');
-            $this->travel(60)->seconds();
-        }
-    }
-
-    public function test_destination_hourly_and_daily_windows_use_the_universal_defaults(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        $policy = app(AuthenticationEmailPolicy::class);
-        foreach (range(1, 50) as $i) {
-            $policy->send('customer@gmail.com', fn () => null, $i % 2 ? 'registration' : 'login');
-            if ($i === 12) $this->assertRejected($policy, 3600 - 11 * 60, 'email_rate_limited');
-            if ($i < 50) $this->travel($i % 12 ? 60 : 3600)->seconds();
-        }
-        $wait = 86400 - 4 * 3600 - 45 * 60;
-        $this->assertRejected($policy, $wait, 'email_rate_limited');
-        $this->travel($wait)->seconds();
-        $this->assertSame('queued', $policy->send('customer@gmail.com', fn () => 'queued'));
+        $policy->send('customer@gmail.com', fn () => 'queued');
+        $this->assertRejected($policy, 60, 'email_cooldown');
+        $this->travel(60)->seconds();
+        try { $policy->send('customer@gmail.com', fn () => throw new \RuntimeException('failed')); }
+        catch (\RuntimeException) {}
+        $this->assertSame(0, $policy->status('customer@gmail.com')['resend_after']);
+        $policy->send('customer@gmail.com', fn () => ['status' => 'invalid']);
+        $this->assertSame(0, $policy->status('customer@gmail.com')['resend_after']);
+        $policy->send('customer@gmail.com', fn () => 'queued');
+        $this->assertSame(180, $policy->status('customer@gmail.com')['resend_after']);
     }
 
     public function test_failure_preserves_quota_and_simultaneous_sends_cannot_enter_the_callback(): void

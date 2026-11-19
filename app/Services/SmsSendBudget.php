@@ -16,19 +16,17 @@ class SmsSendBudget
         }
         try {
             $limits = [
-                ...($userId !== null ? [['user:'.$userId, 'user_hourly_limit', 5, 3600]] : []),
-                ['phone:'.hash('sha256', $phone), 'phone_hourly_limit', 5, 3600],
-                ...($ip !== null ? [['ip:'.hash('sha256', $ip), 'ip_hourly_limit', 20, 3600]] : []),
-                ...($userId !== null ? [['user-day:'.$userId, 'user_daily_limit', 20, 86400]] : []),
-                ['phone-day:'.hash('sha256', $phone), 'phone_daily_limit', 20, 86400],
+                ...($ip !== null ? [['ip:'.hash('sha256', $ip), 'ip_hourly_limit', 60, 3600]] : []),
                 ['global:hour', 'global_hourly_limit', 100, 3600],
                 ['global:day', 'global_daily_limit', 500, 86400],
             ];
+            $wait = 0;
             foreach ($limits as [$key, $setting, $default, $seconds]) {
                 if (RateLimiter::tooManyAttempts('sms:'.$key, config('services.sms_verification.'.$setting, $default))) {
-                    $this->fail(RateLimiter::availableIn('sms:'.$key));
+                    $wait = max($wait, RateLimiter::availableIn('sms:'.$key));
                 }
             }
+            if ($wait) $this->fail($wait);
             foreach ($limits as [$key, $setting, $default, $seconds]) {
                 RateLimiter::hit('sms:'.$key, $seconds);
             }
@@ -40,6 +38,6 @@ class SmsSendBudget
     private function fail(int $seconds = 1): never
     {
         throw new HttpResponseException(response()->json(['success' => false, 'code' => 'sms_send_limit',
-            'message' => 'SMS sending limit reached. Please try again later.', 'resend_after' => $seconds], 429));
+            'message' => 'SMS sending limit reached. Please try again later.', 'resend_after' => $seconds, 'retry_after' => $seconds], 429)->header('Retry-After', (string) $seconds)->header('Cache-Control', 'no-store'));
     }
 }

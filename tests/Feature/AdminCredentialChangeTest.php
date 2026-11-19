@@ -478,7 +478,7 @@ class AdminCredentialChangeTest extends TestCase
             ->assertOk()
             ->assertJsonPath('purpose', 'Admin password change')
             ->assertJsonPath('message', 'New code requested. Check your email.')
-            ->assertJsonPath('resend_after', 539)->assertJsonStructure(['email_delivery_token']);
+            ->assertJsonPath('resend_after', 180)->assertJsonStructure(['email_delivery_token']);
 
         $this->assertNotSame($oldHash, $change->fresh()->code_hash);
         Notification::assertSentToTimes(
@@ -583,7 +583,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->travel(61)->seconds();
         $resend = $service->resend($admin, $change);
         $this->assertSame(2, $change->fresh()->failed_attempts);
-        $this->assertSame(60, $resend['resend_after']);
+        $this->assertSame(180, $resend['resend_after']);
         $hash = $change->fresh()->code_hash;
         $this->assertSame('cooldown', $service->resend($admin, $change)['status']);
         $this->assertSame($hash, $change->fresh()->code_hash, 'A stale challenge instance cannot bypass resend locking or cooldown.');
@@ -593,7 +593,7 @@ class AdminCredentialChangeTest extends TestCase
         $change->update(['confirmed_at' => now(), 'code_hash' => null]);
         $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
-        $this->travel(61)->seconds();
+        $this->travel(181)->seconds();
         $service->request($admin, $admin, 'AnotherAdmin', null);
         $this->travel(11)->minutes();
         $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
@@ -620,15 +620,15 @@ class AdminCredentialChangeTest extends TestCase
         }
     }
 
-    public function test_locked_credential_issuance_is_not_mailed(): void
+    public function test_credential_verification_cooldown_does_not_suppress_delivery(): void
     {
         (require database_path('migrations/0001_01_01_000002_create_jobs_table.php'))->up();
         config()->set('queue.default', 'database');
         $admin = $this->createUser('admin', 'admin@gmail.com', '09170001999', 'Admin');
         app(\App\Services\PrivilegedCredentialChangeService::class)->request($admin, $admin, 'ChangedAdmin', null);
-        PrivilegedCredentialChange::query()->update(['failed_attempts' => 5]);
+        foreach (range(1, 5) as $i) \App\Support\ProgressiveAuthThrottle::recordFailure(\App\Support\ProgressiveAuthThrottle::key('privileged-code', $admin->getKey()));
         $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+        $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
     }
 
     public function test_immediate_credential_mail_uses_the_shared_durable_job_without_duplicate_sends(): void
@@ -975,7 +975,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->deleteJson("/api/settings/security/email-change/{$id}")->assertOk();
         $this->getJson('/api/settings/security/account')->assertOk()->assertJsonPath('pending_email_change', null);
         $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $this->latestEmailCode()])->assertUnprocessable();
-        $this->travel(61)->seconds();
+        $this->travel(181)->seconds();
         $replacement = $this->startEmailChange('replacement@gmail.com');
         $this->assertNotSame($id, $replacement['id']);
         $this->assertSame(4, $replacement['attempts_remaining']);
@@ -986,24 +986,21 @@ class AdminCredentialChangeTest extends TestCase
         $this->assertSame('current@gmail.com', $staff->fresh()->email);
     }
 
-    public function test_email_codes_expire_and_lock_after_five_incorrect_attempts(): void
+    public function test_staff_email_codes_progress_and_same_unexpired_code_recovers(): void
     {
-        [$staff] = $this->emailStaffFixture();
+        $this->freezeTime(); [$staff] = $this->emailStaffFixture();
         $pending = $this->startEmailChange(); $id = $pending['id'];
-        \App\Models\StaffEmailChange::whereKey($id)->update(['code_expires_at' => now()->subSecond()]);
-        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $this->latestEmailCode()])->assertUnprocessable()->assertJsonPath('status', 'expired');
-        $this->travel(61)->seconds();
-        $this->postJson("/api/settings/security/email-change/{$id}/resend", ['stage' => 'current'])->assertOk();
-        $wrong = $this->latestEmailCode() === '111111' ? '222222' : '111111';
-        for ($i = 0; $i < 5; $i++) {
-            $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $wrong])
-                ->assertUnprocessable()->assertJsonPath('status', $i === 4 ? 'locked' : 'invalid_code');
+        $correct = $this->latestEmailCode(); $wrong = $correct === '111111' ? '222222' : '111111';
+        foreach ([60, 180, 300] as $seconds) {
+            foreach (range(1, 4) as $i) $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $wrong])->assertUnprocessable();
+            $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $wrong])->assertTooManyRequests()->assertJsonPath('retry_after', $seconds)->assertHeader('Retry-After', (string) $seconds);
+            $this->travel($seconds)->seconds();
         }
-        $this->deleteJson("/api/settings/security/email-change/{$id}")->assertOk();
-        $this->travel(61)->seconds();
-        $this->postJson('/api/settings/security/email-change', ['email' => 'replacement@gmail.com', 'current_password' => 'CurrentAdmin!234'])->assertUnprocessable()->assertJsonPath('status', 'locked');
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $correct])->assertOk();
         $this->assertSame('current@gmail.com', $staff->fresh()->email);
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $this->latestEmailCode()])->assertOk();
     }
+
 
     #[\PHPUnit\Framework\Attributes\DataProvider('emailAuthorityChanges')]
     public function test_email_change_rechecks_mutable_account_and_session_authority(string $field, mixed $value): void
@@ -1085,7 +1082,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->travel(61)->seconds();
         $this->postJson("/api/settings/security/email-change/{$id}/resend", ['stage' => 'current'])->assertOk();
         $this->deleteJson("/api/settings/security/email-change/{$id}")->assertOk();
-        $this->travel(61)->seconds();
+        $this->travel(181)->seconds();
         $id = $this->startEmailChange()['id'];
         $this->workQueue(['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
         $messages = app('mailer')->getSymfonyTransport()->messages();
@@ -1124,13 +1121,14 @@ class AdminCredentialChangeTest extends TestCase
         $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $this->latestEmailCode()])->assertOk();
         $this->app['auth']->forgetGuards();
         $this->postJson('/api/sign-in', ['identifier' => 'current@gmail.com', 'password' => 'CurrentAdmin!234'])->assertUnauthorized();
+        $this->travel(60)->seconds();
         $this->postJson('/api/sign-in', ['identifier' => 'new@gmail.com', 'password' => 'CurrentAdmin!234'])->assertAccepted();
         Notification::assertSentTo($staff, \App\Notifications\ConfirmLoginNotification::class,
             fn ($notification, $channels, $recipient) => $recipient->email === 'new@gmail.com');
         $service = app(\App\Services\PasswordResetService::class);
         $service->sendCode('current@gmail.com');
         Notification::assertNotSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class);
-        $this->travel(61)->seconds();
+        $this->travel(181)->seconds();
         $service->sendCode('new@gmail.com');
         Notification::assertSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class,
             fn ($notification, $channels, $recipient) => $recipient->email === 'new@gmail.com');
@@ -1454,12 +1452,13 @@ class AdminCredentialChangeTest extends TestCase
         $this->assertDatabaseHas('staff_email_recovery_events', ['recovery_id' => $request['id'], 'event' => 'completed', 'actor_user_id' => $staff->user_id]);
         $this->assertDatabaseHas('staff_email_recovery_events', ['recovery_id' => $request['id'], 'event' => 'authorized', 'actor_user_id' => $admin->user_id]);
         $this->postJson('/api/sign-in', ['identifier' => 'current@gmail.com', 'password' => 'CurrentAdmin!234'])->assertUnauthorized();
+        $this->travel(60)->seconds();
         $this->postJson('/api/sign-in', ['identifier' => 'new@gmail.com', 'password' => 'CurrentAdmin!234'])->assertAccepted();
         Notification::assertSentTo($staff, \App\Notifications\ConfirmLoginNotification::class, fn ($notice, $channels, $recipient) => $recipient->email === 'new@gmail.com');
         $this->postJson('/api/password/forgot', ['email' => 'current@gmail.com'])->assertUnprocessable()
             ->assertJsonPath('code', $staff->fresh()->hasEmailRecoveryHold() ? 'password_reset_unavailable' : 'account_not_found');
         Notification::assertNotSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class);
-        $this->travel(61)->seconds();
+        $this->travel(181)->seconds();
         app(\App\Services\PasswordResetService::class)->sendCode('new@gmail.com');
         Notification::assertSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class, fn ($notice, $channels, $recipient) => $recipient->email === 'new@gmail.com');
     }
@@ -1472,6 +1471,7 @@ class AdminCredentialChangeTest extends TestCase
         $staleChallenge = \App\Models\LoginEmailChallenge::where('user_id', $staff->getKey())->firstOrFail()->replicate();
         $loginCode = Notification::sent($staff, \App\Notifications\ConfirmLoginNotification::class)->last()->code;
         $this->useEmailToken($staffToken);
+        $this->travel(60)->seconds();
         $change = $this->startEmailChange('self@gmail.com');
         $this->useEmailToken($adminToken);
         [$recovery, $plain] = $this->authorizeRecovery($staff);
@@ -1585,21 +1585,21 @@ class AdminCredentialChangeTest extends TestCase
         $this->getJson("/api/admin/security/staff/{$staff->user_id}/email-recovery/history")->assertOk()->assertJsonPath('history.0.status', 'cancelled');
     }
 
-    public function test_recovery_admin_code_expiry_resend_attempts_and_cancel_cannot_reset_budget(): void
+    public function test_recovery_admin_code_progresses_and_same_unexpired_code_recovers(): void
     {
-        [$admin, $staff] = $this->recoveryFixture();
+        $this->freezeTime(); [$admin, $staff] = $this->recoveryFixture();
         $request = $this->startRecovery($staff); $code = $this->latestRecoveryCode();
-        $url = "/api/admin/security/staff/{$staff->user_id}/email-recovery/{$request['id']}";
-        $this->postJson($url.'/code')->assertStatus(429);
+        $url = "/api/admin/security/staff/{$staff->user_id}/email-recovery/{$request['id']}/confirm";
         $wrong = $code === '999999' ? '888888' : '999999';
-        for ($i = 0; $i < 5; $i++) $this->postJson($url.'/confirm', ['code' => $wrong])->assertUnprocessable();
-        $this->travel(61)->seconds();
-        $this->postJson($url.'/code')->assertUnprocessable()->assertJsonPath('status', 'locked');
-        $this->postJson($url.'/cancel', ['current_password' => 'CurrentAdmin!234', 'old_email_safe' => false])->assertOk();
-        $this->postJson("/api/admin/security/staff/{$staff->user_id}/email-recovery", ['email' => 'different@gmail.com', 'current_password' => 'CurrentAdmin!234', 'reason' => 'inaccessible', 'identity_verified' => true, 'identity_method' => 'in_person_employment_record'])
-            ->assertUnprocessable()->assertJsonPath('status', 'locked');
-        $this->assertFalse($staff->fresh()->hasEmailRecoveryHold());
+        foreach ([60, 180, 300] as $seconds) {
+            foreach (range(1, 4) as $i) $this->postJson($url, ['code' => $wrong])->assertUnprocessable();
+            $this->postJson($url, ['code' => $wrong])->assertTooManyRequests()->assertJsonPath('retry_after', $seconds)->assertHeader('Retry-After', (string) $seconds);
+            $this->travel($seconds)->seconds();
+        }
+        $this->postJson($url, ['code' => $code])->assertOk()->assertJsonPath('status', 'pending');
+        $this->assertTrue($staff->fresh()->hasEmailRecoveryHold());
     }
+
 
     public function test_recovery_never_sends_a_login_code_to_a_stale_account_email_snapshot(): void
     {
@@ -1642,16 +1642,82 @@ class AdminCredentialChangeTest extends TestCase
         $this->assertFalse($staff->fresh()->hasEmailRecoveryHold());
     }
 
-    public function test_recovery_five_password_failures_cannot_be_reset_by_resend(): void
+    public function test_recovery_password_failures_progress_and_same_link_recovers(): void
     {
-        [$admin, $staff] = $this->recoveryFixture();
+        $this->freezeTime(); [$admin, $staff] = $this->recoveryFixture();
         [$request, $token] = $this->authorizeRecovery($staff);
-        for ($i = 0; $i < 5; $i++) $this->postJson('/api/staff/email-recovery/complete', ['token' => $token, 'current_password' => 'wrong'])->assertUnprocessable();
-        $this->postJson('/api/staff/email-recovery/complete', ['token' => $token, 'current_password' => 'CurrentAdmin!234'])->assertUnprocessable();
-        $this->travel(61)->seconds();
-        $this->postJson("/api/admin/security/staff/{$staff->user_id}/email-recovery/{$request['id']}/resend", ['current_password' => 'CurrentAdmin!234'])->assertUnprocessable()->assertJsonPath('status', 'locked');
-        $this->assertTrue($staff->fresh()->hasEmailRecoveryHold());
+        foreach ([60, 180, 300, 300] as $seconds) {
+            foreach (range(1, 4) as $i) $this->postJson('/api/staff/email-recovery/complete', ['token' => $token, 'current_password' => 'wrong'])->assertUnprocessable();
+            $this->postJson('/api/staff/email-recovery/complete', ['token' => $token, 'current_password' => 'wrong'])->assertTooManyRequests()->assertJsonPath('retry_after', $seconds)->assertHeader('Retry-After', (string) $seconds);
+            $this->travel($seconds)->seconds();
+        }
+        $this->postJson('/api/staff/email-recovery/complete', ['token' => $token, 'current_password' => 'CurrentAdmin!234'])->assertOk();
+        $this->assertFalse($staff->fresh()->hasEmailRecoveryHold());
     }
+
+    public function test_privileged_resend_and_replacement_preserve_progressive_guessing_history(): void
+    {
+        $this->freezeTime(); Notification::fake();
+        $admin = $this->createUser('admin', 'progress@gmail.com', '09170001998', 'Owner');
+        $service = app(\App\Services\PrivilegedCredentialChangeService::class);
+        $issued = $service->request($admin, $admin, 'NewOwner', null);
+        $change = PrivilegedCredentialChange::findOrFail($issued['change_id']);
+        $old = Notification::sent($admin, ConfirmPrivilegedCredentialChangeCodeNotification::class)->last()->code;
+        $wrong = $old === '000000' ? '000001' : '000000';
+        foreach (range(1, 4) as $i) $this->assertSame('invalid_code', $service->confirm($admin, $change, $wrong)['status']);
+        $this->travel(60)->seconds();
+        $this->assertSame(180, $service->resend($admin, $change)['resend_after']);
+        $this->assertNotSame($old, Notification::sent($admin, ConfirmPrivilegedCredentialChangeCodeNotification::class)->last()->code);
+        $this->assertSame(60, $service->confirm($admin, $change, $old)['retry_after']);
+        $this->travel(180)->seconds();
+        $issued = $service->request($admin, $admin, 'NextOwner', null);
+        $change = PrivilegedCredentialChange::findOrFail($issued['change_id']);
+        $code = Notification::sent($admin, ConfirmPrivilegedCredentialChangeCodeNotification::class)->last()->code;
+        $wrong = $code === '000000' ? '000001' : '000000';
+        foreach (range(1, 4) as $i) $this->assertSame('invalid_code', $service->confirm($admin, $change, $wrong)['status']);
+        $this->assertSame(180, $service->confirm($admin, $change, $wrong)['retry_after']);
+        $this->travel(180)->seconds();
+        $this->assertSame('confirmed', $service->confirm($admin, $change, $code)['status']);
+    }
+
+    public function test_staff_email_code_expiration_and_cancelled_challenge_keep_failure_history(): void
+    {
+        $this->freezeTime(); [$staff] = $this->emailStaffFixture();
+        $pending = $this->startEmailChange(); $id = $pending['id'];
+        $code = $this->latestEmailCode();
+        \App\Models\StaffEmailChange::whereKey($id)->update(['code_expires_at' => now()->subSecond()]);
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $code])->assertUnprocessable()->assertJsonPath('status', 'expired');
+        $this->travel(60)->seconds();
+        $this->postJson("/api/settings/security/email-change/{$id}/resend", ['stage' => 'current'])->assertOk();
+        $wrong = $this->latestEmailCode() === '000000' ? '000001' : '000000';
+        foreach (range(1, 4) as $i) $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $wrong])->assertUnprocessable();
+        $this->deleteJson("/api/settings/security/email-change/{$id}")->assertOk();
+        $this->travel(180)->seconds();
+        $next = $this->startEmailChange('next@gmail.com'); $id = $next['id'];
+        $wrong = $this->latestEmailCode() === '000000' ? '000001' : '000000';
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $wrong])->assertTooManyRequests()->assertJsonPath('retry_after', 60);
+        $this->travel(60)->seconds();
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $this->latestEmailCode()])->assertOk();
+    }
+
+    public function test_privileged_code_progresses_and_same_unexpired_code_recovers(): void
+    {
+        $this->freezeTime(); Notification::fake();
+        $admin = $this->createUser('admin', 'progress@gmail.com', '09170001998', 'Owner');
+        Sanctum::actingAs($admin);
+        $result = $this->postJson('/api/admin/security/account/credential-change', ['username' => 'NewOwner', 'current_password' => 'CurrentAdmin!234'])->assertAccepted();
+        $code = Notification::sent($admin, ConfirmPrivilegedCredentialChangeCodeNotification::class)->last()->code;
+        $wrong = $code === '000000' ? '000001' : '000000';
+        $url = '/api/admin/security/credential-changes/'.$result->json('change_id').'/confirm';
+        foreach ([60, 180, 300] as $seconds) {
+            foreach (range(1, 4) as $i) $this->postJson($url, ['code' => $wrong])->assertUnprocessable();
+            $this->postJson($url, ['code' => $wrong])->assertTooManyRequests()->assertJsonPath('retry_after', $seconds)->assertHeader('Retry-After', (string) $seconds);
+            $this->travel($seconds)->seconds();
+        }
+        $this->postJson($url, ['code' => $code])->assertOk();
+        $this->assertSame('NewOwner', $admin->fresh()->username);
+    }
+
 
     #[\PHPUnit\Framework\Attributes\DataProvider('recoveryTargetChanges')]
     public function test_recovery_finalization_rechecks_account_and_authorizing_admin(string $change): void

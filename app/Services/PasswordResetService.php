@@ -9,6 +9,7 @@ use App\Notifications\PasswordChangedNotification;
 use App\Notifications\PasswordResetCodeNotification;
 use App\Notifications\SetUpStaffPasswordNotification;
 use App\Support\AccountUsername;
+use App\Support\ProgressiveAuthThrottle;
 use App\Rules\AccountPassword;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -20,8 +21,6 @@ use Throwable;
 
 class PasswordResetService
 {
-    public const MAX_ATTEMPTS = 5;
-
     public function sendCode(string $email): array
     {
         $user = User::query()
@@ -51,9 +50,6 @@ class PasswordResetService
                 return ['status' => 'limited', 'retry_after' => max(1, $existing->last_sent_at->timestamp + (int) config('authentication.email.cooldown', 60) - now()->timestamp)];
             }
             $attempts = $existing && now()->isBefore($existing->expires_at) ? $existing->verification_attempts : 0;
-            if ($attempts >= self::MAX_ATTEMPTS) {
-                return ['status' => 'limited', 'retry_after' => max(1, $existing->expires_at->timestamp - now()->timestamp)];
-            }
             do {
                 $code = (string) random_int(100000, 999999);
             } while ($existing && password_get_info($existing->token_hash)['algoName'] !== 'unknown'
@@ -83,17 +79,19 @@ class PasswordResetService
             $request = PasswordResetRequest::query()->where('user_id', $user->getKey())->lockForUpdate()->first();
             if (! $request
                 || now()->greaterThanOrEqualTo($request->expires_at)
-                || $request->verification_attempts >= self::MAX_ATTEMPTS
                 || $request->verified_token_hash !== null
                 || password_get_info($request->token_hash)['algoName'] === 'unknown') {
                 return ['status' => 'invalid'];
             }
 
+            $key = ProgressiveAuthThrottle::key('password-reset', $user->getKey());
+            if ($blocked = ProgressiveAuthThrottle::blocked($key)) return $blocked;
             if (! Hash::check($code, $request->token_hash)) {
                 $request->increment('verification_attempts');
-                return ['status' => 'invalid'];
+                return ProgressiveAuthThrottle::recordFailure($key) ?? ['status' => 'invalid'];
             }
 
+            ProgressiveAuthThrottle::clear($key);
             $grant = Str::random(64);
             $request->update([
                 // verified_token_hash consumes the code; retain its hash to exclude

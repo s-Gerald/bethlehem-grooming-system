@@ -10,14 +10,13 @@ use App\Support\AccountUsername;
 use App\Rules\AccountPassword;
 use Illuminate\Support\Facades\Validator;
 use App\Support\SecurityCode;
+use App\Support\ProgressiveAuthThrottle;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
 class PrivilegedCredentialChangeService
 {
-    public const MAX_CODE_ATTEMPTS = SecurityCode::MAX_ATTEMPTS;
-
     private const RESEND_COOLDOWN_SECONDS = SecurityCode::RESEND_COOLDOWN_SECONDS;
 
     public function request(
@@ -121,20 +120,13 @@ class PrivilegedCredentialChangeService
                 return ['status' => 'expired'];
             }
 
-            if (! $change->code_hash || $change->failed_attempts >= self::MAX_CODE_ATTEMPTS) {
-                return ['status' => 'locked'];
-            }
-
+            if (! $change->code_hash) return ['status' => 'invalid'];
+            $key = ProgressiveAuthThrottle::key('privileged-code', $requester->getKey());
+            if ($blocked = ProgressiveAuthThrottle::blocked($key)) return $blocked;
             if (! Hash::check($plainCode, $change->code_hash)) {
-                $failedAttempts = $change->failed_attempts + 1;
-                $locked = $failedAttempts >= self::MAX_CODE_ATTEMPTS;
-                $change->update([
-                    'failed_attempts' => $failedAttempts,
-                ]);
-
-                return [
-                    'status' => $locked ? 'locked' : 'invalid_code',
-                    'attempts_remaining' => max(0, self::MAX_CODE_ATTEMPTS - $failedAttempts),
+                $change->increment('failed_attempts');
+                return ProgressiveAuthThrottle::recordFailure($key) ?? [
+                    'status' => 'invalid_code', 'attempts_remaining' => ProgressiveAuthThrottle::attemptsRemaining($key),
                 ];
             }
 
@@ -192,6 +184,7 @@ class PrivilegedCredentialChangeService
                 'confirmed_at' => $confirmedAt,
             ]);
 
+            ProgressiveAuthThrottle::clear($key);
             return [
                 'status' => 'confirmed',
                 'purpose' => $this->purposeLabel($change, $target),
@@ -238,9 +231,6 @@ class PrivilegedCredentialChangeService
             }
 
             $attempts = now()->isBefore($change->expires_at) ? $change->failed_attempts : 0;
-            if ($attempts >= self::MAX_CODE_ATTEMPTS) {
-                return ['status' => 'cooldown', 'retry_after' => max(1, $change->expires_at->timestamp - now()->timestamp)];
-            }
             do {
                 $plainCode = $this->generateCode();
             } while ($change->code_hash && Hash::check($plainCode, $change->code_hash));
@@ -282,7 +272,7 @@ class PrivilegedCredentialChangeService
             'target_name' => $this->displayName($target),
             'confirmation_email' => $this->maskEmail($requester->email),
             'expires_at' => $change->expires_at->toIso8601String(),
-            'resend_after' => max(0, ($change->last_sent_at?->timestamp ?? 0) + self::RESEND_COOLDOWN_SECONDS - now()->timestamp),
+            ...app(AuthenticationEmailPolicy::class)->status($requester->email, 'privileged_change'),
         ];
     }
 

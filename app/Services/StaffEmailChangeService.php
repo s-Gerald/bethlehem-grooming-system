@@ -9,6 +9,7 @@ use App\Notifications\StaffEmailChangedNotification;
 use App\Notifications\VerifyStaffEmailChangeNotification;
 use App\Support\AccountEmail;
 use App\Support\SecurityCode;
+use App\Support\ProgressiveAuthThrottle;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -45,7 +46,6 @@ class StaffEmailChangeService
             AccountEmail::assertAvailable($email, $user, true);
             $previous = StaffEmailChange::where('user_id', $user->getKey())->lockForUpdate()->first();
             $retained = $previous && now()->lt($previous->expires_at);
-            if ($retained && $previous->failed_attempts >= SecurityCode::MAX_ATTEMPTS) return ['status' => 'locked'];
             if ($retained && ! $previous->cancelled_at && $previous->new_email === $email && $this->valid($previous, $user, $token)) {
                 return ['status' => 'pending', 'pending_email_change' => $this->payload($previous)];
             }
@@ -74,10 +74,11 @@ class StaffEmailChangeService
                 if (! $this->valid($change, $user, $token)) return ['status' => 'invalid'];
                 if ($change->stage !== $stage) return ['status' => 'stale_stage'];
                 if (now()->gte($change->code_expires_at)) return ['status' => 'expired'];
-                if ($change->failed_attempts >= SecurityCode::MAX_ATTEMPTS) return ['status' => 'locked'];
+                $key = ProgressiveAuthThrottle::key('staff-email-code', $user->getKey());
+                if ($blocked = ProgressiveAuthThrottle::blocked($key)) return $blocked;
                 if (! Hash::check($stage.'|'.$code, $change->code_hash)) {
                     $change->increment('failed_attempts');
-                    return ['status' => $change->failed_attempts >= SecurityCode::MAX_ATTEMPTS ? 'locked' : 'invalid_code'];
+                    return ProgressiveAuthThrottle::recordFailure($key) ?? ['status' => 'invalid_code'];
                 }
                 if ($stage === 'current') {
                     do { $newCode = SecurityCode::generate(); } while ($newCode === $code);
@@ -90,6 +91,7 @@ class StaffEmailChangeService
                     return ['status' => 'pending', 'pending_email_change' => $this->payload($change), 'email_delivery_token' => $receipt];
                 }
 
+                ProgressiveAuthThrottle::clear($key);
                 $oldEmail = $user->email;
                 app(AccountEmailChangeService::class)->complete($user, $change->new_email);
                 DB::afterCommit(function () use ($oldEmail, $user): void {
@@ -110,7 +112,6 @@ class StaffEmailChangeService
             $change = $this->lockedChange($user, $id);
             if (! $this->valid($change, $user, $token)) return ['status' => 'invalid'];
             if ($stage !== $change->stage) return ['status' => 'stale_stage'];
-            if ($change->failed_attempts >= SecurityCode::MAX_ATTEMPTS) return ['status' => 'locked'];
             if ($remaining = $this->resendAfter($change)) return ['status' => 'cooldown', 'retry_after' => $remaining];
             do { $code = SecurityCode::generate(); } while (Hash::check($stage.'|'.$code, $change->code_hash));
             $change->update([
@@ -184,7 +185,8 @@ class StaffEmailChangeService
 
     private function resendAfter(StaffEmailChange $change): int
     {
-        return max(0, $change->last_sent_at->timestamp + SecurityCode::RESEND_COOLDOWN_SECONDS - now()->timestamp);
+        return max(0, $change->last_sent_at->timestamp + SecurityCode::RESEND_COOLDOWN_SECONDS - now()->timestamp,
+            app(AuthenticationEmailPolicy::class)->status($change->stage === 'current' ? $change->current_email : $change->new_email, 'privileged_change')['resend_after']);
     }
 
     private function payload(StaffEmailChange $change): array
@@ -192,7 +194,8 @@ class StaffEmailChangeService
         return ['id' => $change->id, 'stage' => $change->stage, 'current_email' => $change->current_email,
             'new_email' => $change->new_email, 'expires_at' => $change->expires_at->toIso8601String(),
             'code_expires_at' => $change->code_expires_at->toIso8601String(), 'resend_after' => $this->resendAfter($change),
-            'attempts_remaining' => max(0, SecurityCode::MAX_ATTEMPTS - $change->failed_attempts)];
+            'attempts_remaining' => ProgressiveAuthThrottle::attemptsRemaining(ProgressiveAuthThrottle::key('staff-email-code', $change->user_id)),
+            'retry_after' => ProgressiveAuthThrottle::blocked(ProgressiveAuthThrottle::key('staff-email-code', $change->user_id))['retry_after'] ?? 0];
     }
 
     private function send(StaffEmailChange $change, string $code): string

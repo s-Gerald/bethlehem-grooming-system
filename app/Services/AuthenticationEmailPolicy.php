@@ -2,32 +2,13 @@
 
 namespace App\Services;
 
+use App\Support\ProgressiveAuthThrottle;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class AuthenticationEmailPolicy
 {
-    // Public feedback describes only requests by this source for the submitted
-    // address. Private destination sending history is never returned here.
-    public function publicRecoveryRequest(string $email): array
-    {
-        $this->assertSharedStore();
-        $key = 'public-auth-recovery:'.hash_hmac('sha256', strtolower(trim($email)).'|'.request()->ip(), (string) config('app.key'));
-        $lock = Cache::lock($key.':lock', 30);
-        if (! $lock->get()) $this->reject(1, false, 'email_sending');
-        try {
-            $history = $this->history($key);
-            [$wait, $limited] = $this->waiting($history, [], $history, 'password_recovery');
-            if ($wait) $this->reject($wait, $limited);
-            $history[] = now()->timestamp;
-            Cache::put($key, $history, 86400);
-            [$wait, $limited] = $this->waiting($history, [], $history, 'password_recovery');
-            return ['resend_after' => $wait, 'retry_after' => $wait, 'resend_limited' => $limited,
-                'next_eligible_at' => now()->addSeconds($wait)->toIso8601String()];
-        } finally { $lock->release(); }
-    }
-
     // Reserve under shared locks through durable insertion; a failed queue
     // restores every purpose, destination and source reservation.
     public function send(string $email, callable $send, string $purpose = 'registration'): mixed
@@ -45,14 +26,21 @@ class AuthenticationEmailPolicy
                 $locks[] = $lock;
             }
             $histories = [];
-            foreach ([$emailKey, $ipKey, $emailKey.':'.$purpose] as $key) {
+            foreach ([$emailKey.':interactive', $ipKey, $emailKey.':'.$purpose] as $key) {
                 $histories[$key] = $this->history($key);
             }
-            [$wait, $limited] = $this->waiting($histories[$emailKey], $histories[$ipKey], $histories[$emailKey.':'.$purpose], $purpose);
+            [$wait, $limited] = $this->waiting($histories[$emailKey.':interactive'], $histories[$ipKey], $histories[$emailKey.':'.$purpose], $purpose);
             if ($wait) $this->reject($wait, $limited);
             try {
-                foreach ($histories as $key => $history) Cache::put($key, [...$history, now()->timestamp], 86400);
+                foreach ($histories as $key => $history) {
+                    if ($key === $emailKey.':interactive' && ! $this->interactive($purpose)) continue;
+                    Cache::put($key, [...$history, now()->timestamp], 86400);
+                }
                 $result = $send();
+                if (is_array($result) && isset($result['status']) && ! in_array($result['status'], ['sent', 'queued', 'resent', 'pending', 'authorizing'], true)) {
+                    foreach ($histories as $key => $history) Cache::put($key, $history, 86400);
+                    return $result;
+                }
                 $connection = DB::connection();
                 $cache = config('cache.stores.'.config('cache.default'), []);
                 $transactionalCache = ($cache['driver'] ?? null) === 'database'
@@ -86,7 +74,7 @@ class AuthenticationEmailPolicy
         $this->assertPurpose($purpose);
         $emailKey = $this->emailKey($email);
         $ipKey = 'auth-email:ip:'.hash('sha256', (string) request()->ip());
-        [$wait, $limited] = $this->waiting($this->history($emailKey), $this->history($ipKey),
+        [$wait, $limited] = $this->waiting($this->history($emailKey.':interactive'), $this->history($ipKey),
             $this->history($emailKey.':'.$purpose), $purpose);
         return ['resend_after' => $wait, 'retry_after' => $wait,
             'next_eligible_at' => now()->addSeconds($wait)->toIso8601String(),
@@ -96,15 +84,19 @@ class AuthenticationEmailPolicy
     private function waiting(array $emails, array $ips, array $purposes, string $purpose): array
     {
         $settings = config('authentication.email.purposes.'.$purpose);
-        $cooldown = $purposes ? max(0, end($purposes) + (int) ($settings['cooldown'] ?? config('authentication.email.cooldown', 60)) - now()->timestamp) : 0;
+        $cooldown = $this->interactive($purpose) ? ProgressiveAuthThrottle::resendAfter($emails) : ($purposes ? max(0, end($purposes) + (int) ($settings['cooldown'] ?? config('authentication.email.cooldown', 60)) - now()->timestamp) : 0);
         $long = 0;
-        foreach ([[3600, 'hour', $emails], [86400, 'day', $emails],
-            [3600, 'ip_hour', $ips], [86400, 'ip_day', $ips]] as [$window, $setting, $history]) {
+        foreach ([[3600, 'ip_hour', $ips], [86400, 'ip_day', $ips]] as [$window, $setting, $history]) {
             $recent = array_values(array_filter($history, fn ($at) => $at > now()->timestamp - $window));
             $limit = max(1, (int) config('authentication.email.'.$setting));
             if (count($recent) >= $limit) $long = max($long, $recent[count($recent) - $limit] + $window - now()->timestamp);
         }
         return [max($cooldown, $long), $long > $cooldown];
+    }
+
+    private function interactive(string $purpose): bool
+    {
+        return ! in_array($purpose, ['security_notice', 'security_alert'], true);
     }
 
     private function assertPurpose(string $purpose): void

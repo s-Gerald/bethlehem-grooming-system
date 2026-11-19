@@ -63,13 +63,13 @@ class StaffEmailChangeController extends Controller
         }
         $message = match ($status) {
             'cooldown' => 'Please wait before requesting another code.',
-            'locked' => 'Too many attempts. Try again later.',
+            'verification_cooldown' => 'Too many attempts. Please wait before trying again.',
             'expired' => 'The code has expired. Request a new code.',
             'invalid_code' => 'The code is incorrect.',
             'stale_stage' => 'This verification step has changed. Resume the email change from Your Account.',
             default => 'This email change has expired or is no longer available. Start a new request.',
         };
-        $response = response()->json(['message' => $message, ...$result], $status === 'cooldown' ? 429 : ($status === 'stale_stage' ? 409 : 422));
+        $response = response()->json(['message' => $message, ...$result], isset($result['retry_after']) ? 429 : ($status === 'stale_stage' ? 409 : 422));
         if (isset($result['retry_after'])) $response->header('Retry-After', (string) $result['retry_after']);
         return $response;
     }

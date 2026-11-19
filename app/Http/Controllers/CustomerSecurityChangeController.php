@@ -43,9 +43,7 @@ class CustomerSecurityChangeController extends Controller
         ], AccountPassword::messages() + ['current_password.required' => 'Enter your current password.']);
 
         $user = $request->user();
-        if (! Hash::check($data['current_password'], $user->password_hash)) {
-            throw ValidationException::withMessages(['current_password' => 'Incorrect current password.']);
-        }
+        if ($error = $service->checkCurrentPassword($user, $data['current_password'])) return $this->respond($request, $error);
         if (Hash::check($data['password'], $user->password_hash)) {
             throw ValidationException::withMessages(['password' => 'Choose a different password.']);
         }
@@ -102,8 +100,8 @@ class CustomerSecurityChangeController extends Controller
 
         $message = match ($status) {
             'cooldown' => 'Please wait before requesting another code.',
-            'send_limit' => 'Resend limit reached. Try again later.',
-            'locked' => 'Too many incorrect codes. Try again later.',
+            'verification_cooldown' => 'Too many attempts. Please wait before trying again.',
+            'invalid_password' => 'Incorrect current password.',
             'expired' => 'The code has expired. Request a new code.',
             'invalid_code' => 'The code is incorrect.',
             'delivery_failed' => 'The code could not be delivered. Request a new code.',

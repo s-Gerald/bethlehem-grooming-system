@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Support\AccountEmail;
+use App\Support\ProgressiveAuthThrottle;
 use App\Services\LoginEmailChallengeService;
 use App\Services\CustomerRegistrationService;
 use Illuminate\Http\Request;
@@ -121,10 +122,10 @@ class AuthController extends Controller
                     if ($state['failures'] >= 5) {
                         $state['level'] = min(3, $state['level'] + 1);
                         $state['failures'] = 0;
-                        $state['blocked_until'] = now()->timestamp + [1 => 60, 2 => 300, 3 => 900][$state['level']];
+                        $state['blocked_until'] = now()->timestamp + ProgressiveAuthThrottle::cooldown($state['level']);
                     }
                     // Sliding inactivity expiry; blocked requests never refresh this record.
-                    Cache::put($throttleKey, $state, 900);
+                    Cache::put($throttleKey, $state, ProgressiveAuthThrottle::RESET_SECONDS);
                 } finally {
                     $ipLock->release();
                 }
@@ -244,7 +245,7 @@ class AuthController extends Controller
     {
         return response()->json([
             'success' => false, 'code' => 'sign_in_busy',
-            'message' => 'A sign-in attempt is in progress. Please try again.',
+            'message' => 'A sign-in attempt is in progress. Please try again.', 'retry_after' => 1,
         ], 429)->header('Retry-After', '1')->header('Cache-Control', 'no-store');
     }
 

@@ -506,13 +506,7 @@ class AdminSecurityController extends Controller
             ], 422);
         }
 
-        if ($result['status'] === 'locked') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Too many incorrect attempts. Request a new code.',
-                'attempts_remaining' => 0,
-            ], 422);
-        }
+        if (isset($result['retry_after'])) \App\Support\ProgressiveAuthThrottle::reject($result);
 
         if ($result['status'] === 'username_unavailable') {
             return response()->json([

@@ -2437,21 +2437,27 @@ async function testPasswordResetRecovery() {
   assert.equal(expired.getElement('verifyCodeForm').classList.contains('hidden'), false);
 
   const locked = await requestRecovery();
-  locked.API.verifyPasswordResetCode = async () => { throw { status: 422 }; };
+  let wrong = 0;
+  locked.API.verifyPasswordResetCode = async () => {
+    if (++wrong === 5) throw { status: 429, retryAfter: 60 };
+    throw { status: 422 };
+  };
   for (let i = 0; i < 5; i++) {
     enterCode(locked);
     await locked.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
-    assert.equal(locked.getElement('verificationCode').attributes['aria-invalid'], 'true');
   }
-  assert.equal(locked.getElement('resendCode').disabled, true, 'Five failures cannot be bypassed with resend');
-  assert.match(locked.getElement('verifyCodeMessage').textContent, /too many/i);
+  assert.equal(locked.getElement('verifyCodeSubmit').disabled, true);
+  assert.match(locked.getElement('verifyCodeSubmit').textContent, /1m 00s/);
   const stillLocked = openForgot();
-  assert.equal(stillLocked.getElement('resendCode').disabled, true, 'Reload must retain the lockout');
-  stillLocked.advance(900000);
-  assert.equal(stillLocked.getElement('resendCode').disabled, false, 'Expiry permits a new request');
-  await stillLocked.getElement('resendCode').handlers.click();
-  assert.equal(stillLocked.getElement('verificationCode').disabled, false);
+  assert.equal(stillLocked.getElement('verifyCodeSubmit').disabled, true, 'Reload retains the temporary cooldown');
+  stillLocked.advance(59000);
+  assert.match(stillLocked.getElement('verifyCodeSubmit').textContent, /1s/);
+  stillLocked.advance(1000);
+  assert.equal(stillLocked.getElement('verificationCode').disabled, false, 'Same code input recovers before OTP expiry');
   assert.equal(stillLocked.getElement('verifyCodeMessage').textContent, '');
+  assert.equal(wrong, 5, 'Completing the countdown never submits a code');
+  stillLocked.advance(15000);
+  assert.equal(stillLocked.getElement('resendCode').disabled, false, 'Independent resend pacing still applies');
   enterCode(stillLocked, 'abc12');
   assert.equal(stillLocked.getElement('verificationCode').value, '12');
   assert.equal(stillLocked.getElement('verifyCodeSubmit').disabled, true);
@@ -2480,7 +2486,11 @@ async function testPasswordResetRecovery() {
   resetRequestError = null;
 
   const attemptsSurviveResend = await requestRecovery();
-  attemptsSurviveResend.API.verifyPasswordResetCode = async () => { throw { status: 422 }; };
+  let failedCodes = 0;
+  attemptsSurviveResend.API.verifyPasswordResetCode = async () => {
+    if (++failedCodes === 5) throw { status: 429, retryAfter: 60 };
+    throw { status: 422 };
+  };
   for (let i = 0; i < 2; i++) {
     enterCode(attemptsSurviveResend);
     await attemptsSurviveResend.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });

@@ -37,7 +37,6 @@ document.addEventListener("DOMContentLoaded", () => {
   let resendUntil = 0;
   let verifyUntil = 0;
   let resetUntil = 0;
-  let failedAttempts = 0;
   let timer = null;
   let busy = false;
   let completed = false;
@@ -51,7 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!reloading) sessionStorage.removeItem(recoveryKey);
     const saved = reloading ? JSON.parse(sessionStorage.getItem(recoveryKey) || "null") : null;
     if (saved && typeof saved.requestedEmail === "string" && ["email", "confirmation", "code", "password"].includes(saved.step)) {
-      ({ requestedEmail, maskedEmail, resetGrant, expiresAt, resendUntil, verifyUntil, resetUntil, failedAttempts, step } = saved);
+      ({ requestedEmail, maskedEmail, resetGrant, expiresAt, resendUntil, verifyUntil, resetUntil, step } = saved);
       passwordMinimum = saved.passwordMinimum === 8 ? 8 : 15;
       emailInput.value = requestedEmail;
     } else {
@@ -69,7 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (departed) return;
     try {
       sessionStorage.setItem(recoveryKey, JSON.stringify({
-        requestedEmail, maskedEmail, resetGrant, passwordMinimum, expiresAt, resendUntil, verifyUntil, resetUntil, failedAttempts, step,
+        requestedEmail, maskedEmail, resetGrant, passwordMinimum, expiresAt, resendUntil, verifyUntil, resetUntil, step,
       }));
     } catch { /* Continue in memory when storage is unavailable. */ }
   }
@@ -103,7 +102,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   const otp = window.VerificationCode.bind(codeInput, codeCells, () => {
-    if (failedAttempts < 5 && expiresAt > Date.now()) setError(codeMessage);
+    if (expiresAt > Date.now()) setError(codeMessage);
     codeInput.setAttribute("aria-invalid", "false");
     updateControls();
   });
@@ -112,11 +111,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function updateControls() {
     const cooldown = remaining(resendUntil);
-    const codeUnavailable = expiresAt <= Date.now() || failedAttempts >= 5;
+    const codeUnavailable = expiresAt <= Date.now();
     emailSubmit.disabled = busy || cooldown > 0;
     emailLabel.textContent = busy && step === "email" ? "Sending..." : cooldown > 0
       ? `Send Code in ${window.VerificationCode.formatCountdown(cooldown)}` : "Send Code";
-    resend.disabled = step !== "code" || busy || cooldown > 0 || (failedAttempts >= 5 && remaining(expiresAt) > 0);
+    resend.disabled = step !== "code" || busy || cooldown > 0;
     resend.textContent = busy && step === "code" ? "Please wait..." : cooldown > 0
       ? `Resend in ${window.VerificationCode.formatCountdown(cooldown)}` : "Resend code";
     codeInput.disabled = busy || codeUnavailable || remaining(verifyUntil) > 0;
@@ -134,7 +133,6 @@ document.addEventListener("DOMContentLoaded", () => {
     completed = false;
     resetGrant = "";
     expiresAt = 0;
-    failedAttempts = 0;
     otp.clear();
     password.value = "";
     confirmation.value = "";
@@ -191,7 +189,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function acceptRequest(response, next = "code") {
-    if (expiresAt <= Date.now()) failedAttempts = 0;
     maskedEmail = response?.email || window.VerificationCode.maskEmail(requestedEmail);
     expiresAt = Date.now() + response.expires_in * 1000;
     resendUntil = Date.now() + (response.resend_after ?? 45) * 1000;
@@ -231,7 +228,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const submittedEmailRevision = emailRevision;
     createAccount.classList.toggle("hidden", true);
     emailInput.setAttribute("aria-invalid", "false");
-    if (email !== requestedEmail) failedAttempts = 0;
     requestedEmail = email;
     const currentJourney = journey;
     busy = true;
@@ -312,12 +308,9 @@ document.addEventListener("DOMContentLoaded", () => {
       showStep("password");
     } catch (error) {
       if (currentJourney !== journey) return;
-      if (error?.status === 422) failedAttempts++;
-      if (failedAttempts >= 5) resendUntil = Math.max(resendUntil, expiresAt);
       if (error?.retryAfter) verifyUntil = Date.now() + error.retryAfter * 1000;
       setError(codeMessage, error?.status === 429 ? "Too many attempts. Please wait before trying again."
         : error?.status !== 422 ? "Couldn't verify the code. Try again."
-        : failedAttempts >= 5 ? "Too many incorrect attempts. Wait before requesting a new code."
         : "Invalid or expired code. Check it or request a new code.");
       if (error?.status === 429 && error.retryAfter > 0) trackCooldown(codeMessage, verifyUntil);
       codeInput.setAttribute("aria-invalid", error?.status === 422 ? "true" : "false");

@@ -268,24 +268,27 @@ vm.runInThisContext(componentSource, {
   let now = 100000, confirms = 0;
   Date.now = () => now;
   try {
-    settings.openSecurityVerification({change_id: 16, resend_after: 0});
-    settings.securityVerification.digits = ['1', '2', '3', '4', '5', '6'];
-    API.confirmSecurityCredentialChange = async () => {
-      confirms++;
-      throw {status: 429, retryAfter: 60};
-    };
-    await settings.confirmSecurityCredentialChange();
-    assert.equal(settings.securityCountdownLabel(settings.securityVerification.retryRemaining), 'Try again in 1m 00s');
-    now += 1000;
-    cooldownTicks.get(1)();
-    assert.equal(settings.securityCountdownLabel(settings.securityVerification.retryRemaining), 'Try again in 59s');
-    await settings.confirmSecurityCredentialChange();
-    assert.equal(confirms, 1);
-    now += 59000;
-    cooldownTicks.get(1)();
-    assert.equal(settings.securityVerification.retryRemaining, 0);
-    assert.equal(settings.securityVerification.error, '');
-    assert.equal(confirms, 1, 'Countdown completion never submits a credential change');
+    for (const [index, seconds] of [60, 180, 300].entries()) {
+      settings.openSecurityVerification({change_id: 16 + index, resend_after: 0});
+      settings.securityVerification.digits = ['1', '2', '3', '4', '5', '6'];
+      API.confirmSecurityCredentialChange = async () => {
+        confirms++;
+        throw {status: 429, retryAfter: seconds};
+      };
+      await settings.confirmSecurityCredentialChange();
+      assert.equal(settings.securityVerification.retryRemaining, seconds);
+      now += (seconds - 1) * 1000;
+      cooldownTicks.get(1)();
+      assert.equal(settings.securityCountdownLabel(settings.securityVerification.retryRemaining), 'Try again in 1s');
+      await settings.confirmSecurityCredentialChange();
+      assert.equal(confirms, index + 1);
+      now += 1000;
+      cooldownTicks.get(1)();
+      assert.equal(settings.securityVerification.retryRemaining, 0);
+      assert.equal(settings.securityVerification.error, '');
+      assert.equal(confirms, index + 1, 'Countdown completion never submits a credential change');
+      settings.closeSecurityVerification();
+    }
   } finally {
     Date.now = realNow;
     API.confirmSecurityCredentialChange = originalConfirm;

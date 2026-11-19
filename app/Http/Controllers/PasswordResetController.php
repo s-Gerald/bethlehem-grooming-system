@@ -19,7 +19,6 @@ class PasswordResetController extends Controller
             'email' => ['required', 'email', 'max:150'],
         ]);
 
-        $publicStatus = app(\App\Services\AuthenticationEmailPolicy::class)->publicRecoveryRequest($data['email']);
         try {
             $result = $passwordResets->sendCode($data['email']);
         } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
@@ -39,9 +38,10 @@ class PasswordResetController extends Controller
             $message = $result['status'] === 'account_not_found' ? 'No account found with this email.'
                 : "Password reset isn't available for this account.";
             return response()->json(['success' => false, 'code' => $result['status'],
-                'message' => $message, 'errors' => ['email' => [$message]], ...$publicStatus], 422)->header('Cache-Control', 'no-store');
+                'message' => $message, 'errors' => ['email' => [$message]]], 422)->header('Cache-Control', 'no-store');
         }
 
+        $publicStatus = app(\App\Services\AuthenticationEmailPolicy::class)->status($data['email'], 'password_recovery');
         return response()->json([
             'success' => true,
             'message' => 'Check your email for a verification code.',
@@ -66,6 +66,7 @@ class PasswordResetController extends Controller
         }
         $result = $passwordResets->verifyCode($data['email'], $code);
 
+        if (isset($result['retry_after'])) \App\Support\ProgressiveAuthThrottle::reject($result);
         if ($result['status'] !== 'valid') {
             return response()->json([
                 'success' => false,
@@ -113,6 +114,8 @@ class PasswordResetController extends Controller
 
         try {
             $result = $passwordResets->resendExpiredStaffSetupLink($data['token']);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
             report($exception);
 
