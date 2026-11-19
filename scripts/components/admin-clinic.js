@@ -18,6 +18,10 @@ function clinicIsVeterinarian(user) {
   return user?.staff_subrole === 'veterinarian' && user?.role === 'staff';
 }
 
+function clinicCanSelfAssignAsAttendingClinician(user) {
+  return (user?.role === 'admin' && [null, 'owner', 'manager'].includes(user.admin_type ?? null)) || clinicIsVeterinarian(user);
+}
+
 function clinicVitalEntryValid(field, value, exceptional = false) {
   const rule = CLINIC_CLINICAL_RULES.vitals[field];
   return clinicValidNumber(value, rule.precision, exceptional ? 0 : rule.min, exceptional ? rule.storageMax : rule.max);
@@ -185,11 +189,12 @@ function adminClinicModal() {
     get canFinish() { return this.canEditClinical && this.currentAppt?.status === "in_consultation"
       && !(this.currentAppt?.confinement && !this.currentAppt.confinement.discharged_at); },
     get isVeterinarian() { return clinicIsVeterinarian(this.$store.clinicAccess.user); },
+    get isAttendingClinician() { return clinicCanSelfAssignAsAttendingClinician(this.$store.clinicAccess.user); },
     get selectedVeterinarianIds() {
       return [...new Set([this.form.primary_veterinarian_id, ...this.form.additional_veterinarian_ids].filter(Boolean).map(String))];
     },
     get lockedVeterinarianId() {
-      return this.canEditClinical && this.isVeterinarian ? String(this.$store.clinicAccess.user.user_id) : null;
+      return this.canEditClinical && this.isAttendingClinician ? String(this.$store.clinicAccess.user.user_id) : null;
     },
     get selectedVeterinarians() {
       const saved = [
@@ -200,7 +205,7 @@ function adminClinicModal() {
         const vet = this.veterinarians.find(vet => String(vet.user_id) === id) || saved.find(vet => String(vet.user_id) === id);
         const user = this.$store.clinicAccess.user;
         const ownName = id === this.lockedVeterinarianId ? [user?.first_name, user?.last_name].filter(Boolean).join(" ") : "";
-        return { user_id: id, name: vet?.name || ownName || "Veterinarian" };
+        return { user_id: id, name: ownName || vet?.name || "Veterinarian" };
       });
     },
     get filteredVeterinarians() {
@@ -371,7 +376,7 @@ function adminClinicModal() {
         this.administrationRoutes = response.administration_routes || [];
         this._clinicalOptionsLoaded = true;
         if (!this.currentAppt?.record?.recorded_by_name) this.recordedByName = response.current_user_name || "—";
-        if (this.canEditClinical && response.current_user_is_veterinarian) {
+        if (this.canEditClinical && response.current_user_is_attending_clinician) {
           this.form.primary_veterinarian_id = String(response.current_user_id);
           this.form.additional_veterinarian_ids = this.form.additional_veterinarian_ids.filter(id => String(id) !== String(response.current_user_id));
         }
@@ -439,7 +444,7 @@ function adminClinicModal() {
       globalThis.ShortNotes?.reset(this.$el.querySelector('#medical-record-form'));
       this.open = true;
       if (this.canEditClinical) {
-        if (this.isVeterinarian) {
+        if (this.isAttendingClinician) {
           this.form.primary_veterinarian_id = String(this.$store.clinicAccess.user.user_id);
           this.form.additional_veterinarian_ids = this.form.additional_veterinarian_ids.filter(id => id !== this.form.primary_veterinarian_id);
         }
@@ -550,7 +555,7 @@ function adminClinicModal() {
       this.modalError = "";
       this.weightTools ??= await loadClinicPetWeightTools();
       this.completionAttempted = requireCompletion;
-      if (requireCompletion && !String(this.form.primary_veterinarian_id ?? '').trim()) {
+      if (requireCompletion && !this.isAttendingClinician && !String(this.form.primary_veterinarian_id ?? '').trim()) {
         this.formErrors.primary_veterinarian_id = ['Required'];
       }
       for (const field of ['weight_kg', ...Object.keys(CLINIC_CLINICAL_RULES.vitals), 'body_condition_score']) {

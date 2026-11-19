@@ -76,7 +76,7 @@ function component(user) {
   sandbox.API.getAdminVaccinationOptions = async clinicalOnly => {
     optionsCalls.push(clinicalOnly);
     return { veterinarians: [{ user_id: 1, name: 'Vet' }, { user_id: 2, name: 'Other Vet' }],
-      current_user_id: 1, current_user_is_veterinarian: true,
+      current_user_id: 1, current_user_is_veterinarian: true, current_user_is_attending_clinician: true,
       administration_routes: ['oral'], diagnostic_options: ['CBC', 'Other'] };
   };
   sandbox.API.clinicSaveRecord = async (id, payload) => { saves.push(payload); };
@@ -116,39 +116,90 @@ function component(user) {
   assert.equal(vet.fieldError('prescriptions.0.medicine'), 'Enter a medicine name.');
   assert.equal(vet.open, true);
 
-  sandbox.API.getAdminVaccinationOptions = async () => ({ veterinarians: [{ user_id: 2, name: 'Vet' }], current_user_id: 3, current_user_is_veterinarian: false });
-  const admin = component({ user_id: 3, role: 'admin' });
+  sandbox.API.getAdminVaccinationOptions = async () => ({ veterinarians: [{ user_id: 2, name: 'Vet' }], current_user_id: 3,
+    current_user_is_veterinarian: false, current_user_is_attending_clinician: true });
+  const admin = component({ user_id: 3, role: 'admin', first_name: 'Angela', last_name: 'Santiago' });
+  admin.$store.clinicFeedback = {confirm: async () => true};
   await admin.openModal({ appt: { id: 101, status: 'in_consultation', ownerName: 'Owner' } });
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(admin.form.primary_veterinarian_id, '', 'Administrators must choose an attending veterinarian');
+  assert.equal(admin.form.primary_veterinarian_id, '3', 'Administrators automatically attend their editable case');
+  assert.equal(admin.lockedVeterinarianId, '3');
+  assert.equal(admin.selectedVeterinarians[0].name, 'Angela Santiago');
   assert.equal(admin.isVeterinarian, false);
   Object.assign(admin.form, { weight_kg: 24, temperature_c: 38.5, heart_rate_bpm: 80, respiratory_rate_bpm: 20 });
+  let adminPayload;
+  sandbox.API.clinicSaveRecord = async (id, payload) => { adminPayload = payload; };
   await admin.saveRecord(true);
-  assert.equal(admin.hasFieldError('primary_veterinarian_id'), true);
-  assert.equal(admin.fieldError('primary_veterinarian_id'), '');
-  assert.equal(admin.modalError, 'Complete the required fields marked *.');
+  assert.equal(admin.hasFieldError('primary_veterinarian_id'), false);
+  assert.equal(adminPayload.primary_veterinarian_id, '3');
+  assert.equal(adminPayload.finish_case, true);
+  admin.form.primary_veterinarian_id = '';
+  await admin.validateRecordForSave(true);
+  admin.form.primary_veterinarian_id = '3';
 
   admin.toggleVeterinarian(2);
   admin.toggleVeterinarian(4);
   admin.toggleVeterinarian(5);
-  assert.equal(admin.form.primary_veterinarian_id, '2');
-  assert.deepEqual(Array.from(admin.form.additional_veterinarian_ids), ['4', '5']);
+  assert.equal(admin.form.primary_veterinarian_id, '3');
+  assert.deepEqual(Array.from(admin.form.additional_veterinarian_ids), ['2', '4', '5']);
   admin.toggleVeterinarian(2);
-  assert.equal(admin.form.primary_veterinarian_id, '4', 'Removing the first selection promotes the next veterinarian');
-  assert.deepEqual(Array.from(admin.form.additional_veterinarian_ids), ['5']);
-  let adminPayload;
-  sandbox.API.clinicSaveRecord = async (id, payload) => { adminPayload = payload; };
+  assert.equal(admin.form.primary_veterinarian_id, '3', 'Removing an additional veterinarian preserves the authenticated primary');
+  assert.deepEqual(Array.from(admin.form.additional_veterinarian_ids), ['4', '5']);
   await admin.saveRecord();
-  assert.equal(adminPayload.primary_veterinarian_id, '4');
-  assert.deepEqual(Array.from(adminPayload.additional_veterinarian_ids), ['5']);
+  assert.equal(adminPayload.primary_veterinarian_id, '3');
+  assert.deepEqual(Array.from(adminPayload.additional_veterinarian_ids), ['4', '5']);
 
   await admin.openModal({ appt: { id: 102, status: 'in_consultation', ownerName: 'Owner', record: {
     primary_veterinarian_id: 4, primary_veterinarian_name: 'Saved Vet',
     additional_veterinarians: [{ user_id: 5, name: 'Another Saved Vet' }],
   } } });
   await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual(Array.from(admin.selectedVeterinarianIds), ['4', '5']);
+  assert.deepEqual(Array.from(admin.selectedVeterinarianIds), ['3', '5']);
+  assert.deepEqual(Array.from(admin.selectedVeterinarians, row => row.name), ['Angela Santiago', 'Another Saved Vet']);
+
+  for (const user of [
+    {user_id: 3, role: 'admin', admin_type: 'owner'},
+    {user_id: 3, role: 'admin', admin_type: 'manager'},
+    {user_id: 3, role: 'staff', staff_type: 'clinic', staff_subrole: 'veterinarian'},
+  ]) {
+    const state = component({...user, first_name: 'Maria', last_name: 'Reyes'});
+    await state.openModal({appt: {id: 104, status: 'in_consultation', record: {
+      primary_veterinarian_id: 3, primary_veterinarian_name: 'Stale name', additional_veterinarians: [{user_id: 3}, {user_id: 2}],
+    }}});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(state.form.primary_veterinarian_id, '3');
+    assert.equal(state.lockedVeterinarianId, '3');
+    assert.equal(state.selectedVeterinarians[0].name, 'Maria Reyes', 'Self chip uses the current full name');
+    assert.deepEqual(Array.from(state.form.additional_veterinarian_ids), ['2']);
+    state.veterinarians.push({user_id: 3, name: 'Stale directory name'});
+    assert.equal(state.filteredVeterinarians.some(row => row.user_id === 3), false);
+    state.removeVeterinarian(3);
+    assert.equal(state.form.primary_veterinarian_id, '3');
+    if (user.role === 'admin') {
+      assert.equal(state.isVeterinarian, false);
+      state.form.heart_rate_bpm = '0';
+      state.startVitalVerification('heart_rate_bpm');
+      assert.equal(state.vitalExceptions.heart_rate_bpm, undefined, 'Self-attending does not grant vital verification');
+    }
+  }
+
+  for (const user of [
+    {role: 'staff', staff_subrole: 'clinic_receptionist'}, {role: 'staff', staff_subrole: 'grooming_receptionist'},
+    {role: 'staff', staff_subrole: 'other'}, {role: 'customer'},
+  ]) {
+    const state = component({...user, user_id: 6});
+    state.$store.clinicAccess.permissions.clinical = false;
+    assert.equal(state.isAttendingClinician, false);
+    assert.equal(state.lockedVeterinarianId, null);
+  }
+
+  await admin.openModal({appt: {id: 105, status: 'completed', paid: true, record: {
+    primary_veterinarian_id: 4, primary_veterinarian_name: 'Saved Vet', additional_veterinarians: [{user_id: 5, name: 'Another Saved Vet'}],
+  }}});
+  assert.equal(admin.lockedVeterinarianId, null);
   assert.deepEqual(Array.from(admin.selectedVeterinarians, row => row.name), ['Saved Vet', 'Another Saved Vet']);
+  await admin.openModal({appt: {id: 106, status: 'in_consultation'}});
+  await new Promise(resolve => setImmediate(resolve));
 
   vet.toggleVeterinarian(1);
   assert.equal(vet.form.primary_veterinarian_id, '1', 'The current veterinarian cannot be deselected');

@@ -799,7 +799,7 @@
             <section class="space-y-3" aria-labelledby="medical-veterinarian-heading">
               <h3 id="medical-veterinarian-heading" class="text-sm font-semibold uppercase tracking-wide text-slate-500">Veterinarian</h3>
               <div class="flex flex-col gap-2">
-                <template x-if="isVeterinarian && canEditClinical">
+                <label id="medical-veterinarians-label" for="medical-veterinarians" class="block text-xs font-medium text-slate-600">Attending Veterinarian(s)</label>
                 <div class="flex flex-wrap gap-2">
                   <template x-for="vet in selectedVeterinarians" :key="vet.user_id">
                     <span class="inline-flex min-h-8 min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
@@ -809,15 +809,10 @@
                   </template>
                   <span x-show="!canEditClinical && !selectedVeterinarians.length" class="text-sm text-slate-500">—</span>
                 </div>
-                </template>
                 <div x-show="canEditClinical">
-                  <label id="medical-veterinarians-label" for="medical-veterinarians" class="mb-1 block text-xs font-medium text-slate-600">
-                    <span x-text="isVeterinarian ? 'Add another veterinarian (optional)' : 'Attending Veterinarian(s)'"></span>
-                    <span x-show="!isVeterinarian" class="text-red-600" aria-hidden="true">*</span>
-                  </label>
                   <div class="relative" @click.outside="closeVetDropdown()" @focusout="if (!$el.contains($event.relatedTarget)) closeVetDropdown()" @keydown.escape="if (vetDropdownOpen) { $event.stopPropagation(); $event.preventDefault(); closeVetDropdown(true) }">
-                    <button id="medical-veterinarians" x-ref="vetTrigger" type="button" role="combobox" aria-haspopup="dialog" aria-controls="medical-vet-dropdown" aria-labelledby="medical-veterinarians-label" :aria-expanded="vetDropdownOpen" :aria-required="!isVeterinarian" :aria-invalid="hasFieldError('primary_veterinarian_id') || hasFieldError('additional_veterinarian_ids')" aria-errormessage="medical-validation-summary" aria-describedby="medical-required-legend medical-veterinariansError" @click="toggleVetDropdown()" @keydown.arrow-down.prevent="if (!vetDropdownOpen) toggleVetDropdown()" :disabled="optionsLoading || saving" :class="hasFieldError('primary_veterinarian_id') || hasFieldError('additional_veterinarian_ids') ? 'border-red-400' : 'border-slate-300'" class="flex w-full min-w-0 items-center justify-between gap-3 rounded-xl border bg-white px-3 py-2 text-left text-sm text-slate-600 outline-none focus:border-[#315b7e] disabled:bg-slate-50">
-                      <span x-text="optionsLoading ? 'Loading veterinarians…' : isVeterinarian ? 'Select veterinarian' : 'Select veterinarian(s)'"></span>
+                    <button id="medical-veterinarians" x-ref="vetTrigger" type="button" role="combobox" aria-haspopup="dialog" aria-controls="medical-vet-dropdown" aria-labelledby="medical-veterinarians-label" :aria-expanded="vetDropdownOpen" :aria-invalid="hasFieldError('primary_veterinarian_id') || hasFieldError('additional_veterinarian_ids')" aria-errormessage="medical-validation-summary" aria-describedby="medical-veterinariansError" @click="toggleVetDropdown()" @keydown.arrow-down.prevent="if (!vetDropdownOpen) toggleVetDropdown()" :disabled="optionsLoading || saving" :class="hasFieldError('primary_veterinarian_id') || hasFieldError('additional_veterinarian_ids') ? 'border-red-400' : 'border-slate-300'" class="flex w-full min-w-0 items-center justify-between gap-3 rounded-xl border bg-white px-3 py-2 text-left text-sm text-slate-600 outline-none focus:border-[#315b7e] disabled:bg-slate-50">
+                      <span x-text="optionsLoading ? 'Loading veterinarians…' : 'Add another veterinarian'"></span>
                       <span aria-hidden="true">▾</span>
                     </button>
                     <div id="medical-vet-dropdown" x-ref="vetDropdown" x-cloak x-show="vetDropdownOpen" role="dialog" aria-label="Select veterinarians" @keydown="vetDropdownKeydown($event)" class="absolute left-0 top-full z-20 mt-2 w-full rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
@@ -839,17 +834,6 @@
                   <p id="medical-veterinariansError" x-show="fieldError('primary_veterinarian_id') || fieldError('additional_veterinarian_ids')" x-text="fieldError('primary_veterinarian_id') || fieldError('additional_veterinarian_ids')" class="mt-1 text-xs text-red-600"></p>
                   <p x-show="optionsError" role="alert" class="mt-1 text-xs text-red-600">Unable to load veterinarians. <button type="button" @click="loadClinicalOptions()" class="font-semibold underline">Retry</button></p>
                 </div>
-                <template x-if="!isVeterinarian || !canEditClinical">
-                <div class="flex flex-wrap gap-2">
-                  <template x-for="vet in selectedVeterinarians" :key="vet.user_id">
-                    <span class="inline-flex min-h-8 min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
-                      <span class="min-w-0 break-words" x-text="vet.name + (vet.user_id === lockedVeterinarianId ? ' · You' : '')"></span>
-                      <button x-show="canEditClinical && vet.user_id !== lockedVeterinarianId" type="button" @click="removeVeterinarian(vet.user_id)" :disabled="saving" :aria-label="'Remove ' + vet.name" class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-sm text-slate-500 hover:bg-slate-200 hover:text-slate-700"><span aria-hidden="true">×</span></button>
-                    </span>
-                  </template>
-                  <span x-show="!canEditClinical && !selectedVeterinarians.length" class="text-sm text-slate-500">—</span>
-                </div>
-                </template>
               </div>
               <p x-show="!canEditClinical" class="text-xs text-slate-600"><span class="font-medium">Recorded By:</span> <span x-text="recordedByName"></span></p>
             </section>
@@ -1767,7 +1751,7 @@
     <script src="/scripts/components/clinic-feedback.js?undo-admission=20261110-v1&v=services-20261017"></script>
     <script src="/scripts/components/clinic-attachments.js?v=image-preview-20261115"></script>
     <script src="/scripts/components/clinic-record-presentation.js?v=20261029&short-notes=20261110&owner-identity=20261118"></script>
-    <script src="/scripts/components/admin-clinic.js?image-preview=20261115&undo-admission=20261110-v1&monitoring-validation=20261110-v1&confinement-discharge=20261110&treatment-validation=20261108&clinical-history=20261029&clinical-validation=20261027-v1&services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261107-v1&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&gateway=20261023-combined&clinic-roles=20261024&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261110&references=20261031&pet-sessions=20261031-v1&pet-birthdate=20261103-v1&urls=20261103&queue-copy=20261103-admin-v1&pet-profile=20261110-v1&body-condition=20261110-v2&clinic-activity=20261110&short-notes=500-20261110&owner-session=20261111"></script>
+    <script src="/scripts/components/admin-clinic.js?attending-clinician=20261119&image-preview=20261115&undo-admission=20261110-v1&monitoring-validation=20261110-v1&confinement-discharge=20261110&treatment-validation=20261108&clinical-history=20261029&clinical-validation=20261027-v1&services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261107-v1&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&gateway=20261023-combined&clinic-roles=20261024&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261110&references=20261031&pet-sessions=20261031-v1&pet-birthdate=20261103-v1&urls=20261103&queue-copy=20261103-admin-v1&pet-profile=20261110-v1&body-condition=20261110-v2&clinic-activity=20261110&short-notes=500-20261110&owner-session=20261111"></script>
     <script src="/scripts/components/admin-clinic-case-workspace.js?v=20261015-imaging-v2&case-flow=20261013-v5&owner-session=20261111"></script>
     <script src="/scripts/components/admin-clinic-bulk-review.js?v=20261111"></script>
     <script src="/scripts/components/admin-clinic-confinement.js?undo-admission=20261110-v1&monitoring-validation=20261110-v1&confinement-discharge=20261110&clinical-history=20261029&v=20261015-confinement-weight-v1&pet-weight=pet-weight-size-20261107-v1&short-notes=20261110"></script>

@@ -50,6 +50,7 @@ class AdminVaccinationController extends Controller
                 'current_user_id' => $actor->user_id,
                 'current_user_name' => $actor->actorAttribution(),
                 'current_user_is_veterinarian' => $actor->isVeterinarian(),
+                'current_user_is_attending_clinician' => $actor->canSelfAssignAsAttendingClinician(),
                 'administration_routes' => VaccinationRecord::ADMINISTRATION_ROUTES,
             ]);
         }

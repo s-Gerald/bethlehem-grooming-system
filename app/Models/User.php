@@ -225,6 +225,11 @@ class User extends Authenticatable
         return $this->role === 'staff' && $this->staff_type === 'clinic' && $this->staff_subrole === 'veterinarian';
     }
 
+    public function canSelfAssignAsAttendingClinician(): bool
+    {
+        return $this->isOwner() || $this->isManager() || $this->isVeterinarian();
+    }
+
     public function scopeActiveVeterinarian(Builder $query): Builder
     {
         return $query->where('role', 'staff')->where('staff_type', 'clinic')->where('staff_subrole', 'veterinarian')->where('is_active', true);

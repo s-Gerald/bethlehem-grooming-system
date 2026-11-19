@@ -46,6 +46,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             $table->string('email')->nullable();
             $table->string('phone')->nullable();
             $table->string('role');
+            $table->string('admin_type')->nullable();
             $table->string('staff_type')->nullable();
             $table->string('staff_subrole')->nullable();
             $table->boolean('is_active')->default(true);
@@ -3810,23 +3811,118 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         }
     }
 
-    public function test_medical_record_admin_drafts_and_finish_require_an_active_attending_vet(): void
+    public static function selfAttendingActors(): array
     {
-        $this->authenticateAs('admin');
+        return [
+            'legacy admin' => ['admin', null, 'Admin'],
+            'owner' => ['admin', 'owner', 'Admin'],
+            'manager' => ['admin', 'manager', 'Manager'],
+            'staff veterinarian' => ['staff', null, 'Veterinarian'],
+        ];
+    }
+
+    #[DataProvider('selfAttendingActors')]
+    public function test_medical_record_self_attending_actor_can_save_and_finish_without_selecting_a_vet(string $role, ?string $adminType, string $label): void
+    {
+        $this->authenticateAs($role, adminType: $adminType);
         $this->insertClinicAppointment('in_consultation');
         $this->postJson('/api/admin/clinic-appointments/1/record', ['recorded_by_user_id' => 99, 'recorded_by_name' => 'Spoofed'])
-            ->assertOk()->assertJsonPath('record.primary_veterinarian_id', null)
-            ->assertJsonPath('record.recorded_by_user_id', 1)->assertJsonPath('record.recorded_by_name', 'Admin · Admin');
+            ->assertOk()->assertJsonPath('record.primary_veterinarian_id', 1)
+            ->assertJsonPath('record.primary_veterinarian_name', ucfirst($role).' User')
+            ->assertJsonPath('record.recorded_by_user_id', 1)->assertJsonPath('record.recorded_by_name', ucfirst($role).' · '.$label);
         $vitals = ['weight_kg' => 24, 'temperature_c' => 38.5, 'heart_rate_bpm' => 80, 'respiratory_rate_bpm' => 20];
         $this->postJson('/api/admin/clinic-appointments/1/record', [...$vitals, 'finish_case' => true])
-            ->assertUnprocessable()->assertJsonValidationErrors('primary_veterinarian_id');
-        DB::table('users')->insert(['user_id' => 2, 'role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => 'veterinarian', 'is_active' => false]);
-        $this->postJson('/api/admin/clinic-appointments/1/record', ['primary_veterinarian_id' => 2])
-            ->assertUnprocessable()->assertJsonValidationErrors('primary_veterinarian_id');
-        DB::table('users')->where('user_id', 2)->update(['is_active' => true, 'first_name' => 'Attending', 'last_name' => 'Vet']);
-        $this->postJson('/api/admin/clinic-appointments/1/record', [...$vitals, 'primary_veterinarian_id' => 2, 'finish_case' => true])
-            ->assertOk()->assertJsonPath('record.primary_veterinarian_name', 'Attending Vet');
+            ->assertOk()->assertJsonPath('record.primary_veterinarian_id', 1);
         $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'for_payment']);
+        $this->assertDatabaseCount('clinic_records', 1);
+    }
+
+    #[DataProvider('selfAttendingActors')]
+    public function test_medical_record_self_assignment_overrides_spoofed_primary_and_validates_additional_vets(string $role, ?string $adminType): void
+    {
+        $this->authenticateAs($role, adminType: $adminType);
+        $this->insertClinicAppointment('in_consultation');
+        DB::table('users')->insert([
+            ['user_id' => 2, 'role' => 'admin', 'admin_type' => 'manager', 'staff_type' => null, 'staff_subrole' => null, 'is_active' => true, 'first_name' => 'Other', 'last_name' => 'Manager'],
+            ['user_id' => 3, 'role' => 'staff', 'admin_type' => null, 'staff_type' => 'clinic', 'staff_subrole' => 'veterinarian', 'is_active' => true, 'first_name' => 'Additional', 'last_name' => 'Vet'],
+            ['user_id' => 4, 'role' => 'staff', 'admin_type' => null, 'staff_type' => 'clinic', 'staff_subrole' => 'veterinarian', 'is_active' => false, 'first_name' => 'Inactive', 'last_name' => 'Vet'],
+        ]);
+        foreach ([2, 3, 4, 999] as $spoofedPrimary) {
+            $this->postJson('/api/admin/clinic-appointments/1/record', ['primary_veterinarian_id' => $spoofedPrimary, 'additional_veterinarian_ids' => [3]])
+                ->assertOk()->assertJsonPath('record.primary_veterinarian_id', 1)
+                ->assertJsonPath('record.additional_veterinarians', [['user_id' => 3, 'name' => 'Additional Vet']]);
+        }
+        foreach ([[1], [2], [4], [999], [3, 3]] as $invalidAdditional) {
+            $this->postJson('/api/admin/clinic-appointments/1/record', ['additional_veterinarian_ids' => $invalidAdditional])
+                ->assertUnprocessable()->assertJsonValidationErrors('additional_veterinarian_ids.0');
+        }
+        $this->postJson('/api/admin/clinic-appointments/1/record', ['additional_veterinarian_ids' => array_fill(0, 21, 3)])
+            ->assertUnprocessable()->assertJsonValidationErrors('additional_veterinarian_ids');
+        $this->postJson('/api/admin/clinic-appointments/1/record', ['additional_veterinarian_ids' => []])
+            ->assertOk()->assertJsonPath('record.primary_veterinarian_id', 1)->assertJsonPath('record.additional_veterinarians', []);
+    }
+
+    #[DataProvider('selfAttendingActors')]
+    public function test_clinical_options_distinguish_self_attending_from_veterinarian_privileges(string $role, ?string $adminType): void
+    {
+        $this->authenticateAs($role, adminType: $adminType);
+        DB::table('users')->insert([
+            ['user_id' => 2, 'role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => 'veterinarian', 'is_active' => true, 'first_name' => 'Additional', 'last_name' => 'Vet'],
+            ['user_id' => 3, 'role' => 'admin', 'staff_type' => null, 'staff_subrole' => null, 'is_active' => true, 'first_name' => 'Other', 'last_name' => 'Admin'],
+            ['user_id' => 4, 'role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => 'veterinarian', 'is_active' => false, 'first_name' => 'Inactive', 'last_name' => 'Vet'],
+        ]);
+        $response = $this->getJson('/api/admin/vaccination-options?clinical_only=1')->assertOk()
+            ->assertJsonPath('current_user_id', 1)->assertJsonPath('current_user_is_attending_clinician', true)
+            ->assertJsonPath('current_user_is_veterinarian', $role === 'staff');
+        $this->assertEqualsCanonicalizing($role === 'staff' ? [1, 2] : [2], array_column($response->json('veterinarians'), 'user_id'));
+        $this->assertNotEmpty($response->json('administration_routes'));
+        $this->assertSame($role === 'staff', auth()->user()->staffPermissions()['clinic_workspace']);
+        if ($role === 'admin') {
+            $this->insertClinicAppointment('in_consultation');
+            $this->postJson('/api/admin/clinic-appointments/1/record', ['heart_rate_bpm' => '0',
+                'vital_exceptions' => ['heart_rate_bpm' => ['value' => '0', 'reason' => 'Confirmed absent pulse during resuscitation']]])
+                ->assertUnprocessable()->assertJsonValidationErrors(['heart_rate_bpm', 'vital_exceptions']);
+        }
+    }
+
+    #[DataProvider('selfAttendingActors')]
+    public function test_imaging_created_record_uses_the_self_attending_actor(string $role, ?string $adminType, string $label): void
+    {
+        $catalogue = require database_path('migrations/2026_10_13_000001_create_clinic_services_table.php');
+        $services = require database_path('migrations/2026_10_13_000002_create_clinic_case_services_table.php');
+        $imaging = require database_path('migrations/2026_10_15_000002_configure_diagnostic_imaging.php');
+        $catalogue->up(); $services->up(); $imaging->up();
+        try {
+            $this->authenticateAs($role, adminType: $adminType);
+            $this->insertClinicAppointment('in_consultation');
+            Storage::fake('local');
+            $service = ClinicService::where('name', 'X-ray — Abdominal')->sole();
+            $serviceId = $this->postJson('/api/admin/clinic-cases/1/services', [
+                'clinic_service_id' => $service->id, 'request_key' => (string) Str::uuid(),
+            ])->assertCreated()->json('data.id');
+            for ($index = 0; $index < 2; $index++) {
+                $attachmentId = $this->postJson('/api/admin/clinic-appointments/1/attachments', [
+                    'file' => UploadedFile::fake()->create('scan.png', 20, 'image/png'), 'clinic_case_service_id' => $serviceId,
+                ])->assertOk()->json('attachment.id');
+                $this->getJson("/api/admin/clinic-appointments/1/attachments/{$attachmentId}/download")->assertOk();
+            }
+            $this->assertDatabaseCount('clinic_records', 1);
+            $this->assertDatabaseHas('clinic_records', ['clinic_appointment_id' => 1, 'primary_veterinarian_id' => 1,
+                'primary_veterinarian_name' => ucfirst($role).' User', 'recorded_by_user_id' => 1, 'recorded_by_name' => ucfirst($role).' · '.$label]);
+        } finally {
+            $imaging->down(); $services->down(); $catalogue->down();
+        }
+    }
+
+    public function test_non_doctor_accounts_cannot_self_assign_or_save_clinical_records(): void
+    {
+        $this->insertClinicAppointment('in_consultation');
+        foreach ([['staff', 'clinic_receptionist'], ['staff', 'grooming_receptionist'], ['staff', 'other'], ['customer', '']] as $index => [$role, $subrole]) {
+            $this->authenticateAs($role, $index + 1, $subrole);
+            $this->assertFalse(auth()->user()->canSelfAssignAsAttendingClinician());
+            $this->postJson('/api/admin/clinic-appointments/1/record', ['primary_veterinarian_id' => $index + 1])->assertForbidden();
+        }
+        $this->assertDatabaseCount('clinic_records', 0);
     }
 
     public function test_medical_record_vet_is_automatically_primary_and_recorder_tracks_the_saving_account(): void
@@ -3840,9 +3936,9 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('record.recorded_by_user_id', 1);
         $this->authenticateAs('admin', 3);
         $this->postJson('/api/admin/clinic-appointments/1/record', ['working_diagnosis' => 'Updated assessment'])
-            ->assertOk()->assertJsonPath('record.primary_veterinarian_id', 1)
+            ->assertOk()->assertJsonPath('record.primary_veterinarian_id', 3)
             ->assertJsonPath('record.additional_veterinarians.0.user_id', 2)->assertJsonPath('record.recorded_by_user_id', 3);
-        $this->postJson('/api/admin/clinic-appointments/1/record', ['additional_veterinarian_ids' => [1]])
+        $this->postJson('/api/admin/clinic-appointments/1/record', ['additional_veterinarian_ids' => [3]])
             ->assertUnprocessable()->assertJsonValidationErrors('additional_veterinarian_ids.0');
     }
 
@@ -4074,6 +4170,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->authenticateAs('admin');
         $this->insertClinicAppointment('in_consultation');
         $this->postJson('/api/admin/clinic-appointments/1/record', ['weight_kg' => 24, 'temperature_c' => 38.5, 'heart_rate_bpm' => 80, 'respiratory_rate_bpm' => 20])->assertOk();
+        DB::table('clinic_records')->where('clinic_appointment_id', 1)->update(['primary_veterinarian_id' => null, 'primary_veterinarian_name' => null]);
         $this->postJson('/api/admin/clinic-cases/1/finish')->assertUnprocessable()->assertJsonValidationErrors('primary_veterinarian_id');
         $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'in_consultation']);
     }
@@ -4096,7 +4193,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseCount('bookings', 0);
     }
 
-    private function authenticateAs(string $role, int $userId = 1, string $subrole = 'veterinarian', string $staffType = 'clinic'): void
+    private function authenticateAs(string $role, int $userId = 1, string $subrole = 'veterinarian', string $staffType = 'clinic', ?string $adminType = null): void
     {
         $user = new User;
         $user->forceFill([
@@ -4104,6 +4201,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'first_name' => ucfirst($role),
             'last_name' => 'User',
             'role' => $role,
+            'admin_type' => $adminType,
             'staff_type' => $role === 'staff' ? ($subrole === 'grooming_receptionist' ? 'grooming' : $staffType) : null,
             'staff_subrole' => $role === 'staff' ? $subrole : null,
         ]);

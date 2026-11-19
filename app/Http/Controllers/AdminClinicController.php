@@ -706,7 +706,10 @@ class AdminClinicController extends Controller
         $existing = $appointment->record;
         $actor = $request->user();
         $veterinarians = User::activeVeterinarian()->get(['user_id', 'first_name', 'last_name'])->keyBy('user_id');
-        $request->merge(['primary_veterinarian_id' => $actor->isVeterinarian()
+        $selfAttending = $actor->canSelfAssignAsAttendingClinician();
+        $primaryVeterinarianIds = $veterinarians->keys()->all();
+        if ($selfAttending) $primaryVeterinarianIds[] = $actor->user_id;
+        $request->merge(['primary_veterinarian_id' => $selfAttending
             ? $actor->user_id : $request->input('primary_veterinarian_id', $existing?->primary_veterinarian_id)]);
         $vitalRule = function (string $field) use ($request, $appointment, $actor) {
             return function ($attribute, $value, $fail) use ($field, $request, $appointment, $actor) {
@@ -721,7 +724,7 @@ class AdminClinicController extends Controller
             };
         };
         $data = $request->validate([
-            'primary_veterinarian_id' => ['nullable', 'required_if_accepted:finish_case', 'integer', Rule::in($veterinarians->keys()->all())],
+            'primary_veterinarian_id' => ['nullable', 'required_if_accepted:finish_case', 'integer', Rule::in($primaryVeterinarianIds)],
             'additional_veterinarian_ids' => ['sometimes', 'array', 'list', 'max:20'],
             'additional_veterinarian_ids.*' => ['required', 'integer', 'distinct', Rule::in($veterinarians->keys()->all()), 'different:primary_veterinarian_id'],
             'relevant_history' => ['nullable', 'string', 'max:500'],
@@ -770,7 +773,7 @@ class AdminClinicController extends Controller
             'follow_up_date.before_or_equal' => 'The follow-up date must be within 3 months from today.',
         ]);
 
-        return DB::transaction(function () use ($data, $id, $actor, $veterinarians) {
+        return DB::transaction(function () use ($data, $id, $actor, $veterinarians, $selfAttending) {
             $appt = ClinicAppointment::query()
                 ->whereKey($id)
                 ->lockForUpdate()
@@ -798,7 +801,7 @@ class AdminClinicController extends Controller
 
             $existing = $appt->record;
             $name = fn (User $user) => trim($user->first_name.' '.$user->last_name) ?: "User #{$user->user_id}";
-            $primary = $veterinarians->get($data['primary_veterinarian_id'] ?? null);
+            $primary = $selfAttending ? $actor : $veterinarians->get($data['primary_veterinarian_id'] ?? null);
             $clinical = [];
             foreach (['relevant_history', 'reported_signs', 'physical_exam_findings', 'differential_diagnoses', 'working_diagnosis', 'prescriptions'] as $field) {
                 if (array_key_exists($field, $data)) $clinical[$field] = $data[$field];
@@ -907,8 +910,8 @@ class AdminClinicController extends Controller
             $record = ClinicRecord::firstOrCreate(
                 ['clinic_appointment_id' => $appt->id],
                 ['chief_complaint' => $appt->chief_complaint,
-                    'primary_veterinarian_id' => $actor->isVeterinarian() ? $actor->user_id : null,
-                    'primary_veterinarian_name' => $actor->isVeterinarian() ? $actorName : null,
+                    'primary_veterinarian_id' => $actor->canSelfAssignAsAttendingClinician() ? $actor->user_id : null,
+                    'primary_veterinarian_name' => $actor->canSelfAssignAsAttendingClinician() ? $actorName : null,
                     'recorded_by_user_id' => $actor->user_id, 'recorded_by_name' => $actor->actorAttribution()]
             );
 
