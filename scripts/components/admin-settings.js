@@ -413,7 +413,7 @@ function adminSettings() {
     },
 
     get canContinueOwnEmailChange() {
-      return !this.staffEmailChange.busy && !Object.keys(this.ownEmailValidation()).length && !Object.keys(this.staffEmailChange.errors).length;
+      return !this.staffEmailChange.busy && !this.staffEmailChange.retryRemaining && !Object.keys(this.ownEmailValidation()).length && !Object.keys(this.staffEmailChange.errors).length;
     },
 
     ownEmailInput(field) {
@@ -470,13 +470,16 @@ function adminSettings() {
       } finally { this.staffEmailChange.busy = false; }
     },
 
-    ownEmailError(error) {
+    ownEmailError(error, resending = false) {
       const form = this.staffEmailChange;
       form.errors = Object.fromEntries(Object.entries(error.errors || {}).map(([key, value]) => [key, [].concat(value)[0]]));
       form.error = error.status >= 500 ? 'The verification email could not be queued. Please try again.'
         : this.firstApiError(error) || 'Could not complete this email change. Please try again.';
       if (form.stage === 'form' && (form.errors.email || form.errors.current_password)) form.error = '';
-      if (error.retryAfter) this.startSecurityResendCountdown(error.retryAfter, form, '_staffEmailResendTimer');
+      if (error.retryAfter) {
+        if (resending) this.startSecurityResendCountdown(error.retryAfter, form, '_staffEmailResendTimer', error);
+        else this.startSecurityActionCountdown(error, form);
+      }
       if (error.data?.status === 'locked' && this.pendingStaffEmailChange) this.pendingStaffEmailChange.attempts_remaining = 0;
     },
 
@@ -486,7 +489,7 @@ function adminSettings() {
 
     async startOwnEmailChange() {
       const form = this.staffEmailChange;
-      if (form.busy || form.stage !== 'form' || !form.open || !this.staffAccount.canChangeEmail) return;
+      if (form.busy || form.retryRemaining || form.stage !== 'form' || !form.open || !this.staffAccount.canChangeEmail) return;
       form.errors = this.ownEmailValidation();
       form.error = '';
       if (Object.keys(form.errors).length) {
@@ -506,7 +509,7 @@ function adminSettings() {
 
     async verifyOwnEmailChange() {
       const form = this.staffEmailChange, pending = this.pendingStaffEmailChange;
-      if (form.busy || !pending || !/^[0-9]{6}$/.test(form.digits.join(''))) return;
+      if (form.busy || form.retryRemaining || !pending || !/^[0-9]{6}$/.test(form.digits.join(''))) return;
       form.busy = true; form.error = '';
       this.focusOwnEmailDialog();
       try {
@@ -539,7 +542,7 @@ function adminSettings() {
       try {
         const response = await API.resendStaffEmailChange(pending.id, form.stage);
         this.applyOwnEmailPending(response.pending_email_change);
-      } catch (error) { this.ownEmailError(error); }
+      } catch (error) { this.ownEmailError(error, true); }
       finally { form.busy = false; }
     },
 
@@ -837,7 +840,8 @@ function adminSettings() {
         if (keys[field]) form.errors[keys[field]] = [].concat(messages)[0];
       }
       const first = Object.keys(form.errors)[0];
-      if (!first) form.error = this.firstApiError(error);
+      if (kind === 'staff' && error.retryAfter) this.startSecurityActionCountdown(error, form);
+      else if (!first) form.error = this.firstApiError(error);
       else if (kind === 'admin') {
         this.$nextTick(() => {
           for (const field of ['first_name', 'last_name']) {
@@ -899,7 +903,7 @@ function adminSettings() {
       this.staffPassword.error = "";
       this.staffPassword.success = "";
 
-      if (this.staffPassword.submitting || !this.validateCredentialForm('staff')) return;
+      if (this.staffPassword.submitting || this.staffPassword.retryRemaining || !this.validateCredentialForm('staff')) return;
 
       this.staffPassword.submitting = true;
       try {
@@ -1177,7 +1181,7 @@ function adminSettings() {
     },
 
     get canStartStaffRecovery() {
-      return this.canAssistStaffEmail && !this.staffDetailsModal.busy && !Object.keys(this.recoveryValidation()).length && !Object.keys(this.staffRecovery.errors).length;
+      return this.canAssistStaffEmail && !this.staffDetailsModal.busy && !this.staffRecovery.retryRemaining && !Object.keys(this.recoveryValidation()).length && !Object.keys(this.staffRecovery.errors).length;
     },
 
     openStaffRecovery() {
@@ -1214,7 +1218,7 @@ function adminSettings() {
       this.armStaffRecoveryExpiry();
     },
 
-    recoveryError(error) {
+    recoveryError(error, resending = false) {
       const form = this.staffRecovery;
       form.errors = {};
       for (const field of ['email', 'current_password', 'reason', 'identity_verified', 'old_email_safe']) {
@@ -1224,14 +1228,17 @@ function adminSettings() {
       if (this.staffDetailsModal.view === 'recovery-code' || (this.staffDetailsModal.view === 'recovery-manage' && form.errors.email)) {
         form.error = form.errors.email || error.message || 'Recovery could not be processed. Please try again.';
       }
-      if (error.retryAfter) this.startSecurityResendCountdown(error.retryAfter, form, '_staffRecoveryResendTimer');
+      if (error.retryAfter) {
+        if (resending) this.startSecurityResendCountdown(error.retryAfter, form, '_staffRecoveryResendTimer', error);
+        else this.startSecurityActionCountdown(error, form);
+      }
       this.$nextTick(() => document.getElementById(this.staffDetailsModal.view === 'recovery-code' ? 'recoveryCodeDigit0'
         : form.errors.email && this.staffDetailsModal.view === 'recovery' ? 'recoveryNewEmail' : 'recoveryAdminPassword')?.focus());
     },
 
     async startStaffRecovery() {
       const modal = this.staffDetailsModal, form = this.staffRecovery;
-      if (modal.busy || modal.view !== 'recovery' || !this.canAssistStaffEmail) return;
+      if (modal.busy || form.retryRemaining || modal.view !== 'recovery' || !this.canAssistStaffEmail) return;
       form.errors = this.recoveryValidation(); form.error = '';
       if (Object.keys(form.errors).length) {
         if (form.errors.email) AccountEmail.showError(document.getElementById('recoveryNewEmail'), form.errors.email);
@@ -1256,7 +1263,7 @@ function adminSettings() {
 
     async confirmStaffRecovery() {
       const modal = this.staffDetailsModal, form = this.staffRecovery;
-      if (modal.busy || modal.view !== 'recovery-code' || form.digits.join('').length !== 6) return;
+      if (modal.busy || form.retryRemaining || modal.view !== 'recovery-code' || form.digits.join('').length !== 6) return;
       modal.busy = true; form.error = '';
       this.$nextTick(() => document.getElementById('staffDetailsDialog')?.focus());
       try {
@@ -1279,7 +1286,7 @@ function adminSettings() {
         form.challenge = result.recovery; form.digits = ['', '', '', '', '', ''];
         this.startSecurityResendCountdown(result.recovery.resend_after || 0, form, '_staffRecoveryResendTimer');
         this.$nextTick(() => document.getElementById('recoveryCodeDigit0')?.focus());
-      } catch (error) { this.recoveryError(error); }
+      } catch (error) { this.recoveryError(error, true); }
       finally { modal.busy = false; }
     },
 
@@ -1301,7 +1308,7 @@ function adminSettings() {
     async cancelStaffRecoveryRequest() { await this.manageStaffRecovery('cancel'); },
     async manageStaffRecovery(action) {
       const modal = this.staffDetailsModal, form = this.staffRecovery, recovery = modal.staff?.emailRecovery;
-      if (modal.busy || modal.view !== 'recovery-manage' || !recovery || (action === 'resend' && form.resendRemaining)) return;
+      if (modal.busy || modal.view !== 'recovery-manage' || !recovery || (action === 'resend' ? form.resendRemaining : form.retryRemaining)) return;
       form.errors = {}; form.error = '';
       if (!form.password) form.errors.current_password = 'Enter your owner password.';
       if (action === 'cancel' && !form.oldEmailSafe) form.errors.old_email_safe = 'Confirm that current email access is safe to restore.';
@@ -1316,7 +1323,7 @@ function adminSettings() {
         modal.busy = false;
         this.recoveryDetails();
         window.showSuccessToast(action === 'cancel' ? 'Recovery cancelled.' : 'Recovery email queued.');
-      } catch (error) { this.recoveryError(error); }
+      } catch (error) { this.recoveryError(error, action === 'resend'); }
       finally { form.password = ''; form.showPassword = false; modal.busy = false; }
     },
 
@@ -1596,12 +1603,34 @@ function adminSettings() {
       this._stopSecurityDeliveryCheck = null;
     },
 
-    startSecurityResendCountdown(seconds, verification = this.securityVerification, timerKey = '_securityResendTimer') {
+    securityCountdownLabel(seconds, label = 'Try again in ') {
+      return label + window.VerificationCode.formatCountdown(seconds);
+    },
+
+    startSecurityActionCountdown(error, form) {
+      const message = 'Too many attempts. Please wait before trying again.';
+      form.error = message;
+      form.cooldownStatus = "";
+      window.VerificationCode.startCountdown(error.retryAfter, remaining => {
+        form.retryRemaining = remaining;
+        if (!remaining && form.error === message) {
+          form.error = '';
+          form.cooldownStatus = 'You can try again now.';
+        }
+      });
+    },
+
+    startSecurityResendCountdown(seconds, verification = this.securityVerification, timerKey = '_securityResendTimer', error = null) {
       window.clearInterval(this[timerKey]);
+      const message = 'Please wait before resending.';
+      if (error) verification.error = message;
       const until = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
+      verification.cooldownStatus = seconds > 0 && !error ? 'Resending is temporarily paused.' : '';
       const tick = () => {
         verification.resendRemaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
         if (!verification.resendRemaining) {
+          if (error && verification.error === message) verification.error = '';
+          if (seconds > 0) verification.cooldownStatus = 'You can resend the email now.';
           window.clearInterval(this[timerKey]);
           this[timerKey] = null;
         }
@@ -1669,7 +1698,7 @@ function adminSettings() {
 
     async confirmSecurityCredentialChange() {
       if (!this.securityCodeComplete || !this.securityVerification.changeId
-        || this.securityVerification.resending || this.securityVerification.submitting) return;
+        || this.securityVerification.resending || this.securityVerification.submitting || this.securityVerification.retryRemaining) return;
 
       this.securityVerification.error = "";
       this.securityVerification.submitting = true;
@@ -1704,8 +1733,11 @@ function adminSettings() {
           await this.loadSecurityAccounts();
         }
       } catch (error) {
-        this.securityVerification.error = this.firstApiError(error);
-        this.clearSecurityCode();
+        if (error.retryAfter) this.startSecurityActionCountdown(error, this.securityVerification);
+        else {
+          this.securityVerification.error = this.firstApiError(error);
+          this.clearSecurityCode();
+        }
       } finally {
         this.securityVerification.submitting = false;
       }
@@ -1731,8 +1763,8 @@ function adminSettings() {
         this.watchSecurityCodeDelivery(response.email_delivery_token);
       } catch (error) {
         if (this.securityVerification !== verification) return;
-        this.securityVerification.error = this.firstApiError(error);
-        if (error.retryAfter) this.startSecurityResendCountdown(error.retryAfter);
+        if (error.retryAfter) this.startSecurityResendCountdown(error.retryAfter, verification, '_securityResendTimer', error);
+        else this.securityVerification.error = this.firstApiError(error);
       } finally {
         verification.resending = false;
       }

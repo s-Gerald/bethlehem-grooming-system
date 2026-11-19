@@ -9,6 +9,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const message = document.getElementById('recoveryMessage');
   const error = document.getElementById('recoveryError');
   let busy = false;
+  let coolingDown = false;
+  let stopCountdown;
   const hidePassword = () => {
     password.type = 'password';
     reveal.setAttribute('aria-label', 'Show current account password');
@@ -30,8 +32,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     password.focus();
   } catch { unavailable(); return; }
   password.addEventListener('input', () => {
-    error.classList.add('hidden'); password.setAttribute('aria-invalid', 'false');
-    submit.disabled = busy || !password.value;
+    if (!coolingDown) error.classList.add('hidden');
+    password.setAttribute('aria-invalid', 'false');
+    submit.disabled = busy || coolingDown || !password.value;
   });
   reveal.addEventListener('click', () => {
     if (busy) return;
@@ -43,7 +46,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    if (busy || !password.value || !token) return;
+    if (busy || coolingDown || !password.value || !token) return;
     busy = true; submit.disabled = true; password.disabled = true; reveal.disabled = true;
     submit.textContent = 'Confirming...'; error.classList.add('hidden');
     try {
@@ -55,16 +58,27 @@ document.addEventListener('DOMContentLoaded', async () => {
       message.classList.remove('hidden');
     } catch (failure) {
       if (['invalid', 'expired', 'locked'].includes(failure.data?.status)) unavailable();
-      else {
+      else if (failure.retryAfter > 0) {
+        error.textContent = 'Too many attempts. Please wait before trying again.';
+        error.classList.remove('hidden');
+        stopCountdown = window.VerificationCode.startCountdown(failure.retryAfter, seconds => {
+          coolingDown = Boolean(seconds);
+          submit.disabled = coolingDown || !password.value;
+          submit.textContent = seconds
+            ? 'Try again in ' + window.VerificationCode.formatCountdown(seconds) : 'Confirm Email Change';
+          if (!seconds) error.textContent = 'You can try confirming the email change again.';
+        });
+      } else {
         error.textContent = failure.errors?.current_password?.[0] || failure.message || 'Recovery could not be completed. Please try again.';
         error.classList.remove('hidden'); password.setAttribute('aria-invalid', 'true');
       }
     } finally {
       password.value = ''; hidePassword(); busy = false; password.disabled = false; reveal.disabled = false;
-      submit.textContent = 'Confirm Email Change'; submit.disabled = true;
+      if (!coolingDown) submit.textContent = 'Confirm Email Change';
+      submit.disabled = true;
       if (token) password.focus();
     }
   });
-  window.addEventListener('pagehide', () => { token = ''; password.value = ''; hidePassword(); });
+  window.addEventListener('pagehide', () => { stopCountdown?.(); token = ''; password.value = ''; hidePassword(); });
   window.addEventListener('pageshow', event => { if (event.persisted) unavailable(); });
 });

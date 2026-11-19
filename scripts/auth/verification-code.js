@@ -4,13 +4,25 @@ window.VerificationCode = {
     const [local, domain] = String(email || "").split("@");
     return local && domain ? `${Array.from(local)[0]}***@${domain}` : "your email address";
   },
-  formatCountdown(seconds, alwaysMinutes = false) {
+  formatCountdown(seconds, clock = false) {
     const remaining = Math.max(0, Math.ceil(Number(seconds) || 0));
     if (!Number.isFinite(remaining) || !remaining) return "";
     const minutes = Math.floor(remaining / 60);
     const tail = `${String(remaining % 60).padStart(2, "0")}s`;
     if (minutes >= 60) return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m ${tail}`;
-    return minutes || alwaysMinutes ? `${minutes}m ${tail}` : `${remaining}s`;
+    if (clock) return minutes + ":" + String(remaining % 60).padStart(2, "0");
+    return minutes ? `${minutes}m ${tail}` : `${remaining}s`;
+  },
+  startCountdown(seconds, render) {
+    const until = Date.now() + seconds * 1000;
+    const timer = window.setInterval(tick, 1000);
+    function tick() {
+      const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+      render(remaining);
+      if (!remaining) window.clearInterval(timer);
+    }
+    tick();
+    return () => window.clearInterval(timer);
   },
   bind(codeInput, codeCells, onChange = () => {}) {
     function updateCodeCells() {

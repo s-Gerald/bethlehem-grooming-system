@@ -364,7 +364,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
     public function test_idle_expiry_restores_but_duplicate_requests_do_not_replace_the_restored_session(): void
     {
         $old = $this->login('customer', true);
-        $this->travel(30)->minutes();
+        $this->travel(120)->minutes();
         $this->requestAs($old, 'GET', '/api/session')->assertUnauthorized();
         $first = $this->restoreDevice($this->rememberCookies[$old])->assertOk();
         $second = $this->restoreDevice($this->rememberCookies[$old])->assertOk();
@@ -379,7 +379,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
     public function test_consumed_credential_replay_after_grace_revokes_device_and_its_session(): void
     {
         $old = $this->login('customer', true);
-        $this->travel(31)->minutes();
+        $this->travel(121)->minutes();
         $this->restoreDevice($this->rememberCookies[$old])->assertOk();
         $this->travel(61)->seconds();
         $this->restoreDevice($this->rememberCookies[$old])->assertUnauthorized();
@@ -425,7 +425,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
             ->assertJsonPath('remember_me', false)->assertCookieMissing('bethlehem_remembered_device');
         $this->assertDatabaseCount('remembered_devices', 0);
         $this->assertDatabaseCount('personal_access_tokens', 1);
-        $this->travel(30)->minutes();
+        $this->travel(120)->minutes();
         $this->restoreDevice('', $this->browserCookies[$old])->assertUnauthorized();
     }
 
@@ -495,7 +495,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
     public function test_predecessor_logout_cannot_revoke_the_restored_session_on_the_same_device(): void
     {
         $old = $this->login('customer', true);
-        $this->travel(31)->minutes();
+        $this->travel(121)->minutes();
         $restored = $this->restoreDevice($this->rememberCookies[$old])->assertOk();
         $rotated = $restored->getCookie('bethlehem_remembered_device', false)->getValue();
         foreach ([$this->rememberCookies[$old], $rotated] as $credential) {
@@ -581,7 +581,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
             $this->app->make(\Illuminate\Contracts\Console\Kernel::class)->rerouteSymfonyCommandEvents();
             $this->artisan('sanctum:prune-expired', ['--hours' => 24])->assertSuccessful();
         } else {
-            $this->travel($expiration === 'idle' ? 1 : 25)->hours();
+            $this->travel($expiration === 'idle' ? 2 : 25)->hours();
             $this->requestAs($token, 'GET', '/api/session')->assertUnauthorized();
         }
         $this->assertDatabaseCount('personal_access_tokens', 0);
@@ -656,7 +656,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $old = $this->login('customer', true);
         $response = $this->restoreDevice($this->rememberCookies[$old], $this->browserCookies[$old])->assertOk();
         $response->assertCookieMissing('bethlehem_account_session'); // Active recovery does not rewrite credentials.
-        $this->travel(31)->minutes();
+        $this->travel(121)->minutes();
         $remembered = $this->restoreDevice($this->rememberCookies[$old])->assertOk()->getCookie('bethlehem_remembered_device', false);
         $this->assertTrue($remembered->isSecure());
         $this->assertTrue($remembered->isHttpOnly());
@@ -914,7 +914,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
 
     public static function overlappingAuthentication(): array
     {
-        return [['otp'], ['restore'], ['exhausted-otp'], ['resend'], ['password']];
+        return [['otp'], ['restore'], ['post-cooldown-otp'], ['resend'], ['password']];
     }
 
     #[DataProvider('overlappingAuthentication')]
@@ -938,12 +938,12 @@ class IndependentAuthenticationSessionsTest extends TestCase
             $pending = $this->postJson('/api/sign-in', ['identifier' => 'admin@example.test', 'password' => 'SessionTest!123'])->assertAccepted();
             $code = Notification::sent(User::where('role', 'admin')->firstOrFail(), ConfirmLoginNotification::class)->last()->code;
             $payload = ['path' => '/api/email/login/confirm', 'body' => ['poll_token' => $pending->json('login_poll_token'), 'code' => $code], 'cookies' => []];
-            if ($mode === 'exhausted-otp') {
+            if ($mode === 'post-cooldown-otp') {
                 $wrong = $code === '000000' ? '111111' : '000000';
                 foreach (range(1, 4) as $attempt) $this->postJson($payload['path'], [...$payload['body'], 'code' => $wrong])->assertUnprocessable();
                 $payload['body']['code'] = $wrong;
             } elseif ($mode === 'resend') {
-                // Model a cooldown that has ended; the code remains exhausted.
+                // Preserve the challenge deadline while rotating a code with prior mistakes.
                 DB::table('login_email_challenges')->update(['failed_attempts' => 5, 'last_sent_at' => now()->subMinutes(2)]);
                 $before = DB::table('login_email_challenges')->first();
                 $payload = ['path' => '/api/email/login/resend', 'body' => ['poll_token' => $pending->json('login_poll_token')], 'cookies' => []];
@@ -955,7 +955,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
                 'cookies' => ['bethlehem_remembered_device' => $this->rememberCookies[$old]]];
         }
         $secondPayload = $payload;
-        if ($mode === 'exhausted-otp') $secondPayload['body']['code'] = $code;
+        if ($mode === 'post-cooldown-otp') $secondPayload['body']['code'] = $code;
         $secondPayload = json_encode($secondPayload, JSON_THROW_ON_ERROR);
         $payload = json_encode($payload, JSON_THROW_ON_ERROR);
         $directory = sys_get_temp_dir().'/bethlehem-session-'.bin2hex(random_bytes(6));
@@ -1050,15 +1050,12 @@ class IndependentAuthenticationSessionsTest extends TestCase
                 $this->assertFalse(Hash::check('SessionTest!123', $hash));
                 return;
             }
-            if ($mode === 'exhausted-otp') {
-                // Each worker has its own array cache, so this isolates the
-                // durable issued-code guard from the shared source restriction.
+            if ($mode === 'post-cooldown-otp') {
                 $this->assertSame(422, $one['status']);
-                $this->assertSame('login_code_exhausted', $one['code']);
-                $this->assertSame(422, $two['status']);
-                $this->assertSame('login_code_exhausted', $two['code']);
-                $this->assertSame(5, (int) $connection->query('SELECT failed_attempts FROM login_email_challenges')->fetchColumn());
-                $this->assertSame(0, (int) $connection->query('SELECT COUNT(*) FROM personal_access_tokens')->fetchColumn());
+                $this->assertSame('login_code_invalid', $one['code']);
+                $this->assertSame(200, $two['status']);
+                $this->assertSame(0, (int) $connection->query('SELECT COUNT(*) FROM login_email_challenges')->fetchColumn());
+                $this->assertSame(1, (int) $connection->query('SELECT COUNT(*) FROM personal_access_tokens')->fetchColumn());
                 return;
             }
             if ($mode === 'resend') {

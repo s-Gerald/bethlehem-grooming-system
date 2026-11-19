@@ -51,7 +51,7 @@ class EnsureSessionIsActive
             $privileged = in_array($request->user()->role, ['admin', 'staff'], true);
             $policy = app(AccountSessionService::class);
             $expiresAt = $policy->expiresAt($token, $request->user());
-            $idleAt = $policy->idleAt($token);
+            $idleAt = $policy->idleAt($token, $request->user());
             if ($now->gte($expiresAt) || (! $privileged && $now->gte($idleAt))) {
                 if (! $privileged && ! $lockAccount) return false;
                 if (! $privileged) app(\App\Services\RememberedDeviceService::class)->checkpointSessionActivity($token);
@@ -94,7 +94,7 @@ class EnsureSessionIsActive
                 $token->forceFill(['last_interaction_at' => $now])->save();
                 if (! $privileged) app(\App\Services\RememberedDeviceService::class)->recordActivity($request->user(), $token);
                 $request->attributes->set('auth_session', [
-                    ...$session, 'idle_at' => $now->copy()->addMinutes(30)->toIso8601String(),
+                    ...$session, 'idle_at' => $policy->idleAt($token, $request->user())->toIso8601String(),
                 ]);
             }
 

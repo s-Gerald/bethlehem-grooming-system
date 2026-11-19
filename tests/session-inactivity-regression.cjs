@@ -36,7 +36,8 @@ function jsonResponse(status, data) {
 function createIdleBrowser(role, fixture = {}) {
   const options = fixture;
   let now = options.now ?? 1_000_000;
-  const server = options.server || {idleAt: now + 30 * 60000,
+  const idleMinutes = role === "customer" ? 120 : 30;
+  const server = options.server || {idleAt: now + idleMinutes * 60000,
     expiresAt: now + (role === "customer" ? 24 : 12) * 3600000, locked: false};
   let unlockedRequests = 0;
   let timerSequence = 0;
@@ -180,14 +181,15 @@ function createIdleBrowser(role, fixture = {}) {
       if (url.endsWith("/logout")) return jsonResponse(200, {success: true});
       if (url.endsWith("/session/unlock")) {
         unlockedRequests++;
+        if (fixture.unlockRetryAfter) return jsonResponse(429, {retry_after: fixture.unlockRetryAfter});
         if (fixture.pauseUnlock) await new Promise(resolve => { fixture.releaseUnlock = resolve; });
         if (JSON.parse(options.body).password !== "correct") return jsonResponse(422, {message: "Incorrect password."});
         server.locked = false;
-        server.idleAt = now + 30 * 60000;
+        server.idleAt = now + idleMinutes * 60000;
       }
       if (url.endsWith("/session/activity")) {
         if (server.locked) return jsonResponse(423, {code: "session_locked", locked: true});
-        server.idleAt = now + 30 * 60000;
+        server.idleAt = now + idleMinutes * 60000;
       }
       if (fixture.protectedLocked && !url.includes("/session")) return jsonResponse(423, {code: "session_locked"});
       const response = jsonResponse(200, {success: true, ...(fixture.user ? {
@@ -660,26 +662,50 @@ async function testFailedLogoutRetainsRevocationRetry() {
   }
 }
 
-async function testCustomerThirtyMinuteTimeout() {
+async function testUnlockCooldownCountsDownAndRequiresAnExplicitRetry() {
+  const fixture = {unlockRetryAfter: 60};
+  const browser = createIdleBrowser("admin", fixture);
+  await browser.settle();
+  await browser.advance(30);
+  await browser.submit("wrong");
+  const button = browser.elements.get("session-unlock");
+  assert.equal(button.disabled, true);
+  assert.equal(button.textContent, "Try again in 1:00");
+  await browser.advance(1 / 60);
+  assert.equal(button.textContent, "Try again in 0:59");
+  await browser.submit("correct");
+  assert.equal(browser.unlockRequests, 1);
+  await browser.advance(59 / 60);
+  assert.equal(button.disabled, false);
+  assert.equal(browser.unlockRequests, 1);
+  fixture.unlockRetryAfter = 0;
+  await browser.submit("correct");
+  assert.equal(browser.API.isSessionLocked(), false);
+}
+
+async function testCustomerTwoHourTimeout() {
   const browser = createIdleBrowser("customer", {remember: false});
   await browser.settle();
   const policy = browser.API.getSessionInactivityPolicy("customer");
-  assert.equal(policy.warningMs, 29 * 60 * 1000);
-  assert.equal(policy.timeoutMs, 30 * 60 * 1000);
+  assert.equal(policy.warningMs, 118 * 60 * 1000);
+  assert.equal(policy.timeoutMs, 120 * 60 * 1000);
 
-  await browser.advance(29);
+  await browser.advance(30);
+  assert.ok(browser.API.getCustomerToken(), "Customer stays signed in after 30 minutes");
+  assert.deepEqual(browser.replacements, []);
+  await browser.advance(88);
   assert.equal(browser.warning().style.display, "block");
   assert.deepEqual(browser.replacements, []);
 
-  await browser.advance(1);
-  assert.equal(browser.localStorage.getItem("customer_token"), null);
+  await browser.advance(2);
+  assert.equal(browser.API.getCustomerToken(), null);
   assert.equal(browser.replacements.at(-1), "/sign-in");
 }
 
 async function testUnattendedRememberedCustomerDoesNotRestoreUntilTheUserReturns() {
   const browser = createIdleBrowser('customer');
   await browser.settle();
-  await browser.advance(30);
+  await browser.advance(120);
   assert.equal(browser.root.attributes['data-session-gate'], 'checking');
   assert.equal(browser.requests.filter(request => request.url.endsWith('/session/restore')).length, 0);
   const reads = Promise.allSettled([browser.API.getMe(), browser.API.getMe()]);
@@ -771,7 +797,8 @@ async function testReplacementDetectionReusesTheSessionLifecycle() {
   await testFailedLogoutRetainsRevocationRetry();
   await testDelayedStatusCannotRelockAfterPasswordUnlock();
   await testPausedReadsResumeOnceAndWritesAreNeverReplayed();
-  await testCustomerThirtyMinuteTimeout();
+  await testUnlockCooldownCountsDownAndRequiresAnExplicitRetry();
+  await testCustomerTwoHourTimeout();
   await testUnattendedRememberedCustomerDoesNotRestoreUntilTheUserReturns();
   await testReceptionistContextsLockUnlockAndExpireIndependently();
   console.log("Session inactivity regression tests passed.");

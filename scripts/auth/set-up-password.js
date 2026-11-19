@@ -73,7 +73,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (submit.dataset.busy === 'true') return;
+    if (submit.disabled) return;
     let first;
     const fields = { username, password, password_confirmation: confirmation };
     for (const [key, binding] of Object.entries(credentialBindings)) if (!binding.validate()) first ||= fields[key];
@@ -93,6 +93,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       window.location.replace("/admin/dashboard");
     } catch (error) {
+      if (error.retryAfter > 0) {
+        setBusy(false);
+        setMessage("error", "Too many attempts. Please wait before trying again.");
+        window.VerificationCode.startCountdown(error.retryAfter, seconds => {
+          submit.disabled = Boolean(seconds);
+          if (submitLabel) submitLabel.textContent = seconds
+            ? "Try again in " + window.VerificationCode.formatCountdown(seconds) : "Create Account";
+          if (!seconds) setMessage("error", "You can try creating your account again.");
+        });
+        return;
+      }
       let first;
       for (const [key, messages] of Object.entries(error?.errors || {})) {
         if (!credentialBindings[key]) continue;
@@ -119,6 +130,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   requestNewLink.addEventListener("click", async () => {
+    if (requestNewLink.disabled) return;
     requestNewLink.disabled = true;
     requestNewLink.textContent = "Sending...";
     try {
@@ -129,8 +141,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (error) {
       expiredMessage.textContent = firstApiError(error);
       expiredMessage.className = "rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700";
-      requestNewLink.disabled = false;
-      requestNewLink.textContent = "Request New Setup Link";
+      if (error.retryAfter > 0) {
+        window.VerificationCode.startCountdown(error.retryAfter, seconds => {
+          requestNewLink.disabled = Boolean(seconds);
+          requestNewLink.textContent = seconds
+            ? "Request new link in " + window.VerificationCode.formatCountdown(seconds) : "Request New Setup Link";
+          if (!seconds) expiredMessage.textContent = "You can request a new link now.";
+        });
+      } else {
+        requestNewLink.disabled = false;
+        requestNewLink.textContent = "Request New Setup Link";
+      }
     }
   });
 

@@ -59,7 +59,7 @@ class SessionController extends Controller
             $request->attributes->set('auth_session', [
                 ...$request->attributes->get('auth_session'),
                 'locked' => false, 'server_now' => now()->toIso8601String(),
-                'idle_at' => now()->addMinutes(30)->toIso8601String(),
+                'idle_at' => app(\App\Services\AccountSessionService::class)->idleAt($token, $request->user())->toIso8601String(),
             ]);
 
             return $this->status($request);

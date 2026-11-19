@@ -94,8 +94,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let busy = false;
   let lockoutUntil = 0;
   let lockoutIdentifier = null;
-  let verificationCooldown = false;
-  let emailMessageIdentifier = null;
+  let cooldownMessage = "";
   const statusBox = document.getElementById('sharedSignInStatus');
   const currentIdentifier = () => identifierInput.value.trim().toLowerCase();
   let checkingSession = false;
@@ -115,7 +114,6 @@ document.addEventListener("DOMContentLoaded", () => {
   try { sessionStorage.removeItem('signInLockoutUntil'); } catch { /* Storage is optional. */ }
   identifierInput.addEventListener('input', () => {
     if (lockoutIdentifier !== null && lockoutIdentifier !== currentIdentifier()) clearCountdown();
-    if (emailMessageIdentifier !== null && emailMessageIdentifier !== currentIdentifier()) showMessage(null, '');
   });
 
   signInForm.addEventListener("submit", async (event) => {
@@ -156,26 +154,21 @@ document.addEventListener("DOMContentLoaded", () => {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       window.location.href = dest;
     } catch (error) {
-      if (error.status === 429 && ['sign_in_password_cooldown', 'sign_in_ip_cooldown'].includes(error.code)) {
-        if (error.code === 'sign_in_ip_cooldown' || submittedIdentifier === currentIdentifier()) {
-          const seconds = error.retryAfter;
-          if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0 && seconds <= 900) {
-            startCountdown(seconds, error.code === 'sign_in_ip_cooldown' ? null : submittedIdentifier);
+      if (error.status === 429) {
+        const shared = !error.code || error.code === 'sign_in_ip_cooldown';
+        if (shared || submittedIdentifier === currentIdentifier()) {
+          const message = {
+            login_code_locked: 'Too many verification attempts.',
+            email_rate_limited: 'Sign-in email limit reached.',
+            email_cooldown: 'Please wait before requesting another sign-in email.',
+          }[error.code] || 'Too many attempts.';
+          const duration = error.retryAfter ?? error.data?.retry_after;
+          const seconds = ['number', 'string'].includes(typeof duration) ? Number(duration) : 0;
+          if (Number.isFinite(seconds) && seconds > 0) {
+            startCountdown(seconds, shared ? null : submittedIdentifier, message);
           } else {
-            showMessage('lockout', 'Too many attempts. Please try again.');
+            showMessage('error', error.message || message);
           }
-        }
-      } else if (error.status === 429 && error.code === 'login_code_locked') {
-        if (submittedIdentifier === currentIdentifier()) {
-          const seconds = error.retryAfter;
-          if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0 && seconds <= 900) {
-            startCountdown(seconds, submittedIdentifier, true);
-          } else showMessage('error', error.message || 'Too many verification attempts. Please try again.');
-        }
-      } else if (error.status === 429 && ['email_rate_limited', 'email_cooldown'].includes(error.code)) {
-        if (submittedIdentifier === currentIdentifier()) {
-          showMessage('error', emailLimitMessage(error));
-          emailMessageIdentifier = submittedIdentifier;
         }
       } else if (error.emailNotVerified) {
         const email = error.email ?? "";
@@ -238,36 +231,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  function emailLimitMessage(error) {
-    const seconds = [error.retryAfter, error.data?.retry_after]
-      .filter(value => ['number', 'string'].includes(typeof value) && String(value).trim() !== '')
-      .map(Number).find(value => Number.isFinite(value) && value > 0);
-    const duration = () => {
-      const [unit, divisor] = seconds >= 86400 ? ['day', 86400]
-        : seconds >= 3600 ? ['hour', 3600] : seconds >= 60 ? ['minute', 60] : ['second', 1];
-      const amount = Math.ceil(seconds / divisor);
-      return `${amount} ${unit}${amount === 1 ? '' : 's'}`;
-    };
-    if (error.code === 'email_cooldown') {
-      return seconds ? `Please wait ${duration()} before requesting another sign-in email.`
-        : 'Please wait before requesting another sign-in email.';
-    }
-    const timestamp = error.data?.next_eligible_at;
-    // Require an explicit ISO timezone; Date.parse alone accepts ambiguous dates
-    // and normalizes impossible calendar dates such as February 30.
-    const iso = typeof timestamp === 'string' && timestamp.match(/^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/);
-    const eligible = iso ? Date.parse(timestamp) : NaN;
-    if (Number.isFinite(eligible) && new Date(`${iso[1]}T00:00:00Z`).toISOString().slice(0, 10) === iso[1]) {
-      // Round up so dropping seconds never suggests retrying before eligibility.
-      const minute = Math.ceil(eligible / 60000) * 60000;
-      const date = new Intl.DateTimeFormat('en-US', {timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric'}).format(minute);
-      const time = new Intl.DateTimeFormat('en-US', {timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true}).format(minute);
-      return `Sign-in email limit reached. Try again ${date} at ${time} PHT.`;
-    }
-    return seconds ? `Sign-in email limit reached. Try again in about ${duration()}.`
-      : 'Sign-in email limit reached. Please try again later.';
-  }
-
   function clearCountdown() {
     clearInterval(countdownTimer);
     countdownTimer = null;
@@ -285,15 +248,15 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     submitButton.disabled = true;
-    messageBox.textContent = `${verificationCooldown ? 'Too many verification attempts' : 'Too many attempts'}. Try again in ${window.VerificationCode.formatCountdown(remaining)}.`;
+    messageBox.textContent = `${cooldownMessage} Try again in ${window.VerificationCode.formatCountdown(remaining)}.`;
   }
 
-  function startCountdown(seconds, identifier, verification = false) {
+  function startCountdown(seconds, identifier, message) {
     clearInterval(countdownTimer);
     // A monotonic deadline cannot grow when the device clock moves backwards.
     lockoutUntil = performance.now() + seconds * 1000;
     lockoutIdentifier = identifier;
-    verificationCooldown = verification;
+    cooldownMessage = message;
     showMessage('lockout', '');
     tickCountdown();
     if (statusBox) statusBox.textContent = messageBox.textContent;
@@ -323,7 +286,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function showMessage(type, text, prefillEmail = "") {
     if (type && replacementAlert && !replacementAlert.hidden) return;
-    emailMessageIdentifier = null;
     if (statusBox) statusBox.textContent = '';
     messageBox.setAttribute('role', type === 'lockout' ? 'timer' : type === 'error' ? 'alert' : 'status');
     messageBox.setAttribute('aria-live', type === 'lockout' ? 'off' : type === 'error' ? 'assertive' : 'polite');

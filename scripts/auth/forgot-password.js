@@ -43,6 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let completed = false;
   let departed = false;
   let journey = 0;
+  const cooldownFeedback = new Map();
 
   // Only a reload may resume this journey. Links and history navigation start fresh.
   try {
@@ -150,6 +151,7 @@ document.addEventListener("DOMContentLoaded", () => {
     requestedEmail = "";
     maskedEmail = "";
     resendUntil = verifyUntil = resetUntil = 0;
+    cooldownFeedback.clear();
     busy = false;
     emailInput.value = "";
     verifyEmail.textContent = "";
@@ -163,6 +165,13 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function tick() {
+    for (const [element, { deadline, message }] of cooldownFeedback) {
+      if (remaining(deadline) > 0) continue;
+      cooldownFeedback.delete(element);
+      if (element.textContent === message) setError(element);
+      const status = document.getElementById("passwordResetCooldownStatus");
+      if (status) status.textContent = "You can try again now.";
+    }
     if (!busy && expiresAt && remaining(expiresAt) === 0) {
       if (resetGrant) restartRecovery("Your reset session expired. Request a new code.");
       else if (step === "code") setError(codeMessage, "Code expired. Request a new code.");
@@ -243,6 +252,7 @@ document.addEventListener("DOMContentLoaded", () => {
       emailInput.setAttribute("aria-invalid", String(accountStatus || error?.status === 422));
       if (accountStatus || error?.status === 422) emailInput.focus();
       resendUntil = Date.now() + (error?.retryAfter || 0) * 1000;
+      if (error?.status === 429 && error.retryAfter > 0) trackCooldown(emailMessage, resendUntil);
       saveRecovery();
       startTimer();
     } finally {
@@ -270,6 +280,7 @@ document.addEventListener("DOMContentLoaded", () => {
       setError(codeMessage, error?.status === 429 ? "Too many requests. Please wait before trying again."
         : "Couldn't request a code. Try again.");
       resendUntil = Date.now() + (error?.retryAfter || 0) * 1000;
+      if (error?.status === 429 && error.retryAfter > 0) trackCooldown(codeMessage, resendUntil);
       saveRecovery();
       startTimer();
     } finally {
@@ -308,6 +319,7 @@ document.addEventListener("DOMContentLoaded", () => {
         : error?.status !== 422 ? "Couldn't verify the code. Try again."
         : failedAttempts >= 5 ? "Too many incorrect attempts. Wait before requesting a new code."
         : "Invalid or expired code. Check it or request a new code.");
+      if (error?.status === 429 && error.retryAfter > 0) trackCooldown(codeMessage, verifyUntil);
       codeInput.setAttribute("aria-invalid", error?.status === 422 ? "true" : "false");
     } finally {
       if (currentJourney === journey) {
@@ -376,6 +388,7 @@ document.addEventListener("DOMContentLoaded", () => {
         password.focus();
       } else setError(passwordMessage, error?.status === 429 ? "Too many attempts. Please wait before trying again." : message);
       if (error?.retryAfter) resetUntil = Date.now() + error.retryAfter * 1000;
+      if (error?.status === 429 && error.retryAfter > 0) trackCooldown(passwordMessage, resetUntil);
       saveRecovery();
     } finally {
       if (currentJourney === journey) {
@@ -408,6 +421,12 @@ document.addEventListener("DOMContentLoaded", () => {
   function firstApiError(error) {
     const messages = Object.values(error?.errors || {})[0];
     return Array.isArray(messages) && messages[0] ? messages[0] : error?.message || "The password could not be reset.";
+  }
+
+  function trackCooldown(element, deadline) {
+    const status = document.getElementById("passwordResetCooldownStatus");
+    if (status) status.textContent = "";
+    cooldownFeedback.set(element, { deadline, message: element.textContent });
   }
 
   function setError(element, message = "") {

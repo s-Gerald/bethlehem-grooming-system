@@ -501,7 +501,7 @@ var API = (() => {
   const SESSION_INACTIVITY_POLICIES = Object.freeze({
     admin: Object.freeze({ timeoutMs: 30 * 60 * 1000, warningMs: 29 * 60 * 1000 }),
     staff: Object.freeze({ timeoutMs: 30 * 60 * 1000, warningMs: 29 * 60 * 1000 }),
-    customer: Object.freeze({ timeoutMs: 30 * 60 * 1000, warningMs: 29 * 60 * 1000 }),
+    customer: Object.freeze({ timeoutMs: 120 * 60 * 1000, warningMs: 118 * 60 * 1000 }),
   });
   const ADMIN_ONLY_PAGE_NAMES = ["reports", "activity-log"];
   const INVALID_SESSION_CODES = new Set([
@@ -674,7 +674,6 @@ var API = (() => {
     safeStorageRemove(sessionStorage, "pendingLoginResendUntil");
     safeStorageRemove(sessionStorage, "pendingLoginVerifyUntil");
     safeStorageRemove(sessionStorage, "pendingLoginExpiresAt");
-    safeStorageRemove(sessionStorage, "pendingLoginCodeExhausted");
     safeStorageRemove(sessionStorage, "pendingLoginResendLimited");
   }
 
@@ -1194,7 +1193,7 @@ var API = (() => {
             // Connectivity failures do not authorize credential restoration or destruction.
             if (error.status !== 401) throw error;
             const activity = readSessionActivity(getAuthSession());
-            if (!signInCheck && getAuthSession()?.persistent && activity !== null && Date.now() - activity >= 30 * 60000) {
+            if (!signInCheck && getAuthSession()?.persistent && activity !== null && Date.now() - activity >= getSessionInactivityPolicy("customer").timeoutMs) {
               customerWaitingForInteraction = true;
               concealCustomerSession();
               return false;
@@ -1444,9 +1443,9 @@ var API = (() => {
 
     lastActivityWriteAt = timestamp;
     writeSessionActivity(session, timestamp);
-    if (serverSession?.token === session.token) serverSession.idleAt = timestamp + 30 * 60 * 1000;
-    hideInactivityWarning();
     const policy = getSessionInactivityPolicy(session.role);
+    if (serverSession?.token === session.token) serverSession.idleAt = timestamp + policy.timeoutMs;
+    hideInactivityWarning();
     scheduleInactivityCheck(policy.warningMs);
     reportSessionActivity();
   }
@@ -1521,6 +1520,7 @@ var API = (() => {
         if (!card.hidden && !button.hidden) button.focus();
       }
     });
+    let unlockCooldownUntil = 0;
     const password = card.querySelector("#session-password");
     const toggle = card.querySelector("#session-password-toggle");
     toggle.addEventListener("click", () => {
@@ -1533,7 +1533,7 @@ var API = (() => {
     card.querySelector("#session-lock-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       const button = card.querySelector("#session-unlock");
-      if (button.disabled) return;
+      if (button.disabled || Date.now() < unlockCooldownUntil) return;
       const token = getAuthSession()?.token;
       const revision = ++sessionRevision;
       button.disabled = true;
@@ -1550,13 +1550,31 @@ var API = (() => {
         broadcastSessionState();
       } catch (error) {
         if (getAuthSession()?.token !== token) return;
-        sessionLockError(error.message);
+        if (error.retryAfter > 0) {
+          unlockCooldownUntil = Date.now() + error.retryAfter * 1000;
+          sessionLockError("Too many attempts. Please wait before trying again.");
+          const tick = () => {
+            const remaining = Math.max(0, Math.ceil((unlockCooldownUntil - Date.now()) / 1000));
+            if (remaining && getAuthSession()?.token === token && sessionLocked) {
+              button.textContent = "Try again in " + Math.floor(remaining / 60) + ":" + String(remaining % 60).padStart(2, "0");
+              setTimeout(tick, 1000);
+              return;
+            }
+            unlockCooldownUntil = 0;
+            button.disabled = false;
+            button.textContent = "Unlock session";
+            if (getAuthSession()?.token === token && sessionLocked) sessionLockError("You can try unlocking your session again.");
+          };
+          tick();
+        } else sessionLockError(error.message);
         password.setAttribute("aria-invalid", String(error.status === 422));
         password.focus();
         password.select?.();
       } finally {
-        button.disabled = false;
-        button.textContent = "Unlock session";
+        if (!unlockCooldownUntil) {
+          button.disabled = false;
+          button.textContent = "Unlock session";
+        }
         card.setAttribute("aria-busy", "false");
       }
     });
@@ -2266,7 +2284,6 @@ var API = (() => {
         sessionStorage.setItem("pendingLoginResendUntil", String(Date.now() + (data.resend_after ?? 60) * 1000));
         sessionStorage.setItem("pendingLoginResendLimited", data.resend_limited ? "1" : "0");
         sessionStorage.setItem("pendingLoginExpiresAt", String(Date.now() + data.expires_in * 1000));
-        sessionStorage.setItem("pendingLoginCodeExhausted", data.requires_new_code ? "1" : "0");
       } catch { /* Server-side cooldown remains authoritative. */ }
       storeEmailDelivery("login", data.email_delivery_token);
       return data;

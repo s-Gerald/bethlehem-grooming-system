@@ -197,7 +197,6 @@ class AuthController extends Controller
                 ...app(AuthenticationEmailPolicy::class)->status($user->email, 'login'),
                 'login_poll_token' => $challenge['poll_token'],
                 'expires_in' => $challenge['expires_in'],
-                'requires_new_code' => $challenge['requires_new_code'],
                 'email' => $user->email,
             ], 202);
         }

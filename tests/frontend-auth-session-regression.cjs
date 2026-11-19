@@ -316,12 +316,11 @@ async function testTemporaryVerificationThrottlingPreservesTheBrowserChallenge()
   }
   const browser = createBrowser({session: {pending_login_poll_token:'resumable'},
     fetchImpl: async () => jsonResponse(202, {requires_login_confirmation:true,login_poll_token:'resumable',
-      requires_new_code:true,expires_in:40,resend_after:0})});
+      expires_in:40,resend_after:0})});
   const before = Date.now();
   await browser.API.signIn('customer', 'password');
   const deadline = Number(browser.sessionStorage.getItem('pendingLoginExpiresAt'));
   assert.ok(deadline >= before + 40000 && deadline <= Date.now() + 40000, 'Resume stores the server transaction remainder');
-  assert.equal(browser.sessionStorage.getItem('pendingLoginCodeExhausted'),'1');
 }
 
 const turn = () => new Promise(resolve => setImmediate(resolve));
@@ -1446,7 +1445,7 @@ async function testLoginCodeResendCooldownAndLimit() {
   page.windowHandlers.pagehide({persisted:true});
   page.advanceSeconds(10);
   page.windowHandlers.pageshow({persisted:true});
-  assert.equal(page.elements.get('loginCodeResendCountdown').textContent, 'Resend code in 50s');
+  assert.equal(page.elements.get('loginCodeResendCountdown').textContent, 'Resend code in 0:50');
   page.advanceSeconds(49);
   assert.equal(resend.disabled, true);
   page.advanceSeconds(1);
@@ -1484,57 +1483,53 @@ async function testLoginCodeResendCooldownAndLimit() {
   assert.equal(page.elements.get("loginCodeMessage").textContent, "");
   page.API.resendLoginCode = async () => { throw { status: 429, retryAfter: 128 }; };
   await page.dispatch("loginCodeResendBtn", "click");
-  assert.equal(page.elements.get("loginCodeResendCountdown").textContent, "Resend code in 2m 08s");
+  assert.equal(page.elements.get("loginCodeResendCountdown").textContent, "Resend code in 2:08");
   page.advanceSeconds(127);
   assert.equal(resend.disabled, true);
   page.advanceSeconds(1);
   assert.equal(resend.disabled, false, "Server throttling must not permanently lock resends");
   page = verificationPageHarness({search:'?mode=login',hash:'',pendingLogin:true});
   resend = page.elements.get('loginCodeResendBtn');
-  page.API.confirmLoginCode = async () => { throw {status:429, code:'login_code_locked', retryAfter:65}; };
+  page.advanceSeconds(60);
+  let verifies = 0;
+  const originalConfirm = page.API.confirmLoginCode;
+  page.API.confirmLoginCode = async code => {
+    verifies++;
+    if (verifies === 1) throw {status:429, code:'login_code_locked', retryAfter:60};
+    return originalConfirm(code);
+  };
   page.elements.get('loginCode').value = '123456';
   await page.dispatch('loginCodeForm', 'submit');
-  assert.equal(page.elements.get('loginCodeMessage').textContent, 'Too many incorrect codes. Request a new code in 1m 05s.');
-  assert.equal(page.elements.get('loginCodeResendLock').classList.contains('hidden'), false);
-  assert.equal(resend.classList.contains('hidden'), false);
-  assert.equal(page.elements.get('loginCodeResendCountdown').classList.contains('hidden'), true);
+  assert.equal(page.elements.get('loginCodeMessage').textContent, 'Too many incorrect codes. Try again in 1:00.');
+  assert.equal(resend.disabled, false, 'Verification and resend eligibility are independent');
   assert.equal(page.elements.get('loginCodeMessage')['aria-live'], 'off');
   assert.equal(page.elements.get('loginCodeSubmit').disabled, true);
-  page.advanceSeconds(64);
-  assert.equal(page.elements.get('loginCodeMessage').textContent, 'Too many incorrect codes. Request a new code in 0m 01s.');
   page.advanceSeconds(1);
-  assert.equal(page.elements.get('loginCodeSubmit').disabled, true, 'Exhausted code stays disabled after cooldown');
-  assert.equal(page.elements.get('loginCode').disabled, true);
+  assert.equal(page.elements.get('loginCodeMessage').textContent, 'Too many incorrect codes. Try again in 0:59.');
+  await page.dispatch('loginCodeForm', 'submit');
+  assert.equal(verifies, 1, 'Submitting during cooldown makes no request');
+  page.advanceSeconds(59);
+  assert.equal(page.elements.get('loginCodeSubmit').disabled, false, 'The original code can be verified again');
+  assert.equal(page.elements.get('loginCode').disabled, false);
   assert.equal(resend.disabled, false);
-  assert.equal(page.elements.get('loginCodeResendLock').classList.contains('hidden'), true);
   assert.equal(page.elements.get('loginCodeMessage').textContent, '');
+  assert.equal(verifies, 1, 'Timer completion never submits the code');
   assert.equal(page.events.filter(event => event.type === 'resend-login-code').length, 0, 'Timer completion never sends mail');
   page.API.resendLoginCode = async () => { throw {status:429, code:'email_rate_limited', retryAfter:120, data:{resend_limited:true}}; };
   await page.dispatch('loginCodeResendBtn', 'click');
-  assert.equal(page.elements.get('loginCode').disabled, true, 'Rejected resend cannot restore an exhausted code');
-  assert.match(page.elements.get('loginCodeMessage').textContent, /Too many requests/);
-  page.advanceSeconds(120);
-  page.API.resendLoginCode = async () => ({resend_after:60});
-  await page.dispatch('loginCodeResendBtn', 'click');
-  assert.equal(page.elements.get('loginCode').value, '');
+  assert.equal(page.elements.get('loginCode').value, '123456', 'Rejected resend keeps the original digits');
   assert.equal(page.elements.get('loginCode').disabled, false);
-  assert.equal(page.elements.get('loginCodeSubmit').disabled, true);
-  assert.equal(page.elements.get('loginCodeMessage').textContent, '');
-  page.advanceSeconds(60);
-  page.API.resendLoginCode = async () => { throw {status:429, code:'login_code_locked', retryAfter:65}; };
-  await page.dispatch('loginCodeResendBtn', 'click');
-  assert.equal(page.elements.get('loginCode').disabled, true, 'An OTP attempt lockout reported by resend also blocks verification');
-  assert.match(page.elements.get('loginCodeMessage').textContent, /1m 05s/);
-  page.advanceSeconds(65);
-  assert.equal(page.elements.get('loginCode').disabled, true);
-  assert.equal(resend.disabled, false);
+  assert.match(page.elements.get('loginCodeResendCountdown').textContent, /Too many requests/);
+  await page.dispatch('loginCodeForm', 'submit');
+  assert.equal(verifies, 2);
+  assert.ok(page.events.some(event => event.type === 'redirect' && event.target === '/account'));
 
   const reload = verificationPageHarness({search:'?mode=login',hash:'',pendingLogin:true,
-    saved:{pendingLoginCodeExhausted:'1',pendingLoginVerifyUntil:'140000'}});
+    saved:{pendingLoginVerifyUntil:'140000'}});
   assert.equal(reload.elements.get('loginCode').disabled, true);
-  assert.match(reload.elements.get('loginCodeMessage').textContent, /40s/);
+  assert.match(reload.elements.get('loginCodeMessage').textContent, /0:40/);
   reload.advanceSeconds(40);
-  assert.equal(reload.elements.get('loginCode').disabled, true);
+  assert.equal(reload.elements.get('loginCode').disabled, false);
   reload.advanceSeconds(20);
   assert.equal(reload.elements.get('loginCodeResendBtn').disabled, false);
   reload.advanceSeconds(540);
@@ -1548,7 +1543,6 @@ async function testLoginCodeResendCooldownAndLimit() {
   await busy.dispatch('loginCodeForm','submit');
   busy.advanceSeconds(1);
   assert.equal(busy.elements.get('loginCode').disabled,false,'Busy response does not exhaust the code');
-  assert.equal(busy.elements.get('loginCodeResendLock').classList.contains('hidden'),true);
 }
 
 async function testLoginDeliveryErrorsAndPrivilegedRedirects() {
@@ -1925,9 +1919,9 @@ async function testSignInCountdownOnlyUsesApplicableServerPasswordOrIpResponses(
   for (const code of ['login_challenges_limited', 'sign_in_busy', null]) {
     const page = signInPageHarness({ signIn: async () => { throw { status: 429, code, retryAfter: 43200, message: 'Please try again later.' }; } });
     await page.submit();
-    assert.equal(page.intervals.size, 0, `${code} is not a password cooldown`);
-    assert.equal(page.element('sharedSignInSubmit').disabled, false);
-    assert.equal(page.element('sharedSignInMessage').textContent, 'Please try again later.');
+    assert.equal(page.intervals.size, 1);
+    assert.equal(page.element('sharedSignInSubmit').disabled, true);
+    assert.match(page.element('sharedSignInMessage').textContent, /12h 00m 00s/);
   }
   const otp = signInPageHarness({signIn:async () => {throw {status:429,code:'login_code_locked',retryAfter:40};}});
   await otp.submit();
@@ -1938,7 +1932,7 @@ async function testSignInCountdownOnlyUsesApplicableServerPasswordOrIpResponses(
   otp.advance(20000);
   assert.equal(otp.element('sharedSignInSubmit').disabled,false);
   assert.equal(otp.element('sharedSignInMessage').textContent,'');
-  for (const duration of [null, undefined, '', 'bad', Infinity, NaN, -1, 0, 43200]) {
+  for (const duration of [null, undefined, '', 'bad', Infinity, NaN, -1, 0, true]) {
     const page = signInPageHarness({ signIn: async () => { throw { status: 429, code: 'sign_in_password_cooldown', retryAfter: duration }; } });
     await page.submit();
     assert.equal(page.intervals.size, 0, `Invalid duration ${duration} must not create a timer`);
@@ -1999,49 +1993,36 @@ async function testSignInCountdownOnlyUsesApplicableServerPasswordOrIpResponses(
 }
 
 async function testSignInEmailLimitFeedback() {
-  const cases = [
-    [{next_eligible_at:'2026-10-29T20:31:58Z'}, undefined, 'Oct 30, 2026 at 4:32 AM PHT'],
-    [{next_eligible_at:'2026-10-31T23:59:01+08:00'}, undefined, 'Nov 1, 2026 at 12:00 AM PHT'],
-    [{next_eligible_at:'2026-12-31T16:00:00Z'}, undefined, 'Jan 1, 2027 at 12:00 AM PHT'],
-    [{next_eligible_at:'2026-10-30T04:32:00+08:00'}, undefined, 'Oct 30, 2026 at 4:32 AM PHT'],
-  ];
-  for (const [data, retryAfter, expected] of cases) {
-    const page = signInPageHarness({signIn:async () => {throw {status:429,code:'email_rate_limited',data,retryAfter};}});
+  for (const code of ['email_rate_limited', 'email_cooldown']) {
+    let requests = 0;
+    const page = signInPageHarness({signIn:async () => {
+      requests++;
+      throw {status:429, code, retryAfter:120, data:{retry_after:7200}};
+    }});
     await page.submit();
-    assert.equal(page.element('sharedSignInMessage').textContent, `Sign-in email limit reached. Try again ${expected}.`);
-    assert.match(page.element('sharedSignInMessage').className, /border-red-200/);
-    assert.equal(page.element('sharedSignInMessage').attributes.role, 'alert');
-    assert.equal(page.element('sharedSignInSubmit').disabled, false);
-    assert.equal(page.intervals.size, 0);
-    page.edit('another@example.com');
+    assert.match(page.element('sharedSignInMessage').textContent, /Try again in 2m 00s/);
+    assert.equal(page.element('sharedSignInMessage').attributes['aria-live'], 'off');
+    page.advance(1000);
+    assert.match(page.element('sharedSignInMessage').textContent, /1m 59s/);
+    await page.submit();
+    assert.equal(requests, 1);
+    page.advance(119000);
     assert.equal(page.element('sharedSignInMessage').textContent, '');
+    assert.equal(page.element('sharedSignInSubmit').disabled, false);
+    assert.equal(requests, 1);
   }
-  for (const timestamp of [undefined, '', 'bad', 123, '2026-02-30T10:00:00Z', '2026-10-30T04:32:00']) {
-    const page = signInPageHarness({signIn:async () => {throw {status:429,code:'email_rate_limited',data:{next_eligible_at:timestamp,retry_after:7200}};}});
+  const quota = signInPageHarness({signIn:async () => {throw {status:429,code:'email_rate_limited',data:{retry_after:43200}};}});
+  await quota.submit();
+  assert.match(quota.element('sharedSignInMessage').textContent, /12h 00m 00s/);
+  quota.edit('another@example.com');
+  assert.equal(quota.element('sharedSignInSubmit').disabled, false);
+  assert.equal(quota.element('sharedSignInMessage').textContent, '');
+  for (const retryAfter of [undefined, null, '', 'bad', Infinity, -1, 0, true]) {
+    const page = signInPageHarness({signIn:async () => {throw {status:429,code:'email_rate_limited',retryAfter};}});
     await page.submit();
-    assert.equal(page.element('sharedSignInMessage').textContent, 'Sign-in email limit reached. Try again in about 2 hours.');
-  }
-  for (const seconds of [undefined, null, '', 'bad', Infinity, -1, 0, true]) {
-    const page = signInPageHarness({signIn:async () => {throw {status:429,code:'email_rate_limited',retryAfter:seconds};}});
-    await page.submit();
-    assert.equal(page.element('sharedSignInMessage').textContent, 'Sign-in email limit reached. Please try again later.');
+    assert.equal(page.element('sharedSignInMessage').textContent, 'Sign-in email limit reached.');
     assert.equal(page.element('sharedSignInSubmit').disabled, false);
   }
-  for (const [seconds, expected] of [[60,'1 minute'],[30,'30 seconds'],[61,'2 minutes']]) {
-    const page = signInPageHarness({signIn:async () => {throw {status:429,code:'email_cooldown',retryAfter:seconds};}});
-    await page.submit();
-    assert.equal(page.element('sharedSignInMessage').textContent, `Please wait ${expected} before requesting another sign-in email.`);
-    assert.equal(page.element('sharedSignInSubmit').disabled, false);
-    assert.equal(page.intervals.size, 0);
-  }
-  const shortMissing = signInPageHarness({signIn:async () => {throw {status:429,code:'email_cooldown',retryAfter:NaN};}});
-  await shortMissing.submit();
-  assert.equal(shortMissing.element('sharedSignInMessage').textContent, 'Please wait before requesting another sign-in email.');
-  const headerDuration = signInPageHarness({signIn:async () => {throw {status:429,code:'email_rate_limited',retryAfter:120,data:{retry_after:7200}};}});
-  await headerDuration.submit();
-  assert.equal(headerDuration.element('sharedSignInMessage').textContent, 'Sign-in email limit reached. Try again in about 2 minutes.');
-  headerDuration.advance(60000);
-  assert.equal(headerDuration.element('sharedSignInMessage').textContent, 'Sign-in email limit reached. Try again in about 2 minutes.', 'Email feedback does not run a second countdown');
   let reject;
   const delayed = signInPageHarness({signIn:() => new Promise((_resolve, fail) => {reject=fail;})});
   const pending=delayed.submit(); delayed.edit('other@example.com');
@@ -2522,8 +2503,12 @@ async function testPasswordResetRecovery() {
   await verifyLimited.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
   assert.equal(verifyLimited.getElement('verifyCodeSubmit').disabled, true);
   assert.equal(verifyLimited.getElement('verificationCode').attributes['aria-invalid'], 'false', 'Transport limits are not invalid codes');
-  verifyLimited.advance(60000);
+  assert.equal(verifyLimited.getElement('verifyCodeSubmit').textContent, 'Continue in 1m 00s');
+  verifyLimited.advance(1000);
+  assert.equal(verifyLimited.getElement('verifyCodeSubmit').textContent, 'Continue in 59s');
+  verifyLimited.advance(59000);
   assert.equal(verifyLimited.getElement('verifyCodeSubmit').disabled, false);
+  assert.equal(verifyLimited.getElement('verifyCodeMessage').textContent, '');
   verifyLimited.API.verifyPasswordResetCode = async () => { throw { status: 429, retryAfter: 120 }; };
   await verifyLimited.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
   verifyLimited.advance(75000);
@@ -2563,8 +2548,12 @@ async function testPasswordResetRecovery() {
   passwordErrors.API.resetPassword = async () => { throw { status: 429, retryAfter: 30 }; };
   await passwordErrors.getElement('resetPasswordForm').handlers.submit({ preventDefault() {} });
   assert.equal(passwordErrors.getElement('resetPasswordSubmit').disabled, true);
-  passwordErrors.advance(30000);
+  assert.equal(passwordErrors.getElement('resetPasswordSubmit').textContent, 'Reset Password in 30s');
+  passwordErrors.advance(1000);
+  assert.equal(passwordErrors.getElement('resetPasswordSubmit').textContent, 'Reset Password in 29s');
+  passwordErrors.advance(29000);
   assert.equal(passwordErrors.getElement('resetPasswordSubmit').disabled, false);
+  assert.equal(passwordErrors.getElement('resetPasswordMessage').textContent, '');
   passwordErrors.advance(870000);
   assert.equal(passwordErrors.getElement('forgotPasswordForm').classList.contains('hidden'), false, 'Grant expiry restarts without polling');
   assert.equal(passwordErrors.getElement('resetEmail').value, 'customer@example.com');

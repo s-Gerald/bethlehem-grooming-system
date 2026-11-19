@@ -252,14 +252,12 @@ class EmailVerificationTest extends TestCase
         Notification::assertSentToTimes($user, \App\Notifications\UnusualSignInActivityNotification::class, 1);
     }
 
-    public function test_twenty_distributed_failures_exhaust_the_account_budget_without_resend_reset(): void
+    public function test_fifty_distributed_failures_exhaust_the_account_budget_without_resend_reset(): void
     {
         Notification::fake();
-        config(['authentication.email.quarter_hour' => 30, 'authentication.email.hour' => 30,
-            'authentication.email.day' => 30, 'authentication.email.purposes.login.quarter_hour' => 30]);
         $user = User::factory()->create();
         $firstToken = null;
-        foreach (range(1, 4) as $source) {
+        foreach (range(1, 10) as $source) {
             $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.'.$source]);
             $this->travel(61)->seconds();
             $login = $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'password'])->assertAccepted();
@@ -270,7 +268,7 @@ class EmailVerificationTest extends TestCase
                 $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => $wrong])->assertStatus($i === 5 ? 429 : 422);
             }
         }
-        $this->assertSame(20, RateLimiter::attempts('login-code-account:'.$user->getKey()));
+        $this->assertSame(50, RateLimiter::attempts('login-code-account:'.$user->getKey()));
         $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.1']);
         $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'password'])->assertTooManyRequests()->assertHeader('Retry-After');
         $this->postJson('/api/email/login/resend', ['poll_token' => $firstToken])->assertTooManyRequests();
@@ -622,6 +620,7 @@ class EmailVerificationTest extends TestCase
 
     public function test_login_code_is_locked_after_five_incorrect_attempts(): void
     {
+        $this->travelTo(now()->startOfSecond());
         $plainPollToken = str_repeat('l', 64);
         $user = User::factory()->create();
         LoginEmailChallenge::create([
@@ -629,7 +628,7 @@ class EmailVerificationTest extends TestCase
             'token_hash' => hash_hmac('sha256', '123456', $plainPollToken),
             'poll_token_hash' => hash('sha256', $plainPollToken),
             'remember_me' => true,
-            'expires_at' => now()->addMinutes(15),
+            'expires_at' => now()->addMinutes(10),
         ]);
 
         foreach (range(1, 4) as $attempt) {
@@ -657,6 +656,12 @@ class EmailVerificationTest extends TestCase
             'approved_at' => null,
         ]);
         $this->assertDatabaseCount('personal_access_tokens', 0);
+
+        $this->travel(60)->seconds();
+        $this->postJson('/api/email/login/confirm', [
+            'poll_token' => $plainPollToken,
+            'code' => '123456',
+        ])->assertOk()->assertJsonPath('session_established', true);
     }
 
     public function test_expired_login_confirmation_cannot_create_a_session(): void
@@ -682,6 +687,52 @@ class EmailVerificationTest extends TestCase
 
         $this->assertDatabaseCount('login_email_challenges', 0);
         $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_queued_login_code_can_be_delivered_during_a_verification_cooldown(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        $this->useDatabaseMailQueue();
+        $user = User::factory()->create();
+        $login = $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'password'])->assertAccepted();
+        $token = $login->json('login_poll_token');
+        $command = json_decode(DB::table('jobs')->sole()->payload, true)['data']['command'];
+        $code = unserialize(app('encrypter')->decrypt($command))->notification->code;
+        $wrong = $code === '000000' ? '111111' : '000000';
+        foreach (range(1, 5) as $attempt) {
+            $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => $wrong])
+                ->assertStatus($attempt === 5 ? 429 : 422);
+        }
+
+        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->postJson('/api/email/delivery-status', ['delivery_token' => $login->json('email_delivery_token')])
+            ->assertOk()->assertJsonPath('status', 'sent');
+        $this->travel(60)->seconds();
+        $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => $code])->assertOk();
+    }
+
+    public function test_resend_can_rotate_a_code_during_source_cooldown_without_resetting_the_cooldown(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        Notification::fake();
+        $user = User::factory()->create();
+        $login = $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'password'])->assertAccepted();
+        $token = $login->json('login_poll_token');
+        $code = $this->loginCodeSentTo($user);
+        $this->travel(60)->seconds();
+        foreach (range(1, 5) as $attempt) {
+            $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => $code === '000000' ? '111111' : '000000'])
+                ->assertStatus($attempt === 5 ? 429 : 422);
+        }
+
+        $this->postJson('/api/email/login/resend', ['poll_token' => $token])->assertOk()->assertJsonPath('resend_after', 60);
+        $this->assertSame(0, LoginEmailChallenge::sole()->failed_attempts);
+        $newCode = $this->loginCodeSentTo($user);
+        $this->assertNotSame($code, $newCode);
+        $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => $newCode])
+            ->assertTooManyRequests()->assertJsonPath('retry_after', 60);
+        $this->travel(60)->seconds();
+        $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => $newCode])->assertOk();
     }
 
     public function test_disabled_customer_cannot_consume_a_login_confirmation(): void
@@ -1028,7 +1079,7 @@ class EmailVerificationTest extends TestCase
     {
         $this->freezeTime();
         $user = User::factory()->create(['password_hash' => Hash::make('strong-password')]);
-        $history = array_fill(0, 12, now()->timestamp - 43200);
+        $history = array_fill(0, 50, now()->timestamp - 43200);
         Cache::put('auth-email:destination:'.hash('sha256', strtolower($user->email)), $history, 86400);
         $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'strong-password'])
             ->assertTooManyRequests()->assertJsonPath('code', 'email_rate_limited')
@@ -1092,11 +1143,11 @@ class EmailVerificationTest extends TestCase
 
     public static function loginResendFailureStates(): array
     {
-        return ['usable code' => [false], 'exhausted code' => [true]];
+        return ['usable code' => [false], 'after verification cooldown' => [true]];
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('loginResendFailureStates')]
-    public function test_login_resend_failure_preserves_the_previous_challenge(bool $exhausted): void
+    public function test_login_resend_failure_preserves_the_previous_challenge(bool $afterCooldown): void
     {
         Notification::fake();
         $user = User::factory()->create(['password_hash' => Hash::make('strong-password')]);
@@ -1104,7 +1155,7 @@ class EmailVerificationTest extends TestCase
             'identifier' => $user->email, 'password' => 'strong-password',
         ])->assertAccepted();
         $code = $this->loginCodeSentTo($user);
-        if ($exhausted) {
+        if ($afterCooldown) {
             $wrong = $code === '000000' ? '111111' : '000000';
             foreach (range(1, 5) as $attempt) {
                 $this->postJson('/api/email/login/confirm', ['poll_token' => $response->json('login_poll_token'), 'code' => $wrong])
@@ -1122,14 +1173,12 @@ class EmailVerificationTest extends TestCase
             ->assertStatus(503)->assertJsonPath('success', false)
             ->assertDontSee('SMTP secret');
         $this->assertSame($previous, LoginEmailChallenge::firstOrFail()->getAttributes());
-        $confirmation = $this->postJson('/api/email/login/confirm', [
-            'poll_token' => $response->json('login_poll_token'), 'code' => $code,
-        ]);
-        if ($exhausted) {
-            $confirmation->assertUnprocessable()->assertJsonPath('code', 'login_code_exhausted');
-            $this->assertDatabaseCount('personal_access_tokens', 0);
+        if ($afterCooldown) {
             $this->assertSame(5, RateLimiter::attempts('login-code-account:'.$user->getKey()));
-        } else $confirmation->assertOk();
+        }
+        $this->postJson('/api/email/login/confirm', [
+            'poll_token' => $response->json('login_poll_token'), 'code' => $code,
+        ])->assertOk();
     }
 
     public function test_login_resend_rotates_the_code_and_only_resets_the_issued_code_allowance(): void
@@ -1174,47 +1223,30 @@ class EmailVerificationTest extends TestCase
         $token = $login->json('login_poll_token');
         $deadline = LoginEmailChallenge::sole()->expires_at;
 
+        $code = $this->loginCodeSentTo($user);
+        $wrong = $code === '000000' ? '111111' : '000000';
+        Notification::fake();
         foreach ([60, 180, 300] as $round => $seconds) {
-            $code = $this->loginCodeSentTo($user);
-            $wrong = $code === '000000' ? '111111' : '000000';
             foreach (range(1, 5) as $attempt) {
                 $response = $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => $wrong]);
                 if ($attempt < 5) $response->assertUnprocessable()->assertJsonPath('message', 'Incorrect code. Try again.');
                 else $response->assertTooManyRequests()->assertJsonPath('code', 'login_code_locked')
                     ->assertJsonPath('retry_after', $seconds)->assertHeader('Retry-After', (string) $seconds);
             }
-            $this->assertSame(5, LoginEmailChallenge::sole()->failed_attempts);
-            Notification::fake();
+
             $this->travel(20)->seconds();
             $this->postJson('/api/sign-in', [...$credentials, 'login_poll_token' => $token])->assertTooManyRequests()
                 ->assertJsonPath('code', 'login_code_locked')->assertJsonPath('retry_after', $seconds - 20);
-            $this->postJson('/api/email/login/resend', ['poll_token' => $token])->assertTooManyRequests()
-                ->assertJsonPath('retry_after', $seconds - 20);
             $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => $code])->assertTooManyRequests()
                 ->assertJsonPath('retry_after', $seconds - 20);
-            Notification::assertNothingSent();
             $this->assertSame(($round + 1) * 5, RateLimiter::attempts('login-code-account:'.$user->getKey()));
+            $this->assertTrue($deadline->equalTo(LoginEmailChallenge::sole()->expires_at));
             $this->travel($seconds - 20)->seconds();
-            $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => $code])->assertUnprocessable()
-                ->assertJsonPath('code', 'login_code_exhausted')->assertJsonPath('requires_new_code', true);
-            $this->assertDatabaseCount('personal_access_tokens', 0);
-            if ($round < 2) {
-                $resume = $this->postJson('/api/sign-in', [...$credentials, 'login_poll_token' => $token])->assertAccepted()
-                    ->assertJsonPath('requires_new_code', true)->assertJsonPath('email_delivery_queued', false);
-                $this->assertSame($deadline->timestamp - now()->timestamp, $resume->json('expires_in'));
-                $this->postJson('/api/email/login/resend', ['poll_token' => $token])->assertOk();
-                $this->assertNotSame($code, $this->loginCodeSentTo($user));
-                $this->assertSame(0, LoginEmailChallenge::sole()->failed_attempts);
-                $this->assertTrue($deadline->equalTo(LoginEmailChallenge::sole()->expires_at));
-            }
         }
-        // The fourth email is still subject to the unchanged rolling quota.
-        $this->postJson('/api/email/login/resend', ['poll_token' => $token])->assertTooManyRequests()
-            ->assertJsonPath('code', 'email_rate_limited');
-        $this->assertSame(5, LoginEmailChallenge::sole()->failed_attempts);
-        $this->travel(60)->seconds();
-        $this->postJson('/api/email/login/resend', ['poll_token' => $token])->assertUnprocessable()
-            ->assertJsonPath('expired', true)->assertJsonPath('message', 'Sign-in expired. Please sign in again.');
+
+        Notification::assertNotSentTo($user, ConfirmLoginNotification::class);
+        $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => $code])->assertOk();
+        $this->assertDatabaseCount('personal_access_tokens', 1);
     }
 
     public function test_source_escalation_caps_at_five_minutes_and_resets_only_after_inactivity(): void
@@ -1222,9 +1254,7 @@ class EmailVerificationTest extends TestCase
         $this->travelTo(now()->startOfSecond());
         Notification::fake();
         // Isolate source escalation from the separately tested stronger budgets/quotas.
-        config(['authentication.otp_account_attempts' => 100, 'authentication.otp_ip_attempts' => 100,
-            'authentication.email.quarter_hour' => 30, 'authentication.email.hour' => 30,
-            'authentication.email.day' => 30, 'authentication.email.purposes.login.quarter_hour' => 30]);
+        config(['authentication.otp_account_attempts' => 100, 'authentication.otp_ip_attempts' => 100]);
         $user = User::factory()->create();
         $credentials = ['identifier' => $user->email, 'password' => 'password'];
         foreach ([60, 180, 300, 300, 300] as $seconds) {
@@ -1290,39 +1320,39 @@ class EmailVerificationTest extends TestCase
         $response->assertTooManyRequests()->assertJsonPath('retry_after', 60);
     }
 
-    public function test_twenty_five_otp_failures_across_accounts_enforce_the_independent_ip_budget(): void
+    public function test_one_hundred_otp_failures_across_accounts_enforce_the_independent_ip_budget(): void
     {
         $this->travelTo(now()->startOfSecond());
         Notification::fake();
-        foreach (range(1, 5) as $account) {
-            if ($account > 1) $this->travel(61)->seconds(); // Stay below the independent route flood throttle.
+        foreach (range(1, 20) as $account) {
+            if ($account > 1 && $account % 2 === 1) $this->travel(61)->seconds(); // Stay below the independent route flood throttle.
             $user = User::factory()->create();
             $token = str_pad((string) $account, 64, 'x');
             LoginEmailChallenge::create(['user_id' => $user->getKey(), 'poll_token_hash' => hash('sha256', $token),
                 'token_hash' => hash_hmac('sha256', '123456', $token), 'expires_at' => now()->addMinutes(10)]);
             foreach (range(1, 5) as $attempt) $response = $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => '000000']);
-            $response->assertTooManyRequests()->assertJsonPath('retry_after', $account === 5 ? 656 : 60);
+            $response->assertTooManyRequests()->assertJsonPath('retry_after', $account === 20 ? 351 : 60);
         }
-        $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'password'])->assertTooManyRequests()->assertJsonPath('retry_after', 656);
-        $this->postJson('/api/email/login/resend', ['poll_token' => $token])->assertTooManyRequests()->assertJsonPath('retry_after', 656);
-        $this->assertSame(25, RateLimiter::attempts('login-code-ip:'.hash('sha256', '127.0.0.1')));
+        $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'password'])->assertTooManyRequests()->assertJsonPath('retry_after', 351);
+        $this->postJson('/api/email/login/resend', ['poll_token' => $token])->assertTooManyRequests()->assertJsonPath('retry_after', 351);
+        $this->assertSame(100, RateLimiter::attempts('login-code-ip:'.hash('sha256', '127.0.0.1')));
         Notification::assertNotSentTo($user, ConfirmLoginNotification::class);
     }
 
-    public function test_login_email_requests_are_throttled_before_creating_another_challenge(): void
+    public function test_login_email_can_be_requested_four_times_with_only_the_resend_cooldown(): void
     {
         Notification::fake();
         $user = User::factory()->create(['password_hash' => Hash::make('strong-password')]);
-        foreach (range(1, 3) as $attempt) {
+        foreach (range(1, 4) as $attempt) {
             $this->travel(61)->seconds();
             $this->postJson('/api/sign-in', [
                 'identifier' => $user->email, 'password' => 'strong-password',
-            ])->assertAccepted();
+            ])->assertAccepted()->assertJsonPath('resend_after', 60);
         }
         $hash = LoginEmailChallenge::firstOrFail()->token_hash;
         $this->postJson('/api/sign-in', [
             'identifier' => $user->email, 'password' => 'strong-password',
-        ])->assertStatus(429)->assertHeader('Retry-After')->assertJsonMissingPath('token');
+        ])->assertStatus(429)->assertHeader('Retry-After', '60')->assertJsonMissingPath('token');
         $this->assertSame($hash, LoginEmailChallenge::firstOrFail()->token_hash);
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }

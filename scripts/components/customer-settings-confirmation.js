@@ -13,7 +13,7 @@ window.createCustomerSettingsConfirmation = function ({ onChallenge, resetPasswo
   const instruction = get('settingsVerificationInstruction');
   const delivery = get('settingsVerificationDelivery');
   const resend = get('settingsVerificationResend');
-  let view, busy = false, countdown, stopDelivery, resendAt = 0;
+  let view, busy = false, countdown, stopDelivery, resendAt = 0, submitAt = 0, resendError = false;
 
   function feedback(message = '', field) {
     const error = get(field ? field.id + 'Error' : 'settingsConfirmationError');
@@ -39,6 +39,15 @@ window.createCustomerSettingsConfirmation = function ({ onChallenge, resetPasswo
     const locked = challenge?.attempts_remaining === 0;
     const seconds = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
     const limited = challenge?.resends_remaining === 0;
+    const submitWait = Math.max(0, Math.ceil((submitAt - Date.now()) / 1000));
+    if (resendError && !seconds) {
+      resendError = false;
+      if (get('settingsConfirmationError').textContent === 'Please wait before resending.') feedback('You can request another code.');
+    }
+    if (submitAt && !submitWait) {
+      submitAt = 0;
+      if (get('settingsConfirmationError').textContent === 'Too many attempts. Please wait.') feedback('You can try again now.');
+    }
     if (expired && !view.ended) {
       view.ended = true;
       feedback('This request has expired. Start a new request.', code);
@@ -47,11 +56,12 @@ window.createCustomerSettingsConfirmation = function ({ onChallenge, resetPasswo
     const label = challenge
       ? (view.kind === 'email' ? 'Verify email' : 'Confirm change')
       : 'Continue';
-    submit.textContent = busy ? 'Please wait…' : label;
-    submit.disabled = busy || view.ended || Boolean(challenge && (expired || locked || code.value.length !== 6));
+    submit.textContent = busy ? 'Please wait…' : submitWait
+      ? 'Try again in ' + window.VerificationCode.formatCountdown(submitWait) : label;
+    submit.disabled = busy || submitWait > 0 || view.ended || Boolean(challenge && (expired || locked || code.value.length !== 6));
     close.disabled = cancel.disabled = busy;
     newEmail.disabled = password.disabled = busy;
-    code.disabled = busy || view.ended || locked;
+    code.disabled = busy || submitWait > 0 || view.ended || locked;
     resend.disabled = busy || view.ended || Boolean(expired || locked || limited || seconds);
     const resendLabel = limited ? 'Resend limit reached'
       : seconds ? 'Resend code in ' + window.VerificationCode.formatCountdown(seconds) : 'Resend code';
@@ -66,6 +76,7 @@ window.createCustomerSettingsConfirmation = function ({ onChallenge, resetPasswo
 
   function stopWatching() {
     window.clearInterval(countdown);
+    countdown = null;
     stopDelivery?.();
     stopDelivery = null;
   }
@@ -85,6 +96,8 @@ window.createCustomerSettingsConfirmation = function ({ onChallenge, resetPasswo
     feedback('', password);
     delivery.hidden = true;
     delivery.textContent = '';
+    submitAt = 0;
+    resendError = false;
     resendAt = Date.now() + (challenge?.resend_after || 0) * 1000;
     digits.clear();
     if (challenge) {
@@ -117,12 +130,23 @@ window.createCustomerSettingsConfirmation = function ({ onChallenge, resetPasswo
     trigger.focus();
   }
 
-  function challengeError(error, field) {
+  function challengeError(error, field, resending = false) {
     if (error.status === 401 || error.status === 403) {
       API.redirectToSignIn();
       return;
     }
-    if (error.retryAfter && view.challenge) resendAt = Date.now() + error.retryAfter * 1000;
+    if (error.retryAfter > 0) {
+      if (resending) {
+        resendAt = Date.now() + error.retryAfter * 1000;
+        resendError = true;
+        feedback('Please wait before resending.');
+      } else {
+        submitAt = Date.now() + error.retryAfter * 1000;
+        if (countdown == null) countdown = window.setInterval(updateActions, 1000);
+        feedback('Too many attempts. Please wait.');
+      }
+      return;
+    }
     if (error.code === 'locked' && view.challenge) view.challenge.attempts_remaining = 0;
     if (error.code === 'invalid' && view.challenge) {
       view.ended = true;
@@ -140,7 +164,7 @@ window.createCustomerSettingsConfirmation = function ({ onChallenge, resetPasswo
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!view || busy || view.ended) return;
+    if (!view || busy || view.ended || Date.now() < submitAt) return;
     const { kind, challenge, currentEmail } = view;
     const submittedView = view;
     if (challenge && (code.value.length !== 6 || challenge.attempts_remaining === 0)) return;
@@ -206,7 +230,7 @@ window.createCustomerSettingsConfirmation = function ({ onChallenge, resetPasswo
       setChallenge(challenge);
       issued = true;
     } catch (error) {
-      if (view === submittedView) challengeError(error, code);
+      if (view === submittedView) challengeError(error, code, true);
     } finally {
       if (view === submittedView) {
         setBusy(false);

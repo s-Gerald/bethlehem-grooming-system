@@ -14,15 +14,10 @@ use Illuminate\Support\Str;
 
 class LoginEmailChallengeService
 {
-    public static function maxAttempts(): int
-    {
-        return max(1, (int) config('authentication.otp_attempts', 5));
-    }
-
     public static function attemptKeys(User $user): array
     {
-        return ['login-code-account:'.$user->getKey() => (int) config('authentication.otp_account_attempts', 20),
-            'login-code-ip:'.hash('sha256', (string) request()->ip()) => (int) config('authentication.otp_ip_attempts', 25)];
+        return ['login-code-account:'.$user->getKey() => (int) config('authentication.otp_account_attempts', 50),
+            'login-code-ip:'.hash('sha256', (string) request()->ip()) => (int) config('authentication.otp_ip_attempts', 100)];
     }
 
     public static function sourceHash(): string
@@ -30,14 +25,14 @@ class LoginEmailChallengeService
         return hash_hmac('sha256', (string) request()->ip(), (string) config('app.key'));
     }
 
-    public static function assertAttemptBudget(User $user): void
+    public static function assertAttemptBudget(User $user, bool $includeSourceCooldown = true): void
     {
-        if ($response = self::attemptBudgetResponse($user)) throw new HttpResponseException($response);
+        if ($response = self::attemptBudgetResponse($user, $includeSourceCooldown)) throw new HttpResponseException($response);
     }
 
-    public static function attemptBudgetResponse(User $user)
+    public static function attemptBudgetResponse(User $user, bool $includeSourceCooldown = true)
     {
-        $seconds = RateLimiter::availableIn(self::sourceKey($user).':cooldown');
+        $seconds = $includeSourceCooldown ? RateLimiter::availableIn(self::sourceKey($user).':cooldown') : 0;
         foreach (self::attemptKeys($user) as $key => $limit) {
             // Read-only outside the confirmation lock: do not let issuance
             // clear an expired IP counter while another account starts its window.
@@ -87,8 +82,7 @@ class LoginEmailChallengeService
 
     public static function challengeState(LoginEmailChallenge $challenge): array
     {
-        return ['expires_in' => max(0, $challenge->expires_at->timestamp - now()->timestamp),
-            'requires_new_code' => $challenge->failed_attempts >= self::maxAttempts()];
+        return ['expires_in' => max(0, $challenge->expires_at->timestamp - now()->timestamp)];
     }
 
     public static function resendAfter(?LoginEmailChallenge $challenge): int
@@ -106,7 +100,7 @@ class LoginEmailChallengeService
         }
         $recipient = User::find($pending->user_id);
         if (! $recipient) throw new HttpResponseException(self::expiredResponse());
-        self::assertAttemptBudget($recipient);
+        self::assertAttemptBudget($recipient, includeSourceCooldown: false);
         $issuance = app(AuthenticationEmailPolicy::class)->send($recipient->email, fn () => DB::transaction(function () use ($plainPollToken, $pollTokenHash): array {
             $userId = LoginEmailChallenge::where('poll_token_hash', $pollTokenHash)->value('user_id');
             $user = $userId ? User::whereKey($userId)->lockForUpdate()->first() : null;
@@ -127,7 +121,8 @@ class LoginEmailChallengeService
                 ], 403));
             }
 
-            self::assertAttemptBudget($user);
+            // Resending rotates the code while leaving OTP verification budgets in force.
+            self::assertAttemptBudget($user, includeSourceCooldown: false);
             EmailVerificationController::assertMailCanBeDelivered();
 
             if ($remaining = self::resendAfter($challenge)) {
@@ -241,7 +236,6 @@ class LoginEmailChallengeService
             'resend_after' => (int) config('authentication.email.cooldown', 60),
             'email_delivery_queued' => true,
             'expires_in' => max(0, $expiresAt->timestamp - now()->timestamp),
-            'requires_new_code' => false,
         ];
     }
 

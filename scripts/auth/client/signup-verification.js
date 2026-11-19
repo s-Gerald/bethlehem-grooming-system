@@ -8,13 +8,17 @@ window.SignupVerification = {
     let busy = false, checking = false, active = false;
     let receipt = "", deliveryFinished = false;
     let deliveryChecks = 0;
+    const cooldownMessage = "Please wait before resending.";
+    let resendCooling = false;
 
     function announce(text) {
       if (message.textContent !== text) message.textContent = text;
     }
     function tick() {
       const seconds = Math.max(0, Math.ceil(((attempt?.resendUntil || 0) - Date.now()) / 1000));
-      resend.disabled = busy || seconds > 0;
+      if (resendCooling && !seconds && message.textContent === cooldownMessage) announce("You can resend the link now.");
+      resendCooling = seconds > 0;
+      resend.disabled = busy || resendCooling;
       resend.textContent = busy ? "Sending..." : seconds
         ? `Resend link in ${window.VerificationCode.formatCountdown(seconds)}` : "Resend link";
     }
@@ -92,12 +96,13 @@ window.SignupVerification = {
         deliveryChecks = 0;
       } catch (error) {
         if (!active || attempt.token !== current) return;
-        if (error.status === 429) attempt = window.SignupContext.save({...attempt,
-          resendUntil: Date.now() + window.AuthenticationResend.seconds(error) * 1000});
+        const retryAfter = window.AuthenticationResend.seconds(error);
+        if (error.status === 429 && retryAfter) attempt = window.SignupContext.save({...attempt,
+          resendUntil: Date.now() + retryAfter * 1000});
         if (["registration_expired", "registration_restart_required", "registration_unavailable"].includes(error.code)) {
           stop();
           onExpired(error.message);
-        } else announce(error.message || "Could not send the verification email. Try again.");
+        } else announce(retryAfter ? cooldownMessage : error.message || "Could not send the verification email. Try again.");
       } finally { busy = false; tick(); schedule(); }
     });
     document.getElementById("signupEdit").addEventListener("click", () => { stop(); onEdit(); });

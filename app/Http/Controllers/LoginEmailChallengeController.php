@@ -49,10 +49,6 @@ class LoginEmailChallengeController extends Controller
         $pollTokenHash = hash('sha256', $data['poll_token']);
         $attemptKey = 'login-code-invalid:'.$pollTokenHash;
 
-        if (RateLimiter::tooManyAttempts($attemptKey, LoginEmailChallengeService::maxAttempts())) {
-            return $this->attemptsExceededResponse($attemptKey);
-        }
-
         $ipLock = Cache::lock('login-code-ip-lock:'.hash('sha256', (string) $request->ip()), 30);
         if (! $ipLock->get()) {
             return response()->json(['success' => false, 'code' => 'login_code_busy', 'message' => 'Verification is busy. Try again.', 'retry_after' => 1], 429)
@@ -68,11 +64,11 @@ class LoginEmailChallengeController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            if (RateLimiter::tooManyAttempts($attemptKey, LoginEmailChallengeService::maxAttempts())) {
-                return $this->attemptsExceededResponse($attemptKey);
-            }
-
             if (! $challenge) {
+                if (RateLimiter::tooManyAttempts($attemptKey, 5)) {
+                    return $this->attemptsExceededResponse($attemptKey);
+                }
+
                 RateLimiter::hit($attemptKey, $this->defaultAttemptDecaySeconds());
 
                 return response()->json([
@@ -103,9 +99,6 @@ class LoginEmailChallengeController extends Controller
             }
 
             LoginEmailChallengeService::assertAttemptBudget($user);
-            if ($challenge->failed_attempts >= LoginEmailChallengeService::maxAttempts()) {
-                return $this->exhaustedResponse();
-            }
             $expectedHash = hash_hmac('sha256', $data['code'], $data['poll_token']);
             if (! hash_equals($challenge->token_hash, $expectedHash)) {
                 $challenge->increment('failed_attempts');
@@ -116,9 +109,6 @@ class LoginEmailChallengeController extends Controller
                 // commit with this failed attempt instead of rolling back.
                 if ($locked = LoginEmailChallengeService::attemptBudgetResponse($user)) return $locked;
 
-                if ($challenge->failed_attempts >= LoginEmailChallengeService::maxAttempts()) {
-                    return $this->exhaustedResponse();
-                }
 
                 return response()->json([
                     'success' => false,
@@ -196,12 +186,6 @@ class LoginEmailChallengeController extends Controller
             'code' => 'account_disabled',
             'message' => 'This account cannot complete sign-in. Please contact the clinic.',
         ], 403);
-    }
-
-    private function exhaustedResponse()
-    {
-        return response()->json(['success' => false, 'code' => 'login_code_exhausted',
-            'message' => 'Request a new code to continue.', 'requires_new_code' => true], 422);
     }
 
     private function attemptsExceededResponse(string $attemptKey)

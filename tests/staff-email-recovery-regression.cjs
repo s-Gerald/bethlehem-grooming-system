@@ -4,7 +4,8 @@ const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../scripts/auth/email-recovery.js'), 'utf8');
 
 async function page({ token = 'a'.repeat(64), verify, complete } = {}) {
-  const elements = new Map(), events = new Map(), calls = [];
+  const elements = new Map(), events = new Map(), calls = [], intervals = new Map();
+  let now = 100000, nextInterval = 0;
   const element = id => {
     if (!elements.has(id)) {
       const classes = new Set(['emailRecoveryForm', 'recoveryError'].includes(id) ? ['hidden'] : []);
@@ -15,16 +16,22 @@ async function page({ token = 'a'.repeat(64), verify, complete } = {}) {
     }
     return elements.get(id);
   };
-  const window = { location: { hash: '#' + token, pathname: '/confirm-email-recovery' }, addEventListener: (name, fn) => events.set(name, fn) };
+  const window = { location: { hash: '#' + token, pathname: '/confirm-email-recovery' }, addEventListener: (name, fn) => events.set(name, fn),
+    setInterval(fn) { intervals.set(++nextInterval, fn); return nextInterval; },
+    clearInterval(id) { intervals.delete(id); },
+  };
   const API = {
     async verifyStaffEmailRecovery(value) { calls.push(['verify', value]); return verify ? verify(value) : { email: 'new@example.test' }; },
     async completeStaffEmailRecovery(value, password) { calls.push(['complete', value, password]); return complete ? complete(value, password) : { status: 'completed' }; },
   };
-  vm.runInNewContext(source, { window, API, history: { replaceState(a, b, url) { calls.push(['scrub', url]); } }, document: {
+  const context = vm.createContext({ window, API, Date: {now: () => now}, history: { replaceState(a, b, url) { calls.push(['scrub', url]); } }, document: {
     getElementById: element, addEventListener(name, fn) { events.set(name, fn); },
   } });
+  vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../scripts/auth/verification-code.js'), 'utf8'), context);
+  vm.runInContext(source, context);
   await events.get('DOMContentLoaded')();
-  return { element, calls, events, submit: () => element('emailRecoveryForm').handlers.submit({ preventDefault() {} }) };
+  return { element, calls, events, advance: seconds => { now += seconds * 1000; for (const tick of intervals.values()) tick(); },
+    submit: () => element('emailRecoveryForm').handlers.submit({ preventDefault() {} }) };
 }
 
 (async () => {
@@ -61,6 +68,19 @@ async function page({ token = 'a'.repeat(64), verify, complete } = {}) {
   assert.match(wrong.element('recoveryError').textContent, /incorrect/);
   assert.equal(wrong.element('recoveryPassword').value, '');
   assert.equal(wrong.element('emailRecoveryForm').classList.contains('hidden'), false);
+  const throttled = await page({complete: () => { throw {status: 429, retryAfter: 60}; }});
+  throttled.element('recoveryPassword').value = 'ExistingPassword!234';
+  await throttled.submit();
+  assert.equal(throttled.element('recoverySubmit').textContent, 'Try again in 1m 00s');
+  throttled.advance(1);
+  assert.equal(throttled.element('recoverySubmit').textContent, 'Try again in 59s');
+  throttled.element('recoveryPassword').value = 'ExistingPassword!234';
+  await throttled.submit();
+  assert.equal(throttled.calls.filter(call => call[0] === 'complete').length, 1);
+  throttled.advance(59);
+  assert.equal(throttled.element('recoverySubmit').disabled, false);
+  assert.equal(throttled.element('recoverySubmit').textContent, 'Confirm Email Change');
+  assert.equal(throttled.calls.filter(call => call[0] === 'complete').length, 1);
   const locked = await page({ complete: () => { throw { data: { status: 'locked' }, message: 'Too many attempts.' }; } });
   locked.element('recoveryPassword').value = 'wrong'; await locked.submit();
   assert.equal(locked.element('emailRecoveryForm').classList.contains('hidden'), true);

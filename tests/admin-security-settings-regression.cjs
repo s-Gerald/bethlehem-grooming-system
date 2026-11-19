@@ -160,6 +160,7 @@ global.API = {
 };
 
 vm.runInThisContext(fs.readFileSync(path.join(root, 'scripts/auth/email-delivery.js'), 'utf8'));
+vm.runInThisContext(fs.readFileSync(path.join(root, 'scripts/auth/verification-code.js'), 'utf8'));
 vm.runInThisContext(fs.readFileSync(path.join(root, 'scripts/utils/account-email.js'), 'utf8'));
 vm.runInThisContext(fs.readFileSync(path.join(root, 'scripts/utils/human-name.js'), 'utf8'));
 vm.runInThisContext(fs.readFileSync(path.join(root, 'scripts/utils/credential-policy.js'), 'utf8'));
@@ -261,6 +262,34 @@ vm.runInThisContext(componentSource, {
     API.resendSecurityCredentialChangeCode = original;
     settings.closeSecurityVerification();
     assert.equal(cooldownTicks.size, 0);
+  }
+  const realNow = Date.now;
+  const originalConfirm = API.confirmSecurityCredentialChange;
+  let now = 100000, confirms = 0;
+  Date.now = () => now;
+  try {
+    settings.openSecurityVerification({change_id: 16, resend_after: 0});
+    settings.securityVerification.digits = ['1', '2', '3', '4', '5', '6'];
+    API.confirmSecurityCredentialChange = async () => {
+      confirms++;
+      throw {status: 429, retryAfter: 60};
+    };
+    await settings.confirmSecurityCredentialChange();
+    assert.equal(settings.securityCountdownLabel(settings.securityVerification.retryRemaining), 'Try again in 1m 00s');
+    now += 1000;
+    cooldownTicks.get(1)();
+    assert.equal(settings.securityCountdownLabel(settings.securityVerification.retryRemaining), 'Try again in 59s');
+    await settings.confirmSecurityCredentialChange();
+    assert.equal(confirms, 1);
+    now += 59000;
+    cooldownTicks.get(1)();
+    assert.equal(settings.securityVerification.retryRemaining, 0);
+    assert.equal(settings.securityVerification.error, '');
+    assert.equal(confirms, 1, 'Countdown completion never submits a credential change');
+  } finally {
+    Date.now = realNow;
+    API.confirmSecurityCredentialChange = originalConfirm;
+    settings.closeSecurityVerification();
   }
   settings.openSecurityVerification({ change_id: 13, resend_after: 0, email_delivery_token: 'private-admin-receipt' });
   await new Promise(resolve => setImmediate(resolve));

@@ -80,7 +80,7 @@ class PasswordResetTest extends TestCase
         $this->freezeTime();
         Notification::fake();
         $user = $this->createUser('customer');
-        config(['authentication.email.quarter_hour' => 2]);
+        config(['authentication.email.hour' => 2]);
         app(\App\Services\AuthenticationEmailPolicy::class)->send($user->email, fn () => null, 'login');
         app(\App\Services\AuthenticationEmailPolicy::class)->send($user->email, fn () => null, 'privileged_change');
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertTooManyRequests();
@@ -603,16 +603,14 @@ class PasswordResetTest extends TestCase
         $this->assertSame($before, PasswordResetRequest::query()->sole()->getAttributes());
     }
 
-    public function test_password_resend_reports_the_longer_endpoint_limit_after_the_last_allowed_request(): void
+    public function test_public_recovery_resend_uses_the_sixty_second_cooldown_for_repeated_requests(): void
     {
         $this->freezeTime();
-        foreach (range(1, 2) as $attempt) {
+        foreach (range(1, 4) as $attempt) {
             $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertUnprocessable()->assertJsonPath('resend_after', 60);
+            $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertTooManyRequests()->assertHeader('Retry-After', '60');
             $this->travel(60)->seconds();
         }
-        $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertUnprocessable()->assertJsonPath('resend_after', 780);
-        $this->travel(60)->seconds();
-        $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertTooManyRequests()->assertHeader('Retry-After', '720');
     }
 
     public function test_password_resend_preserves_failed_attempts_and_queue_failure_preserves_state(): void

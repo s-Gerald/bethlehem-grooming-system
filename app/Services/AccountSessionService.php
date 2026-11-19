@@ -16,9 +16,9 @@ class AccountSessionService
         return $token->expires_at && $token->expires_at->lt($limit) ? $token->expires_at->copy() : $limit;
     }
 
-    public function idleAt(PersonalAccessToken $token): Carbon
+    public function idleAt(PersonalAccessToken $token, User $user): Carbon
     {
-        return Carbon::parse($token->last_interaction_at ?? $token->created_at)->addMinutes(30);
+        return Carbon::parse($token->last_interaction_at ?? $token->created_at)->addMinutes($user->role === 'customer' ? 120 : 30);
     }
 
     public function accountIsUsable(User $user): bool
@@ -33,7 +33,7 @@ class AccountSessionService
     {
         return $token->tokenable_type === $user->getMorphClass() && (int) $token->tokenable_id === (int) $user->getKey()
             && ! $token->replaced_at && ! $token->locked_at && $this->accountIsUsable($user)
-            && now()->lt($this->expiresAt($token, $user)) && now()->lt($this->idleAt($token));
+            && now()->lt($this->expiresAt($token, $user)) && now()->lt($this->idleAt($token, $user));
     }
 
     // Only call after all authentication requirements have succeeded.

@@ -15,6 +15,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!signupForm || !phoneInput || !emailInput) return;
 
   let busy = false, finalizing = false, departed = false, submitted = null;
+  let signupCooldown = 0;
   const context = window.SignupContext;
   let attempt = context.read(), attemptEmail = "";
   const title = document.getElementById("signupTitle");
@@ -248,7 +249,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   signupForm.addEventListener("submit", async function (e) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || signupCooldown) return;
 
     if (!termsInput.checked) {
       const feedback = fieldErrors.get("terms");
@@ -347,6 +348,15 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function showErrors(error) {
+    if (error.retryAfter > 0) {
+      showMessage("Too many attempts. Please wait before trying again.");
+      window.VerificationCode.startCountdown(error.retryAfter, seconds => {
+        signupCooldown = seconds;
+        setBusyState(busy);
+        if (!seconds && !departed) showMessage("You can try creating your account again.");
+      });
+      return;
+    }
     if (error.errors) {
       let firstInput;
       for (const [field, messages] of Object.entries(error.errors)) {
@@ -370,10 +380,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function setBusyState(isBusy) {
     busy = isBusy;
-    submitButton.disabled = isBusy;
+    submitButton.disabled = isBusy || signupCooldown > 0;
     signupForm.setAttribute("aria-busy", String(isBusy));
     const label = document.getElementById("signupBtnLabel");
-    if (label) label.textContent = isBusy ? "Please wait..." : "Create Account";
+    if (label) label.textContent = isBusy ? "Please wait..." : signupCooldown
+      ? "Try again in " + window.VerificationCode.formatCountdown(signupCooldown) : "Create Account";
   }
 
   function clearMessage() {

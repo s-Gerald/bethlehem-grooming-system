@@ -49,34 +49,7 @@ These are adapted account-review patterns from [Microsoft Recent activity](https
 
 The existing local app was verified as `APP_ENV=local` with a loopback MySQL connection, database cache/queue and its existing SMTP configuration. The two new migrations were applied only there. Read-only checks confirmed all challenge columns, the replacement index, removal of account uniqueness, the incident table, and absence of automatic expiry updates. Effective local OTP limits are 5/5/25/20; the authentication provider pool is 100/day. No private SMTP setting was changed and no worker was started against that transport.
 
-New defaults are documented in `.env.example`:
-
-```dotenv
-AUTH_OTP_ATTEMPTS=5
-AUTH_OTP_SOURCE_ATTEMPTS=5
-AUTH_OTP_IP_ATTEMPTS=25
-AUTH_OTP_ACCOUNT_ATTEMPTS=20
-AUTH_OTP_ATTEMPT_WINDOW=900
-AUTH_LOGIN_OUTSTANDING_CHALLENGES=10
-AUTH_SECURITY_FAILURE_THRESHOLD=3
-AUTH_SECURITY_SOURCE_THRESHOLD=3
-AUTH_SECURITY_SOURCE_WINDOW=1800
-AUTH_SECURITY_INCOMPLETE_SECONDS=120
-AUTH_SECURITY_RETENTION_DAYS=90
-AUTH_EMAIL_PROVIDER_DAILY_LIMIT=100
-AUTH_EMAIL_LOGIN_LIMIT=3
-AUTH_EMAIL_LOGIN_SOURCE_LIMIT=15
-AUTH_EMAIL_REGISTRATION_LIMIT=3
-AUTH_EMAIL_RECOVERY_LIMIT=3
-AUTH_EMAIL_PRIVILEGED_LIMIT=3
-AUTH_TRUSTED_PROXIES=
-```
-
-Existing explicit environment values override defaults. In particular, an older `AUTH_OTP_ACCOUNT_ATTEMPTS=5` must be deliberately updated to 20 when adopting the proposed policy. An empty proxy list trusts no forwarding source; wildcard entries are excluded. Only configure verified proxy IPs/CIDRs. Configuration is read through Laravel configuration, including when cached.
-
-Destination limits remain three per 15 minutes, six/hour and 12/day. IP limits remain 30/hour and 100/day. Purpose cooldowns default to 60 seconds. Login additionally has a 15-per-source/15-minute purpose budget. Post-change informational notices have a separate purpose with no cooldown, still bounded by aggregate limits, so a just-completed credential OTP does not suppress its confirmation solely through a purpose cooldown. Unusual-activity warnings have their own one/day purpose budget.
-
-The 100/day provider setting is a conservative **application authentication pool**, not a verified Brevo plan limit. For a future deployment, allocate it from the actual provider allowance after accounting for other application mail and headroom. Public admission can reserve capacity for work that ultimately sends no message. Purpose separation never guarantees recovery or credential email when aggregate capacity is exhausted; mail outside this policy can still consume the provider's actual allowance.
+Current defaults are documented in [the authentication guide](customer-authentication.md) and [the example environment](../.env.example). Existing explicit environment values override defaults, including cached Laravel configuration. An empty proxy list trusts no forwarding source. Configure only verified proxy IPs and CIDRs.
 
 Automated tests force isolated SQLite, array mail/fake notifications and testing configuration; database-queue cases exercise actual encrypted insertion without SMTP. Real MySQL integration uses the existing guarded runner, which creates and removes only its randomly named loopback test database.
 

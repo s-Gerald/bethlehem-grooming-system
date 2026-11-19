@@ -237,7 +237,7 @@ class RememberedDeviceService
         $response = response()->json(['success' => true, 'token' => $token,
             'remember_me' => in_array('session:persistent', $session->abilities ?? [], true),
             'locked' => false, 'server_now' => now()->toIso8601String(),
-            'idle_at' => $policy->idleAt($session)->toIso8601String(),
+            'idle_at' => $policy->idleAt($session, $user)->toIso8601String(),
             'expires_at' => $policy->expiresAt($session, $user)->toIso8601String(),
             'user' => ['user_id' => $user->getKey(), 'role' => 'customer', 'first_name' => $user->first_name, 'last_name' => $user->last_name]])
             ->header('Cache-Control', 'no-store');

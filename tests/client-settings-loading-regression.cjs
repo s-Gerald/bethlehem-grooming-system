@@ -11,6 +11,8 @@ const source = fs.readFileSync(
 function createPage(getMe, phoneApi = {}) {
   const elements = new Map();
   const windowEvents = new Map();
+  const intervals = new Map();
+  let now = Date.now(), intervalId = 0;
   const pageHtml = fs.readFileSync(
     path.resolve(__dirname, "../pages/client/settings.html"),
     "utf8",
@@ -71,6 +73,7 @@ function createPage(getMe, phoneApi = {}) {
 
   const context = {
     TextEncoder,
+    Date: class extends Date { static now() { return now; } },
     API: {
       hasAuthenticatedSession: () => true,
       getMe,
@@ -96,8 +99,8 @@ function createPage(getMe, phoneApi = {}) {
       requestAnimationFrame(callback) { callback(); },
       requestIdleCallback(callback) { callback(); },
       setTimeout(callback) { callback(); },
-      setInterval() { return 1; },
-      clearInterval() {},
+      setInterval(callback) { intervals.set(++intervalId, callback); return intervalId; },
+      clearInterval(id) { intervals.delete(id); },
     },
   };
 
@@ -112,6 +115,7 @@ function createPage(getMe, phoneApi = {}) {
   vm.runInContext(source, context);
   element.emitVerified = (user) => windowEvents.get('customer-phone:verified')({ detail: { user } });
   element.pageHtml = pageHtml;
+  element.advanceSeconds = seconds => { now += seconds * 1000; for (const tick of intervals.values()) tick(); };
   element.emit = (type, detail) => windowEvents.get(type)({ detail });
   return element;
 }
@@ -182,7 +186,7 @@ async function testPasswordChangeSubmissionAndErrors() {
     page('newPassword').value = page('confirmNewPassword').value = 'long meadow river passphrase';
     await page('passwordForm').dispatch('submit');
     assert.equal(attempts, 1);
-    assert.equal(page('changePasswordSubmit').disabled, false);
+    assert.equal(page('changePasswordSubmit').disabled, error.status === 429);
     assert.equal(page('newPassword').value, 'long meadow river passphrase');
     if (error.status === 422) {
       assert.equal(page('currentPasswordError').textContent, 'Incorrect current password.');
@@ -191,7 +195,18 @@ async function testPasswordChangeSubmissionAndErrors() {
       assert.equal(page('currentPasswordError').hidden, true);
       assert.equal(page('currentPassword').getAttribute('aria-invalid'), 'false');
     }
-    if (error.status === 429) assert.match(page('settingsStatus').textContent, /300/);
+    if (error.status === 429) {
+      assert.match(page('settingsStatus').textContent, /Too many attempts/);
+      assert.equal(page('changePasswordLabel').textContent, 'Try again in 5m 00s');
+      page.advanceSeconds(1);
+      assert.equal(page('changePasswordLabel').textContent, 'Try again in 4m 59s');
+      await page('passwordForm').dispatch('submit');
+      assert.equal(attempts, 1);
+      page.advanceSeconds(299);
+      assert.equal(page('changePasswordSubmit').disabled, false);
+      assert.equal(page('changePasswordLabel').textContent, 'Change Password');
+      assert.equal(attempts, 1, 'Countdown completion does not send another code');
+    }
     if (error.status === 0) assert.match(page('settingsStatus').textContent, /Unable to request a verification code/i);
   }
 }

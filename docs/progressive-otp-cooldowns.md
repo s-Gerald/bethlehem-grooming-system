@@ -2,6 +2,8 @@
 
 Implemented locally on `gerald-frontend` on October 30, 2026. The starting working tree was clean. No deployment, production data changes, environment changes, or migrations were performed.
 
+> Historical report. See the [authentication guide](customer-authentication.md) for the current policy, including verification resuming with the original unexpired code after cooldown.
+
 ## Original behavior and root causes
 
 The independent login challenge already had a ten-minute `expires_at`, a database failure count, atomic consumption, and queued mail with issuance guards. Five wrong codes also exhausted an account/source rate-limiter window for 900 seconds. A second counter keyed to the transaction duplicated the issued-code allowance. Resend and password-confirmed resume both rejected an exhausted challenge. The browser API discarded its pending token on `login_code_locked`, preventing in-page recovery. The verification page re-enabled the exhausted input when its timer ended, and Sign In treated that same server restriction as a plain error without a timer.

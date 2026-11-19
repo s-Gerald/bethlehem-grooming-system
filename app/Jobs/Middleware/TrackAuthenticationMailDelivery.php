@@ -3,8 +3,8 @@
 namespace App\Jobs\Middleware;
 
 use App\Http\Controllers\EmailVerificationController;
+use App\Models\LoginEmailChallenge;
 use App\Services\AuthenticationMailDelivery;
-use App\Services\LoginEmailChallengeService;
 use App\Services\PasswordResetService;
 use App\Services\PrivilegedCredentialChangeService;
 use Illuminate\Support\Facades\Cache;
@@ -57,8 +57,8 @@ class TrackAuthenticationMailDelivery
                 || $current->getAttribute('confirmed_at')
                 || $current->getAttribute('verified_token_hash')
                 || $current->getAttribute('verification_attempts') >= PasswordResetService::MAX_ATTEMPTS
-                || $current->getAttribute('failed_attempts') >= ($current instanceof \App\Models\LoginEmailChallenge
-                    ? LoginEmailChallengeService::maxAttempts() : PrivilegedCredentialChangeService::MAX_CODE_ATTEMPTS)
+                || (! $current instanceof LoginEmailChallenge
+                    && $current->getAttribute('failed_attempts') >= PrivilegedCredentialChangeService::MAX_CODE_ATTEMPTS)
                 || ! hash_equals($guard['hash'], (string) $current->getAttribute($guard['hash_column']))
                 || ! $current->getAttribute($guard['expiry_column'])
                 || now()->greaterThanOrEqualTo($current->getAttribute($guard['expiry_column']))) {

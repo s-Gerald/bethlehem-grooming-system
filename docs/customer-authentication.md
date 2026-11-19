@@ -57,7 +57,7 @@ The unchecked checkbox remains **Remember me**, with the existing sign-in layout
 
 | Account / checkbox | Active session | Browser persistence | Device restoration |
 | --- | --- | --- | --- |
-| Customer / off | 30-minute inactivity; 24-hour absolute | Session cookie; tab-scoped public reference | None after active session expiry |
+| Customer / off | Two-hour inactivity with a two-minute warning; 24-hour absolute | Session cookie; tab-scoped public reference | None after active session expiry |
 | Customer / on | Same active session limits | Auth cookie capped at 24 hours; separate device cookie | 14-day absolute deadline from OTP; 7-day device inactivity limit |
 | Admin or staff / off | Password lock after 30 minutes; 12-hour absolute | Session cookie; tab-scoped public reference | No customer device capability |
 | Admin or staff / on | Same lock and 12-hour limit | Cookie/reference persist to the original deadline | Normal password/email OTP required after expiry |
@@ -235,14 +235,12 @@ All customer sending policy lives in `config/authentication.php` and `Authentica
 | Registration review grant | Original 10 minutes after email proof; single use; at most 70 minutes from pending creation |
 | Pending registration retention | Exactly 60 minutes from server creation; old hours/days overrides ignored |
 | Sign-in OTP | 10 minutes from initial issuance; resend does not extend the deadline |
-| Incorrect OTP attempts | 5/challenge; 5/account + source and 20/account per 15 minutes; 25/IP per 15 minutes |
+| Incorrect OTP attempts | Progressive 1-, 3-, and 5-minute pauses after each five incorrect codes per account and source; emergency ceilings of 50/account and 100/IP per 15 minutes |
 | Minimum email interval | 60 seconds per purpose/destination; separate bounded security-notice and warning purposes |
-| Email requests | Initial request plus 2 further requests in a rolling 15 minutes |
-| Destination limits | 6/rolling hour; 12/rolling 24 hours |
-| IP sending limits | 30/rolling hour; 100/rolling 24 hours |
-| Authentication provider pool | 100/rolling day by default; configure against the verified provider allocation |
+| Destination limits | 12/rolling hour; 50/rolling 24 hours |
+| IP sending limits | 60/rolling hour; 200/rolling 24 hours |
 
-Registration, sign-in and password recovery share aggregate destination/IP/provider flood protection within purpose-aware budgets. Public password-recovery feedback uses a separate source/address request budget, identical for known and unknown addresses, so private sending history is not disclosed. Password-reset code validity, reset grants, eligibility, staff setup and recovery holds retain their separate rules. Existing operator environment values override defaults; explicitly set `LOGIN_CONFIRMATION_TTL_MINUTES=10` and `AUTH_OTP_ACCOUNT_ATTEMPTS=20` when adopting the updated policy over older explicit values.
+Authentication email purposes share destination and source-IP quotas. An unexpired sign-in code can still be verified after a guessing cooldown. A successful resend rotates the code and keeps the original deadline and cumulative guessing history. Public password-recovery feedback uses a separate source/address request budget, identical for known and unknown addresses, so private sending history is not disclosed. Password-reset code validity, reset grants, eligibility, staff setup and recovery holds retain their separate rules. Existing operator environment values override defaults; explicitly set `LOGIN_CONFIRMATION_TTL_MINUTES=10` and `AUTH_OTP_ACCOUNT_ATTEMPTS=50` when adopting the updated policy over older explicit values.
 
 Authorized server responses provide `resend_after`, `retry_after`, `next_eligible_at`, and `resend_limited`. Their HTTP 429 also includes `Retry-After` and a machine-readable code (`email_cooldown`, `email_rate_limited`, `email_sending`, or `login_code_locked`). Public recovery/resend deliberately withhold destination-specific restrictions as described above. Longer sending restrictions never disable entry of an otherwise valid OTP. Rejected/failed resends do not replace the current credential. Destination and IP locks serialize quota reservations through encrypted database-job insertion; job retries do not reserve another email.
 

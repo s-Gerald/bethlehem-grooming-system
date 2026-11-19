@@ -28,6 +28,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const passwordLabel = document.getElementById('changePasswordLabel');
   const passwordSpinner = document.getElementById('changePasswordSpinner');
   let changingPassword = false;
+  let passwordCoolingDown = false;
   const passwordBindings = {};
   const newPasswordInput = document.getElementById("newPassword");
   const confirmPasswordInput = document.getElementById("confirmNewPassword");
@@ -399,7 +400,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function validatePasswordForm() {
-    if (changingPassword) return;
+    if (changingPassword || passwordCoolingDown) return;
     hideStatus();
     if (passwordChallenge && Date.parse(passwordChallenge.expires_at) > Date.now()) {
       confirmation.open('password', passwordSubmit, { challenge: passwordChallenge });
@@ -435,7 +436,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         setPasswordFieldError(field, [].concat(messages)[0]); first ||= fields[field];
       }
       if (first) first.focus();
-      else if (error.status === 429) showStatus(`Too many attempts. Try again in ${error.retryAfter || 60} seconds.`, 'error');
+      else if (error.retryAfter > 0) {
+        window.VerificationCode.startCountdown(error.retryAfter, remaining => {
+          const wasCoolingDown = passwordCoolingDown;
+          passwordCoolingDown = Boolean(remaining);
+          passwordSubmit.disabled = passwordCoolingDown;
+          if (remaining && !wasCoolingDown) showStatus('Too many attempts. Please wait before trying again.', 'error');
+          passwordLabel.textContent = remaining
+            ? 'Try again in ' + window.VerificationCode.formatCountdown(remaining) : 'Change Password';
+          if (!remaining) showStatus('You can try changing your password again.', 'info');
+        });
+      }
       else if (error.code === 'password_screening_unavailable') showStatus('Password safety checking is temporarily unavailable. Try again later.', 'error');
       else if (error.status === 401 || error.status === 403) API.redirectToSignIn();
       else if (!error.status || error.status >= 500) showStatus('Unable to request a verification code. Try again.', 'error');
@@ -444,9 +455,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       changingPassword = false;
       passwordForm.setAttribute('aria-busy', 'false');
       for (const input of Object.values(fields)) input.readOnly = false;
-      passwordSubmit.disabled = false;
+      passwordSubmit.disabled = passwordCoolingDown;
       passwordSubmit.setAttribute('aria-busy', 'false');
-      passwordLabel.textContent = 'Change Password';
+      if (!passwordCoolingDown) passwordLabel.textContent = 'Change Password';
       passwordSpinner.classList.add('hidden');
     }
   }

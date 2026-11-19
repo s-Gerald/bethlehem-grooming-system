@@ -175,7 +175,11 @@ class SessionLockTest extends TestCase
     {
         $token = $this->token('customer');
         $this->api($token, 'POST', '/session/unlock', ['password' => 'SessionTest!123'])->assertForbidden();
-        $this->travel(29)->minutes();
+        $this->travel(30)->minutes();
+        $this->api($token, 'GET', '/me')->assertOk();
+        $this->api($token, 'POST', '/session/activity')
+            ->assertOk()->assertJsonPath('idle_at', now()->addHours(2)->toIso8601String());
+        $this->travel(119)->minutes();
         $this->api($token, 'GET', '/me')->assertOk();
         $this->travel(1)->minutes();
         $this->api($token, 'POST', '/session/activity', ['at' => now()->addDay()->timestamp])->assertUnauthorized();
@@ -185,7 +189,7 @@ class SessionLockTest extends TestCase
     public function test_an_already_expired_session_is_not_reported_as_a_replacement(): void
     {
         $token = $this->token('customer');
-        $this->travel(31)->minutes();
+        $this->travel(121)->minutes();
         $new = app(\App\Services\AccountSessionService::class)->issue(User::first());
         $this->api($token, 'GET', '/me')->assertUnauthorized()->assertJsonPath('code', 'session_expired');
         $this->api($new, 'GET', '/me')->assertOk();

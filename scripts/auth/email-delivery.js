@@ -44,7 +44,7 @@ window.AuthenticationResend = {
     return data?.data?.resend_limited === true || data?.resend_limited === true || data?.code === 'email_rate_limited';
   },
   message(seconds) {
-    const duration = window.VerificationCode.formatCountdown(seconds);
+    const duration = window.VerificationCode.formatCountdown(seconds, true);
     return duration ? `Too many requests. Try again in ${duration}.` : "";
   },
 };
