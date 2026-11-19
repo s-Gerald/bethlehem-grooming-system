@@ -195,7 +195,7 @@ function installAdminAvailabilityNavigation() {
 function getAdminSidebarIdentityState(user) {
   if (!user) return {
     sidebarReady: false, isAdmin: false, isOwner: false, canViewAvailability: false, clinicPermissions: {}, canAccessGrooming: false, clinicOnly: false, canViewServices: false,
-    staffDisplayName: '', staffInitials: '', staffRoleLabel: '',
+    staffDisplayName: '', staffInitials: '', staffRoleLabel: '', dashboardTitle: '',
   };
   const first = String(user.first_name || '').trim(), last = String(user.last_name || '').trim();
   return {
@@ -208,6 +208,7 @@ function getAdminSidebarIdentityState(user) {
     clinicPermissions: user.clinic_permissions || {},
     canAccessGrooming: user.role === 'admin' || !!user.staff_permissions?.grooming,
     staffDisplayName: first || 'Staff',
+    dashboardTitle: user.role === 'admin' ? (user.admin_type === 'manager' ? 'Dashboard' : 'Admin Dashboard') : 'Staff Dashboard',
     staffInitials: `${first[0] || ''}${last[0] || ''}`.toUpperCase() || 'ST',
     staffRoleLabel: user.role === 'admin' ? (user.admin_type === 'manager' ? 'Manager' : 'Admin') : user.staff_type === 'clinic'
       ? ({ veterinarian: 'Veterinarian', clinic_receptionist: 'Clinic Receptionist' }[user.staff_subrole] || 'Clinic Staff')
@@ -221,6 +222,7 @@ function renderCachedAdminSidebar() {
   const aside = document.querySelector('.admin-sidebar-menu');
   if (!aside) return;
   const state = getAdminSidebarIdentityState(user), activePage = getAdminSidebarActivePage();
+  document.querySelectorAll('[x-text="dashboardTitle"]').forEach(el => { el.textContent = state.dashboardTitle; });
   const visible = {
     isAdmin: state.isAdmin,
     'isAdmin || clinicPermissions.access': state.isAdmin || !!state.clinicPermissions.access,

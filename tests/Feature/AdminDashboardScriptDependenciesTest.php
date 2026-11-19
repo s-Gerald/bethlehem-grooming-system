@@ -29,7 +29,7 @@ class AdminDashboardScriptDependenciesTest extends TestCase
         $sidebar = file_get_contents(base_path('scripts/components/admin-sidebar.js'));
 
         $this->assertStringContainsString(
-            'data-admin-title-staff>Staff Dashboard</span>',
+            'x-text="dashboardTitle"',
             $page,
         );
         $this->assertStringContainsString(

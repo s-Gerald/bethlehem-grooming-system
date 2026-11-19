@@ -266,6 +266,73 @@ async function walkInNavigation(browser) {
     } finally { state.sessionHold?.resolve(); await f.context.close(); }
   }
 }
+async function pageHeaders(browser) {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const titles = [
+    ['transactions', 'main h2[data-session-public]'],
+    ['dashboard', 'main h2[data-session-public]'],
+    ['customers', 'main h2[data-session-public]'],
+    ['grooming', 'main h2[data-session-public]'],
+    ['clinic', 'main h2[data-session-public]'],
+    ['services', '#services-heading'],
+    ['inventory', 'main [data-admin-heading] h2'],
+    ['history', 'main h2[data-session-public]'],
+    ['reports', '.reports-heading h1'],
+    ['activity-log', 'main h2'],
+    ['availability', 'main h2'],
+    ['settings', 'main h2[data-session-public]'],
+  ];
+  const typography = locator => locator.evaluate(el => {
+    const style = getComputedStyle(el);
+    return [style.fontSize, style.fontWeight, style.lineHeight, style.color];
+  });
+  const f = await fixture(browser, 'admin', true, true);
+  try {
+    // Protected documents use the active controller views; API calls remain fixture-only.
+    for (const name of ['activity-log', 'availability']) await f.context.route(`${origin}/admin/${name}`, route =>
+      route.fulfill({contentType: 'text/html', body: fs.readFileSync(path.join(__dirname, `../resources/views/admin/${name}.html`), 'utf8')}));
+    for (const [name, selector] of titles.filter(([name]) => !process.env.LOCAL_REVIEW_PAGES || process.env.LOCAL_REVIEW_PAGES.split(',').includes(name))) {
+      await visit(f.page, name); await ready(f.page);
+      await f.page.waitForFunction(() => document.querySelector('[data-admin-shell]')?._x_dataStack);
+      for (const width of [320, 375, 414, 768, 1024, 1440]) {
+        await f.page.setViewportSize({width, height: 1000});
+        await f.page.waitForFunction(() => {
+          const bounds = document.querySelector('aside.admin-sidebar-menu').getBoundingClientRect();
+          return innerWidth >= 1024 ? bounds.left === 0 : bounds.right <= 0;
+        });
+        assert.deepEqual(await typography(f.page.locator(selector).first()),
+          [width >= 1024 ? '30px' : '24px', '800', width >= 1024 ? '36px' : '32px', 'rgb(31, 56, 80)'], `${name} primary title at ${width}px matches Transactions`);
+        if (width < 1024) {
+          const mobile = f.page.locator('header.lg\\:hidden').locator('h1, h2').first();
+          assert.equal(await mobile.isVisible(), true, `${name} mobile title remains visible`);
+          assert.deepEqual(await typography(mobile), ['18px', '800', '28px', 'rgb(31, 56, 80)'], `${name} mobile title at ${width}px matches Transactions`);
+          if (name === 'clinic') assert.equal(await f.page.locator('header.lg\\:hidden p').first().innerText(), 'Admin Panel', 'Clinic keeps its existing role-specific panel subtitle');
+        }
+        if (process.env.LOCAL_REVIEW_SCREENSHOTS && [375, 1440].includes(width)) await f.page.screenshot({path: path.join(process.env.LOCAL_REVIEW_SCREENSHOTS, `header-${name}-${width}.png`)});
+      }
+      console.log(`${name}: primary and mobile header typography passed at six viewport widths`);
+    }
+  } finally { await f.context.close(); }
+  for (const [profile, title] of [['admin', 'Admin Dashboard'], ['manager', 'Dashboard'], ['grooming', 'Staff Dashboard']]) {
+    const f = await fixture(browser, profile, false, true);
+    try {
+      // Verify both a fresh identity and a cached identity after reload.
+      for (let pass = 0; pass < 2; pass++) {
+        await visit(f.page, 'dashboard'); await ready(f.page);
+        await f.page.waitForFunction(() => document.querySelector('main [x-text="dashboardTitle"]')?.textContent.trim());
+        for (const width of [375, 1440]) {
+          await f.page.setViewportSize({width, height: 1000});
+          for (const heading of [f.page.locator('main h2[data-session-public]').first(), f.page.locator('header.lg\\:hidden h2')]) {
+            assert.equal((await heading.innerText()).trim(), title, `${profile} Dashboard wording at ${width}px, pass ${pass}`);
+          }
+        }
+        await accountLabels(f.page, profile);
+      }
+    } finally { await f.context.close(); }
+  }
+  console.log('Primary and mobile header typography and fresh/cached Dashboard role wording passed');
+}
 async function coldPaint(browser) {
   const f = await fixture(browser);
   try {
@@ -916,6 +983,7 @@ async function managerAccountSecurity(browser) {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {
     const cases = process.env.LOCAL_REVIEW_CASES?.split(',') || ['cold', 'cache', 'security', 'session', 'invalid', 'pre-alpine', 'inventory', 'services', 'walk-in'];
+    if (cases.includes('headers')) await pageHeaders(browser);
     if (cases.includes('owner-profile')) await ownerProfileSecurity(browser);
     if (cases.includes('manager')) await managerAccountSecurity(browser);
     if (cases.includes('urls')) await canonicalUrlsAndLegacyBookmarks(browser);

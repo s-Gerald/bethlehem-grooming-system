@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="/css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="/scripts/components/admin-loading.js?v=universal-20261018&urls=20261103"></script>
     <link rel="preload" as="script" href="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&dashboard-refresh=20261021&session-presentation=walk-in-20261021&payments=cash-only-20261023&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&estimates=20261031&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&short-notes=20261110&manager=20261118&owner-identity=20261118&auth-cooldown=20261118" />
-    <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110&manager=20261118&owner-identity=20261118" />
+    <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110&manager=20261118&owner-identity=20261118&dashboard-title=20261119" />
       <link rel="stylesheet" href="/css/components/admin-activity.css?v=20261025-refinements" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -216,7 +216,7 @@
       </aside>
       <script src="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&dashboard-refresh=20261021&session-presentation=walk-in-20261021&payments=cash-only-20261023&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&estimates=20261031&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&short-notes=20261110&manager=20261118&owner-identity=20261118&auth-cooldown=20261118"></script>
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-policy-20261110"></script>
-      <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110&manager=20261118&owner-identity=20261118"></script>
+      <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110&manager=20261118&owner-identity=20261118&dashboard-title=20261119"></script>
 
       <!-- Main Content -->
       <div class="flex min-h-screen flex-1 flex-col lg:ml-[280px]">
@@ -226,7 +226,7 @@
         >
           <div data-session-public>
             <p class="text-sm font-semibold text-[#5c7690]" data-session-public>Admin Panel</p>
-            <h2 class="text-lg font-extrabold text-[#1f3850]" data-session-public><span data-admin-title-admin>Admin Dashboard</span><span data-admin-title-staff>Staff Dashboard</span></h2>
+            <h2 class="text-lg font-extrabold text-[#1f3850]" data-session-public x-text="dashboardTitle"></h2>
           </div>
 
           <div class="admin-notification-header-actions"><span data-notification-mobile></span><button
@@ -254,8 +254,8 @@
                 <div>
 
                   <h2
-                    class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl"
-                   data-session-public><span data-admin-title-admin>Admin Dashboard</span><span data-admin-title-staff>Staff Dashboard</span></h2>
+                    class="text-2xl font-extrabold text-[#1f3850] lg:text-3xl"
+                   data-session-public x-text="dashboardTitle"></h2>
                   <p
                     class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674] lg:text-sm lg:tracking-[0.25em]"
                    data-session-public>

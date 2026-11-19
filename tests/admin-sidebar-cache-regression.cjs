@@ -40,6 +40,24 @@ function environment() {
   const c = page(); c.API.setAdminToken('17|test-secret'); c.API.setUserRole('staff');
   return { c, page, calls, localStorage, sessionStorage, respond: (fn, code = 200) => { response = fn; status = code; } };
 }
+async function dashboardTitles() {
+  for (const [user, title] of [
+    [{role: 'admin'}, 'Admin Dashboard'],
+    [{role: 'admin', admin_type: 'owner'}, 'Admin Dashboard'],
+    [{role: 'admin', admin_type: 'manager'}, 'Dashboard'],
+    [{role: 'staff'}, 'Staff Dashboard'],
+  ]) {
+    const e = environment();
+    e.c.API.setUserRole(user.role);
+    e.respond(() => identity(user));
+    const sidebar = e.c.adminSidebar();
+    assert.equal(sidebar.dashboardTitle, '', 'Unverified identity has no role-specific title');
+    await sidebar.loadLoggedInIdentity();
+    assert.equal(sidebar.dashboardTitle, title, 'Fresh identity selects the Dashboard wording');
+    assert.equal(e.page().adminSidebar().dashboardTitle, title, 'Cached identity keeps the same wording on navigation');
+    assert.equal(sidebar.isAdmin, user.role === 'admin', 'Presentation preserves admin access for Managers');
+  }
+}
 async function reuseAndInvalidate() {
   const e = environment();
   await Promise.all([e.c.API.getStaffIdentity(), e.c.API.getStaffIdentity()]);
@@ -218,6 +236,7 @@ async function permissionRevalidation() {
   e.respond(() => ({success: true}));
   await c.API.logout('staff');
   assert.equal(sidebar.sidebarReady, false, 'Logout clears the existing navigation identity immediately');
+  assert.equal(sidebar.dashboardTitle, '', 'Logout also clears the former account title');
   assert.equal(sidebar.canAccessGrooming, false, 'Logout revokes permission-dependent presentation');
   assert.deepEqual(Object.keys(sidebar.clinicPermissions), []);
   assert.equal(sidebar.staffDisplayName, '', 'Logout clears the previous account name');
@@ -456,6 +475,7 @@ async function privateSecurityAlertRendersOnce() {
 }
 
 (async () => {
+  await dashboardTitles(); console.log('dashboardTitles passed');
   for (const test of [cachedAccountLabels, servicesNavigationAndPageGuardForAuthorizedRoles, reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, sharedReceptionistSwitchReplacesTheFormerAccountDocument, profileIdentitySynchronization, ownerProfileIdentitySynchronization, profileSessionSwitchRace, activityLogNavigationUsesVerifiedAdminIdentity, availabilityNavigationForAuthorizedRoles, privateSecurityAlertRendersOnce]) {
     await test(); console.log(test.name + ' passed');
   }
