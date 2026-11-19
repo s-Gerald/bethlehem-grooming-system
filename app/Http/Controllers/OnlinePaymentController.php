@@ -169,11 +169,12 @@ class OnlinePaymentController extends Controller
     private function newAttempt($payable, string $context, string $flow, Request $request, array $snapshot, ?string $key = null): GatewayPayment
     {
         $snapshot['metadata_version'] = 2;
-        $snapshot['payment_methods'] = app(PayMongoService::class)->paymentMethods();
+        $provider = app(PayMongoService::class);
+        $snapshot['payment_methods'] = $provider->paymentMethods();
         $attempt = GatewayPayment::create([
             'provider' => 'paymongo', 'payable_type' => $payable->getMorphClass(), 'payable_id' => $payable->getKey(),
             'context' => $context, 'flow' => $flow, 'reference' => 'BTH-'.Str::uuid(), 'request_key' => $key,
-            'amount' => $snapshot['total'], 'currency' => 'PHP', 'status' => 'pending', 'livemode' => false,
+            'amount' => $snapshot['total'], 'currency' => 'PHP', 'status' => 'pending', 'livemode' => $provider->livemode(),
             'initiated_by' => $request->user()->user_id, 'snapshot' => $snapshot, 'reconciliation_reason' => 'checkout_creation_unconfirmed',
         ]);
         app(OnlinePaymentService::class)->returnUrl($attempt, 'success');

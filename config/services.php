@@ -61,8 +61,15 @@ return [
     ],
 
     'paymongo' => [
-        'secret_key' => env('PAYMONGO_SECRET_KEY'),
-        'webhook_secret' => env('PAYMONGO_WEBHOOK_SECRET'),
+        // Legacy credentials are Test-only defaults when the new variables are absent.
+        'test' => [
+            'secret_key' => env('PAYMONGO_TEST_SECRET_KEY', env('PAYMONGO_SECRET_KEY')),
+            'webhook_secret' => env('PAYMONGO_TEST_WEBHOOK_SECRET', env('PAYMONGO_WEBHOOK_SECRET')),
+        ],
+        'live' => [
+            'secret_key' => env('PAYMONGO_LIVE_SECRET_KEY'),
+            'webhook_secret' => env('PAYMONGO_LIVE_WEBHOOK_SECRET'),
+        ],
         'livemode' => env('PAYMONGO_LIVE_MODE', false),
         'payment_methods' => array_values(array_filter(array_map('trim', explode(',', env('PAYMONGO_PAYMENT_METHODS', 'qrph'))))),
         'return_url' => env('PAYMONGO_RETURN_URL', rtrim(env('FRONTEND_URL', env('APP_URL', 'http://127.0.0.1:8000')), '/').'/admin/grooming'),

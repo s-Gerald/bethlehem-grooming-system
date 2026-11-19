@@ -134,7 +134,8 @@ class GroomingPayMongoTest extends TestCase
         DB::table('services')->insert(['service_id' => 3, 'slug' => 'regular_dog_grooming', 'service_name' => 'Regular Grooming']);
         DB::table('booking_services')->insert(['booking_service_id' => 3, 'booking_id' => 1, 'booking_pet_id' => 2,
             'service_id' => 3, 'price_at_booking' => 850, 'price_min_at_booking' => 850]);
-        config(['services.paymongo.secret_key' => 'sk_test_fixture', 'services.paymongo.webhook_secret' => 'whsec_fixture',
+        config(['services.paymongo.test.secret_key' => 'sk_test_fixture', 'services.paymongo.test.webhook_secret' => 'whsec_fixture',
+            'services.paymongo.live.secret_key' => 'sk_live_fixture', 'services.paymongo.live.webhook_secret' => 'whsec_live_fixture',
             'services.paymongo.payment_methods' => ['qrph'], 'services.paymongo.livemode' => false,
             'services.paymongo.return_url' => 'https://bethlehem.example/admin/grooming']);
         Http::preventStrayRequests();
@@ -152,7 +153,7 @@ class GroomingPayMongoTest extends TestCase
 
     public function test_cash_still_settles_without_paymongo_configuration(): void
     {
-        config(['services.paymongo.secret_key' => null]);
+        config(['services.paymongo.test.secret_key' => null]);
         $this->staff();
         $this->postJson('/api/admin/bookings/1/pay', [
             'final_price' => 850, 'amount_paid' => 1000, 'payment_method' => 'cash',
@@ -311,16 +312,19 @@ class GroomingPayMongoTest extends TestCase
         $this->assertSame('pending', GatewayPayment::first()->status);
     }
 
-    public function test_live_signature_is_rejected_even_with_the_current_envelope(): void
+    public function test_live_signature_settles_the_current_envelope_after_switching_to_test(): void
     {
-        $this->checkout()->assertOk();
         config(['services.paymongo.livemode' => true]);
-        GatewayPayment::first()->update(['livemode' => true]);
+        $this->fakeProvider(live: true);
+        $this->checkout()->assertOk();
+        $this->assertTrue(GatewayPayment::firstOrFail()->livemode);
+        config(['services.paymongo.livemode' => false]);
         $event = ['id' => 'evt_current', 'event_type' => 'send.webhook', 'data' => $this->event(live: true)['data']['attributes']];
         $body = json_encode($event, JSON_UNESCAPED_SLASHES);
         $time = time();
-        $this->webhook($event, 't='.$time.',te=,li='.hash_hmac('sha256', $time.'.'.$body, 'whsec_fixture'))->assertUnauthorized();
-        $this->assertSame('pending', GatewayPayment::first()->status);
+        $this->webhook($event, 't='.$time.',te=,li='.hash_hmac('sha256', $time.'.'.$body, 'whsec_live_fixture'))->assertOk();
+        $this->assertSame('paid', GatewayPayment::first()->status);
+        $this->assertDatabaseCount('payments', 1);
     }
 
     public function test_unpaid_provider_payment_cannot_settle(): void
@@ -413,7 +417,7 @@ class GroomingPayMongoTest extends TestCase
     public function test_missing_credentials_and_unauthorized_requests_fail_safely(): void
     {
         $this->getJson('/api/admin/bookings/1/online-payment')->assertUnauthorized();
-        config(['services.paymongo.secret_key' => null]);
+        config(['services.paymongo.test.secret_key' => null]);
         $this->checkout()->assertUnprocessable()->assertJsonPath('errors.payment.0', 'Online payment is not configured.');
         Http::assertNothingSent();
     }
@@ -593,10 +597,11 @@ class GroomingPayMongoTest extends TestCase
                 || !preg_match('/\Abethlehem-paymongo-[a-f0-9]{12}\z/', basename($directory))
                 || basename($database) !== 'payment.sqlite' || !is_file($database)) throw new RuntimeException('Owned test database required.');
             $app = require 'bootstrap/app.php';
+            $app->useEnvironmentPath($directory);
             $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
             config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
                 'database.connections.sqlite.busy_timeout' => 5000, 'database.connections.sqlite.transaction_mode' => 'IMMEDIATE',
-                'services.paymongo.webhook_secret' => 'whsec_fixture', 'services.paymongo.livemode' => false]);
+                'services.paymongo.test.webhook_secret' => 'whsec_fixture', 'services.paymongo.livemode' => false]);
             Illuminate\Support\Facades\DB::purge();
             $role = $argv[2]; $competitor = $argv[3]; $contended = false;
             // Isolated legacy competitor coverage; default-off rejection is tested before settlement elsewhere.
@@ -713,12 +718,12 @@ class GroomingPayMongoTest extends TestCase
         Sanctum::actingAs(User::findOrFail(7));
     }
 
-    private function fakeProvider(string $status = 'active'): void
+    private function fakeProvider(string $status = 'active', bool $live = false): void
     {
         Http::swap(new \Illuminate\Http\Client\Factory);
         Http::preventStrayRequests();
         Http::fake(['api.paymongo.com/*' => Http::response(['data' => ['id' => 'cs_fixture', 'type' => 'checkout_session',
-            'attributes' => ['checkout_url' => 'https://checkout.paymongo.com/cs_fixture', 'status' => $status, 'livemode' => false]]])]);
+            'attributes' => ['checkout_url' => 'https://checkout.paymongo.com/cs_fixture', 'status' => $status, 'livemode' => $live]]])]);
     }
 
     private function checkout(array $overrides = [])

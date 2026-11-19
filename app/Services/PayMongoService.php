@@ -12,14 +12,21 @@ class PayMongoService
 
     public function assertConfigured(): void
     {
-        $this->assertCredentials();
+        $this->assertCredentials($this->livemode());
         $this->paymentMethods();
     }
 
-    private function assertCredentials(): void
+    private function credential(bool $livemode, string $name): string
     {
-        $key = (string) config('services.paymongo.secret_key');
-        if ($this->livemode() || ! str_starts_with($key, 'sk_test_') || ! config('services.paymongo.webhook_secret')) {
+        return (string) config('services.paymongo.'.($livemode ? 'live' : 'test').'.'.$name);
+    }
+
+    private function assertCredentials(bool $livemode): void
+    {
+        $key = $this->credential($livemode, 'secret_key');
+        $prefix = $livemode ? 'sk_live_' : 'sk_test_';
+        if (! str_starts_with($key, $prefix) || strlen($key) <= strlen($prefix)
+            || trim($this->credential($livemode, 'webhook_secret')) === '') {
             throw ValidationException::withMessages(['payment' => 'Online payment is not configured.']);
         }
     }
@@ -40,28 +47,27 @@ class PayMongoService
         return (bool) config('services.paymongo.livemode', false);
     }
 
-    public function createCheckout(array $attributes): array
+    public function createCheckout(array $attributes, bool $livemode): array
     {
-        $this->assertConfigured();
-        return $this->request('post', '/v2/checkout_sessions', ['data' => ['attributes' => $attributes]]);
+        return $this->request('post', '/v2/checkout_sessions', $livemode, ['data' => ['attributes' => $attributes]]);
     }
 
-    public function retrieveCheckout(string $id): array
+    public function retrieveCheckout(string $id, bool $livemode): array
     {
-        return $this->request('get', '/v1/checkout_sessions/'.rawurlencode($id));
+        return $this->request('get', '/v1/checkout_sessions/'.rawurlencode($id), $livemode);
     }
 
-    public function expireCheckout(string $id): array
+    public function expireCheckout(string $id, bool $livemode): array
     {
-        return $this->request('post', '/v1/checkout_sessions/'.rawurlencode($id).'/expire');
+        return $this->request('post', '/v1/checkout_sessions/'.rawurlencode($id).'/expire', $livemode);
     }
 
-    private function request(string $method, string $path, array $payload = []): array
+    private function request(string $method, string $path, bool $livemode, array $payload = []): array
     {
         // New checkout settings must not prevent recovery/expiry of older sessions.
-        $this->assertCredentials();
+        $this->assertCredentials($livemode);
         try {
-            $response = Http::withBasicAuth(config('services.paymongo.secret_key'), '')
+            $response = Http::withBasicAuth($this->credential($livemode, 'secret_key'), '')
                 ->acceptJson()->withoutRedirecting()->connectTimeout(5)->timeout(15)
                 ->{$method}('https://api.paymongo.com'.$path, $payload);
         } catch (ConnectionException) {
@@ -73,19 +79,27 @@ class PayMongoService
             'data' => $response->json('data') ?? []];
     }
 
-    public function validSignature(string $rawBody, string $header): bool
+    /** null is invalid; false authenticates Test; true authenticates Live. */
+    public function authenticatedMode(string $rawBody, string $header): ?bool
     {
-        $secret = (string) config('services.paymongo.webhook_secret');
-        if ($secret === '' || $this->livemode()) return false;
         $parts = [];
         foreach (explode(',', $header) as $part) {
             [$name, $value] = array_pad(explode('=', trim($part), 2), 2, '');
+            if (array_key_exists($name, $parts)) return null;
             $parts[$name] = $value;
         }
         $timestamp = $parts['t'] ?? '';
-        $signature = $parts[$this->livemode() ? 'li' : 'te'] ?? '';
-        return ctype_digit($timestamp) && abs(time() - (int) $timestamp) <= 300
-            && $signature !== ''
-            && hash_equals(hash_hmac('sha256', $timestamp.'.'.$rawBody, $secret), $signature);
+        if (! ctype_digit($timestamp) || abs(time() - (int) $timestamp) > 300) return null;
+        $authenticated = null;
+        foreach (['te' => false, 'li' => true] as $channel => $livemode) {
+            $secret = $this->credential($livemode, 'webhook_secret');
+            $signature = $parts[$channel] ?? '';
+            if ($secret !== '' && $signature !== ''
+                && hash_equals(hash_hmac('sha256', $timestamp.'.'.$rawBody, $secret), $signature)) {
+                if ($authenticated !== null) return null;
+                $authenticated = $livemode;
+            }
+        }
+        return $authenticated;
     }
 }

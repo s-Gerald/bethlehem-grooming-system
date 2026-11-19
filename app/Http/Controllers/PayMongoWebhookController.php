@@ -16,7 +16,8 @@ class PayMongoWebhookController extends Controller
 {
     public function __invoke(Request $request, PayMongoService $provider)
     {
-        abort_unless($provider->validSignature($request->getContent(), (string) $request->header('Paymongo-Signature')), 401, 'Invalid webhook signature.');
+        $authenticatedMode = $provider->authenticatedMode($request->getContent(), (string) $request->header('Paymongo-Signature'));
+        abort_if($authenticatedMode === null, 401, 'Invalid webhook signature.');
         $payload = json_decode($request->getContent(), true);
         abort_unless(is_array($payload), 400, 'Invalid webhook payload.');
         // Official event resource plus the send.webhook wrapper supported by historical clients.
@@ -24,14 +25,14 @@ class PayMongoWebhookController extends Controller
         abort_unless($resourceEnvelope || ($payload['event_type'] ?? null) === 'send.webhook', 400, 'Unknown webhook envelope.');
         $event = $resourceEnvelope ? data_get($payload, 'data.attributes', []) : ($payload['data'] ?? []);
         if (($event['type'] ?? null) !== 'checkout_session.payment.paid') return response()->json(['success' => true]);
-        abort_unless(($event['livemode'] ?? null) === $provider->livemode(), 422, 'Webhook environment mismatch.');
+        abort_unless(($event['livemode'] ?? null) === $authenticatedMode, 422, 'Webhook environment mismatch.');
         $session = $event['data'] ?? [];
         $sessionId = $session['id'] ?? null;
         abort_unless(is_string($sessionId) && ($session['type'] ?? null) === 'checkout_session', 422, 'Checkout Session is missing.');
         $existing = GatewayPayment::where('provider', 'paymongo')->where('checkout_session_id', $sessionId)->first();
         abort_unless($existing, 422, 'Unknown online payment.');
 
-        return app(OnlinePaymentService::class)->locked($existing, function (GatewayPayment $attempt, $payable) use ($payload, $event, $session, $sessionId, $provider) {
+        return app(OnlinePaymentService::class)->locked($existing, function (GatewayPayment $attempt, $payable) use ($payload, $event, $session, $sessionId, $authenticatedMode) {
             $payments = collect(data_get($session, 'attributes.payments', []))
                 ->filter(fn ($payment) => data_get($payment, 'attributes.status') === 'paid')->values();
             abort_unless($payments->count() === 1, 422, 'A paid payment is required.');
@@ -44,7 +45,7 @@ class PayMongoWebhookController extends Controller
             abort_unless($paidAt === null || (is_int($paidAt) && $paidAt > 0 && $paidAt <= time() + 300), 422, 'Invalid provider payment time.');
             $money = app(GroomingPaymentReadinessService::class);
             abort_unless($attempt->checkout_session_id === $sessionId
-                && $attempt->livemode === $provider->livemode()
+                && $attempt->livemode === $authenticatedMode
                 // The signed event binds the environment. Abbreviated official
                 // envelopes may omit nested flags; any supplied flag must match.
                 && (! array_key_exists('livemode', $session['attributes']) || $session['attributes']['livemode'] === $attempt->livemode)

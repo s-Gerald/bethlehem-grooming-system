@@ -77,7 +77,7 @@ class OnlinePaymentService
             'reference_number' => $attempt->reference, 'pass_on_fees' => false,
             'success_url' => $this->returnUrl($attempt, 'success'), 'cancel_url' => $this->returnUrl($attempt, 'cancel'),
             'show_line_items' => true, 'metadata' => $this->metadata($attempt),
-        ]);
+        ], $attempt->livemode);
         $this->locked($attempt, function (GatewayPayment $current) use ($result) {
             if ($current->status !== 'pending') return;
             $session = $result['data'] ?? [];
@@ -86,7 +86,7 @@ class OnlinePaymentService
                 && ($session['type'] ?? null) === 'checkout_session' && is_string($url)
                 && parse_url($url, PHP_URL_SCHEME) === 'https' && parse_url($url, PHP_URL_HOST) === 'checkout.paymongo.com'
                 && ! parse_url($url, PHP_URL_USER) && ! parse_url($url, PHP_URL_PORT)
-                && data_get($session, 'attributes.livemode') === false) {
+                && data_get($session, 'attributes.livemode') === $current->livemode) {
                 $current->update(['checkout_session_id' => $session['id'], 'checkout_url' => $url, 'reconciliation_reason' => null]);
             } elseif (! $result['ok'] && ! $result['uncertain']) {
                 $current->update(['status' => 'failed', 'reconciliation_reason' => null]);
@@ -137,7 +137,7 @@ class OnlinePaymentService
     public function refreshStatus(GatewayPayment $attempt): GatewayPayment
     {
         if ($attempt->status !== 'pending' || ! $attempt->checkout_session_id) return $attempt;
-        $result = $this->provider->retrieveCheckout($attempt->checkout_session_id);
+        $result = $this->provider->retrieveCheckout($attempt->checkout_session_id, $attempt->livemode);
         $this->locked($attempt, function (GatewayPayment $current) use ($result) {
             if ($current->status === 'pending' && $this->safeExpiry($current, $result)) {
                 $current->update(['status' => 'expired', 'reconciliation_reason' => null]);
@@ -154,8 +154,8 @@ class OnlinePaymentService
         if (! $attempt->checkout_session_id) {
             throw ValidationException::withMessages(['payment' => 'Checkout creation needs reconciliation. Contact an administrator.']);
         }
-        $result = $this->provider->expireCheckout($attempt->checkout_session_id);
-        if (! $result['ok']) $result = $this->provider->retrieveCheckout($attempt->checkout_session_id);
+        $result = $this->provider->expireCheckout($attempt->checkout_session_id, $attempt->livemode);
+        if (! $result['ok']) $result = $this->provider->retrieveCheckout($attempt->checkout_session_id, $attempt->livemode);
         $this->locked($attempt, function (GatewayPayment $current) use ($result) {
             abort_if($current->status === 'paid', 409, 'This payment has already been completed.');
             if ($current->status !== 'pending') return;

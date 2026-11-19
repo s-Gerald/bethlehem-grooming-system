@@ -195,7 +195,8 @@ class SharedPayMongoTest extends TestCase
         DB::table('services')->insert(['service_id' => 3, 'slug' => 'regular_dog_grooming', 'service_name' => 'Regular Grooming']);
         DB::table('booking_services')->insert(['booking_service_id' => 3, 'booking_id' => 1, 'booking_pet_id' => 2,
             'service_id' => 3, 'price_at_booking' => 850, 'price_min_at_booking' => 850]);
-        config(['services.paymongo.secret_key' => 'sk_test_fixture', 'services.paymongo.webhook_secret' => 'whsec_fixture',
+        config(['services.paymongo.test.secret_key' => 'sk_test_fixture', 'services.paymongo.test.webhook_secret' => 'whsec_fixture',
+            'services.paymongo.live.secret_key' => 'sk_live_fixture', 'services.paymongo.live.webhook_secret' => 'whsec_live_fixture',
             'services.paymongo.payment_methods' => ['qrph'], 'services.paymongo.livemode' => false, 'services.paymongo.return_url' => 'https://bethlehem.example/admin/grooming']);
         Http::preventStrayRequests();
         $this->fakeProvider();
@@ -255,7 +256,7 @@ class SharedPayMongoTest extends TestCase
 
     public static function deploymentEnvironments(): array
     {
-        return [
+        $urls = [
             'explicit HTTPS return overrides localhost' => ['http://127.0.0.1:8000', 'http://127.0.0.1:5173',
                 'https://bethlehem.example/admin/grooming', 'https://bethlehem.example'],
             'legacy configured anchor upgrades without a redirect' => ['https://api.example', null,
@@ -266,11 +267,21 @@ class SharedPayMongoTest extends TestCase
             'separate localhost development' => ['http://127.0.0.1:8000', 'http://127.0.0.1:5173',
                 null, 'http://127.0.0.1:5173'],
         ];
+        $cases = [];
+        foreach ($urls as $name => $values) {
+            foreach (['legacy test', 'test', 'live'] as $credentials) {
+                $cases[$name.' '.$credentials] = [...$values, $credentials];
+            }
+        }
+        foreach (['legacy live', 'blank test key', 'blank test webhook'] as $credentials) {
+            $cases[$credentials.' fails closed'] = ['https://bethlehem.example', null, null, 'https://bethlehem.example', $credentials];
+        }
+        return $cases;
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('deploymentEnvironments')]
     public function test_environment_return_urls_and_signature_survive_cached_configuration(
-        string $appUrl, ?string $frontendUrl, ?string $returnUrl, string $expectedBase,
+        string $appUrl, ?string $frontendUrl, ?string $returnUrl, string $expectedBase, string $credentials,
     ): void {
         $directory = sys_get_temp_dir().'/bethlehem-payment-config-'.bin2hex(random_bytes(6));
         $this->assertTrue(mkdir($directory, 0700));
@@ -296,7 +307,17 @@ class SharedPayMongoTest extends TestCase
                 file_put_contents($app->getCachedConfigPath(), '<?php return '.var_export(config()->all(), true).';');
             }
             $provider = app(App\Services\PayMongoService::class);
-            $provider->assertConfigured();
+            try {
+                $provider->assertConfigured();
+            } catch (Illuminate\Validation\ValidationException) {
+                echo json_encode(['cached' => $app->configurationIsCached(), 'configured' => false]);
+                exit;
+            }
+            Illuminate\Support\Facades\Http::preventStrayRequests();
+            Illuminate\Support\Facades\Http::fake(['api.paymongo.com/*' => Illuminate\Support\Facades\Http::response(['data' => []])]);
+            $provider->retrieveCheckout('cs_fixture', $provider->livemode());
+            $correctCredential = Illuminate\Support\Facades\Http::recorded()->every(fn ($pair) =>
+                $pair[0]->hasHeader('Authorization', 'Basic '.base64_encode(($provider->livemode() ? 'sk_live_fixture' : 'sk_test_fixture').':')));
             $urls = [];
             foreach (['grooming', 'clinic', 'pos'] as $context) {
                 $attempt = new App\Models\GatewayPayment(['context' => $context, 'payable_id' => 9]);
@@ -306,18 +327,26 @@ class SharedPayMongoTest extends TestCase
                 }
             }
             $body = '{"fixture":true}'; $timestamp = time();
-            $signature = 't='.$timestamp.',te='.hash_hmac('sha256', $timestamp.'.'.$body, 'whsec_fixture');
-            echo json_encode(['cached' => $app->configurationIsCached(), 'urls' => $urls,
+            $signature = 't='.$timestamp.($provider->livemode() ? ',li=' : ',te=').hash_hmac('sha256', $timestamp.'.'.$body,
+                $provider->livemode() ? 'whsec_live_fixture' : 'whsec_fixture');
+            echo json_encode(['cached' => $app->configurationIsCached(), 'configured' => true, 'urls' => $urls,
                 'methods' => $provider->paymentMethods(), 'live' => $provider->livemode(),
-                'valid_signature' => $provider->validSignature($body, $signature),
-                'tampered_signature' => $provider->validSignature($body.' ', $signature)], JSON_THROW_ON_ERROR);
+                'correct_credential' => $correctCredential,
+                'valid_signature' => $provider->authenticatedMode($body, $signature),
+                'tampered_signature' => $provider->authenticatedMode($body.' ', $signature)], JSON_THROW_ON_ERROR);
             PHP;
         try {
             foreach (['prepare', 'cached'] as $mode) {
                 $fixtures = $mode === 'prepare' ? [
                     'APP_URL' => $appUrl, 'FRONTEND_URL' => $frontendUrl ?? false, 'PAYMONGO_RETURN_URL' => $returnUrl ?? false,
-                    'PAYMONGO_SECRET_KEY' => 'sk_test_fixture', 'PAYMONGO_WEBHOOK_SECRET' => 'whsec_fixture',
-                    'PAYMONGO_LIVE_MODE' => 'false',
+                    // Different legacy values prove the new Test variables take precedence.
+                    'PAYMONGO_SECRET_KEY' => str_starts_with($credentials, 'legacy') ? 'sk_test_fixture' : 'sk_test_legacy_fixture',
+                    'PAYMONGO_WEBHOOK_SECRET' => str_starts_with($credentials, 'legacy') ? 'whsec_fixture' : 'whsec_legacy_fixture',
+                    'PAYMONGO_TEST_SECRET_KEY' => str_starts_with($credentials, 'legacy') ? false : ($credentials === 'blank test key' ? '' : 'sk_test_fixture'),
+                    'PAYMONGO_TEST_WEBHOOK_SECRET' => str_starts_with($credentials, 'legacy') ? false : ($credentials === 'blank test webhook' ? '' : 'whsec_fixture'),
+                    'PAYMONGO_LIVE_SECRET_KEY' => $credentials === 'legacy live' ? false : 'sk_live_fixture',
+                    'PAYMONGO_LIVE_WEBHOOK_SECRET' => $credentials === 'legacy live' ? false : 'whsec_live_fixture',
+                    'PAYMONGO_LIVE_MODE' => in_array($credentials, ['live', 'legacy live'], true) ? 'true' : 'false',
                 ] : [];
                 $process = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $directory, $mode],
                     base_path(), array_replace($environment, $fixtures));
@@ -326,10 +355,14 @@ class SharedPayMongoTest extends TestCase
                 $this->assertTrue($process->isSuccessful(), $process->getErrorOutput().$process->getOutput());
                 $result = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
                 $this->assertSame($mode === 'cached', $result['cached']);
+                $configured = ! in_array($credentials, ['legacy live', 'blank test key', 'blank test webhook'], true);
+                $this->assertSame($configured, $result['configured']);
+                if (! $configured) continue;
                 $this->assertSame(['qrph'], $result['methods']);
-                $this->assertFalse($result['live']);
-                $this->assertTrue($result['valid_signature']);
-                $this->assertFalse($result['tampered_signature']);
+                $this->assertSame($credentials === 'live', $result['live']);
+                $this->assertTrue($result['correct_credential']);
+                $this->assertSame($credentials === 'live', $result['valid_signature']);
+                $this->assertNull($result['tampered_signature']);
                 foreach (['grooming' => '/admin/grooming', 'clinic' => '/admin/clinic',
                     'pos' => '/admin/inventory'] as $context => $page) {
                     foreach (['success', 'cancel'] as $outcome) {
@@ -563,10 +596,26 @@ class SharedPayMongoTest extends TestCase
         $this->posCheckout('online', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')->assertOk()->assertJsonPath('online_payment.status', 'pending');
     }
 
-    public function test_live_configuration_is_rejected_even_with_live_keys(): void
+    public static function invalidCredentials(): array
     {
-        config(['services.paymongo.livemode' => true, 'services.paymongo.secret_key' => 'sk_live_fixture']);
-        $this->posCheckout()->assertUnprocessable(); Http::assertNothingSent();
+        return [
+            [true, 'sk_test_fixture', 'whsec_live_fixture'],
+            [false, 'sk_live_fixture', 'whsec_fixture'],
+            [true, '', 'whsec_live_fixture'], [false, '', 'whsec_fixture'],
+            [true, 'sk_live_fixture', ''], [false, 'sk_test_fixture', ''],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidCredentials')]
+    public function test_missing_or_mismatched_selected_credentials_fail_before_provider_requests(bool $live, string $key, string $secret): void
+    {
+        $mode = $live ? 'live' : 'test';
+        config(['services.paymongo.livemode' => $live,
+            'services.paymongo.'.$mode.'.secret_key' => $key, 'services.paymongo.'.$mode.'.webhook_secret' => $secret]);
+        $this->posCheckout()->assertUnprocessable()->assertJsonPath('errors.payment.0', 'Online payment is not configured.');
+        $this->assertDatabaseCount('gateway_payments', 0);
+        $this->assertDatabaseCount('gateway_stock_reservations', 0);
+        Http::assertNothingSent();
     }
 
     public function test_test_sales_remain_in_history_but_are_excluded_from_financial_reporting(): void
@@ -786,11 +835,12 @@ class SharedPayMongoTest extends TestCase
                     || !preg_match('/\Abethlehem-pos-[a-f0-9]{12}\z/', basename($directory))
                     || basename($database) !== 'sales.sqlite' || !is_file($database)) throw new RuntimeException('Disposable POS database required.');
                 $app = require 'bootstrap/app.php';
+                $app->useEnvironmentPath($directory);
                 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
                 config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
                     'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
                     'database.connections.sqlite.transaction_mode' => 'IMMEDIATE',
-                    'services.paymongo.webhook_secret' => 'whsec_fixture', 'services.paymongo.livemode' => false]);
+                    'services.paymongo.test.webhook_secret' => 'whsec_fixture', 'services.paymongo.livemode' => false]);
                 Illuminate\Support\Facades\DB::purge('sqlite');
                 $connection = Illuminate\Support\Facades\DB::connection();
                 if (realpath($connection->selectOne('PRAGMA database_list')->file) !== realpath($database)) throw new RuntimeException('Unexpected database.');
@@ -859,9 +909,20 @@ class SharedPayMongoTest extends TestCase
         return [['grooming', 85000], ['clinic', 50000], ['pos', 16000]];
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('paymentContexts')]
-    public function test_verified_provider_id_matches_status_receipt_and_search(string $context, int $amount): void
+    public static function paymentEnvironments(): array
     {
+        $cases = [];
+        foreach (self::paymentContexts() as [$context, $amount]) {
+            foreach ([false, true] as $live) $cases[$context.($live ? ' live' : ' test')] = [$context, $amount, $live];
+        }
+        return $cases;
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('paymentEnvironments')]
+    public function test_verified_provider_id_matches_status_receipt_and_search_across_mode_switch(string $context, int $amount, bool $live): void
+    {
+        config(['services.paymongo.livemode' => $live]);
+        $this->fakeProvider(live: $live);
         Schema::create('walkins', function (Blueprint $table) {
             $table->id(); $table->string('fname'); $table->string('lname');
             $table->unsignedInteger('user_id')->nullable(); $table->unsignedBigInteger('unregistered_customer_id')->nullable();
@@ -885,19 +946,29 @@ class SharedPayMongoTest extends TestCase
             'pet_sizes' => [['booking_pet_id' => 2, 'size' => 'large']],
         ])->assertOk();
 
+        $this->assertSame($live, GatewayPayment::firstOrFail()->livemode);
+        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Basic '.base64_encode(($live ? 'sk_live_fixture' : 'sk_test_fixture').':')));
+        config(['services.paymongo.livemode' => ! $live]);
+
         $url = match ($context) {
             'clinic' => '/api/admin/clinic-appointments/1/online-payment',
             'pos' => '/api/pos/online-payment/1',
             default => '/api/admin/bookings/1/online-payment',
         };
         $this->getJson($url)->assertOk()->assertJsonPath('online_payment.provider_payment_id', null);
-        $this->webhook($this->event($amount))->assertOk();
+        $this->webhook($this->event($amount, $live), live: $live)->assertOk();
+        $this->webhook($this->event($amount, $live), live: $live)->assertOk();
         $this->assertDatabaseHas('gateway_payments', ['provider_payment_id' => 'pay_fixture', 'status' => 'paid']);
         $field = match ($context) { 'clinic' => 'appointment', 'pos' => 'receipt', default => 'payment' };
         $this->getJson($url)->assertOk()->assertJsonPath('online_payment.provider_payment_id', 'pay_fixture')
-            ->assertJsonPath($field.'.provider_payment_id', 'pay_fixture');
+            ->assertJsonPath($field.'.provider_payment_id', 'pay_fixture')
+            ->assertJsonPath('online_payment.is_test', ! $live)->assertJsonPath($field.'.is_test', ! $live);
         $this->getJson('/api/admin/transactions?search=pay_fixture')->assertOk()
-            ->assertJsonPath('total', 1)->assertJsonPath('transactions.0.providerPaymentId', 'pay_fixture');
+            ->assertJsonPath('total', 1)->assertJsonPath('transactions.0.providerPaymentId', 'pay_fixture')
+            ->assertJsonPath('transactions.0.isTest', ! $live)
+            ->assertJsonPath('collection_total', $live ? $amount / 100 : 0)
+            ->assertJsonPath('test_collection_total', $live ? 0 : $amount / 100);
+        $this->assertSame($live, GatewayPayment::firstOrFail()->livemode);
         GatewayPayment::first()->update(['provider_payment_id' => null]);
         $this->getJson('/api/admin/transactions')->assertOk()->assertJsonPath('transactions.0.providerPaymentId', null);
         $this->getJson('/api/admin/transactions?search=pay_fixture')->assertOk()->assertJsonPath('total', 0);
@@ -914,6 +985,175 @@ class SharedPayMongoTest extends TestCase
         }
     }
 
+    public static function pendingOperations(): array
+    {
+        $cases = [];
+        foreach (self::paymentEnvironments() as $name => $values) {
+            foreach (['retrieve', 'cancel', 'cancel fallback'] as $operation) $cases[$name.' '.$operation] = [...$values, $operation];
+        }
+        return $cases;
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('pendingOperations')]
+    public function test_pending_provider_operations_keep_saved_environment_after_switch(string $context, int $amount, bool $live, string $operation): void
+    {
+        config(['services.paymongo.livemode' => $live]);
+        $this->fakeProvider(live: $live);
+        $this->createContextCheckout($context)->assertOk();
+        // Only the saved environment remains configured; the newly selected environment is unavailable.
+        $other = $live ? 'test' : 'live';
+        config(['services.paymongo.livemode' => ! $live,
+            'services.paymongo.'.$other.'.secret_key' => '', 'services.paymongo.'.$other.'.webhook_secret' => '']);
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::preventStrayRequests();
+        Http::fake(function ($request) use ($live, $operation) {
+            $this->assertSame(0, DB::transactionLevel());
+            if ($operation === 'cancel fallback' && str_ends_with($request->url(), '/expire')) return Http::response([], 400);
+            return Http::response(['data' => ['id' => 'cs_fixture', 'type' => 'checkout_session',
+                'attributes' => ['status' => 'expired', 'livemode' => $live]]]);
+        });
+        $url = $this->contextStatusUrl($context);
+        ($operation === 'retrieve' ? $this->getJson($url) : $this->deleteJson($url))->assertOk()
+            ->assertJsonPath('online_payment.status', $operation === 'retrieve' ? 'expired' : 'cancelled')
+            ->assertJsonPath('online_payment.is_test', ! $live);
+        Http::assertSentCount($operation === 'cancel fallback' ? 2 : 1);
+        foreach (Http::recorded() as [$request]) {
+            $this->assertTrue($request->hasHeader('Authorization', 'Basic '.base64_encode(($live ? 'sk_live_fixture' : 'sk_test_fixture').':')));
+        }
+        $this->assertSame($live, GatewayPayment::firstOrFail()->livemode);
+        $this->assertDatabaseCount('gateway_stock_reservations', 0);
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertDatabaseCount('pos_transactions', 0);
+    }
+
+    public static function checkoutResponseModes(): array
+    {
+        return [[false, true], [true, false], [false, null], [true, null], [false, 'false'], [true, 1]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('checkoutResponseModes')]
+    public function test_checkout_response_requires_the_saved_boolean_environment(bool $live, mixed $returnedMode): void
+    {
+        config(['services.paymongo.livemode' => $live]);
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::preventStrayRequests();
+        Http::fake(['api.paymongo.com/*' => Http::response(['data' => ['id' => 'cs_fixture', 'type' => 'checkout_session',
+            'attributes' => ['checkout_url' => 'https://checkout.paymongo.com/cs_fixture', 'livemode' => $returnedMode]]])]);
+        $this->posCheckout()->assertStatus(502)->assertJsonPath('online_payment.checkout_url', null);
+        $this->assertDatabaseHas('gateway_payments', ['status' => 'pending', 'livemode' => $live,
+            'checkout_session_id' => 'cs_fixture', 'reconciliation_reason' => 'checkout_creation_unconfirmed']);
+        $this->assertDatabaseCount('gateway_stock_reservations', 1);
+        $this->assertDatabaseCount('pos_transactions', 0);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('paymentEnvironments')]
+    public function test_authenticated_webhook_environment_must_match_every_supplied_flag(string $context, int $amount, bool $live): void
+    {
+        config(['services.paymongo.livemode' => $live]);
+        $this->fakeProvider(live: $live);
+        $this->createContextCheckout($context)->assertOk();
+        config(['services.paymongo.livemode' => ! $live]);
+        foreach (['signature', 'event', 'session', 'payment', 'missing event', 'attempt'] as $mismatch) {
+            $event = $this->event($amount, $live);
+            if ($mismatch === 'event') $event['data']['attributes']['livemode'] = ! $live;
+            if ($mismatch === 'missing event') unset($event['data']['attributes']['livemode']);
+            if ($mismatch === 'session') $event['data']['attributes']['data']['attributes']['livemode'] = ! $live;
+            if ($mismatch === 'payment') $event['data']['attributes']['data']['attributes']['payments'][0]['attributes']['livemode'] = ! $live;
+            if ($mismatch === 'attempt') GatewayPayment::firstOrFail()->update(['livemode' => ! $live]);
+            $this->webhook($event, live: $mismatch === 'signature' ? ! $live : $live)->assertUnprocessable();
+            if ($mismatch === 'attempt') GatewayPayment::firstOrFail()->update(['livemode' => $live]);
+        }
+        $this->assertDatabaseHas('gateway_payments', ['status' => 'pending', 'provider_payment_id' => null]);
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertDatabaseCount('pos_transactions', 0);
+        $this->assertDatabaseHas('clinic_appointments', ['paid' => false]);
+        // Abbreviated nested resources remain valid when the signed event binds the environment.
+        $event = $this->event($amount, $live);
+        unset($event['data']['attributes']['data']['attributes']['livemode']);
+        unset($event['data']['attributes']['data']['attributes']['payments'][0]['attributes']['livemode']);
+        $this->webhook($event, live: $live)->assertOk();
+    }
+
+    public function test_signature_channels_use_their_own_secrets_and_reject_ambiguity(): void
+    {
+        $this->clinicCheckout();
+        $event = $this->event();
+        $body = json_encode($event, JSON_UNESCAPED_SLASHES);
+        $time = time();
+        $test = hash_hmac('sha256', $time.'.'.$body, 'whsec_fixture');
+        $live = hash_hmac('sha256', $time.'.'.$body, 'whsec_live_fixture');
+        foreach (['te='.$live, 'li='.$test, 'te='.$test.',li='.$live, 'te='.$test.',te='.$test] as $signatures) {
+            $this->webhook($event, 't='.$time.','.$signatures)->assertUnauthorized();
+        }
+        config(['services.paymongo.live.webhook_secret' => 'whsec_fixture']);
+        $this->webhook($event, 't='.$time.',te='.$test.',li='.$test)->assertUnauthorized();
+        $this->assertDatabaseHas('gateway_payments', ['status' => 'pending']);
+        $this->assertDatabaseHas('clinic_appointments', ['paid' => false]);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('checkoutResponseModes')]
+    public function test_wrong_expiry_environment_keeps_stock_reserved(bool $live, mixed $returnedMode): void
+    {
+        config(['services.paymongo.livemode' => $live]);
+        $this->fakeProvider(live: $live);
+        $this->posCheckout()->assertOk();
+        config(['services.paymongo.livemode' => ! $live]);
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::preventStrayRequests();
+        Http::fake(['api.paymongo.com/*' => Http::response(['data' => ['id' => 'cs_fixture', 'type' => 'checkout_session',
+            'attributes' => ['status' => 'expired', 'livemode' => $returnedMode]]])]);
+        $this->getJson('/api/pos/online-payment/1')->assertOk()->assertJsonPath('online_payment.status', 'pending');
+        $this->deleteJson('/api/pos/online-payment/1')->assertUnprocessable();
+        $this->assertDatabaseHas('gateway_payments', ['status' => 'pending', 'livemode' => $live]);
+        $this->assertDatabaseCount('gateway_stock_reservations', 1);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('paymentEnvironments')]
+    public function test_checkout_creation_uses_the_committed_mode_even_if_selection_changes(string $context, int $amount, bool $live): void
+    {
+        $payable = match ($context) {
+            'clinic' => \App\Models\ClinicAppointment::findOrFail(1),
+            'pos' => User::findOrFail(7),
+            default => \App\Models\Booking::findOrFail(1),
+        };
+        $attempt = GatewayPayment::create([
+            'provider' => 'paymongo', 'context' => $context, 'payable_type' => $payable->getMorphClass(), 'payable_id' => $payable->getKey(),
+            'flow' => 'final', 'reference' => 'BTH-fixture', 'amount' => $amount / 100, 'currency' => 'PHP',
+            'status' => 'pending', 'livemode' => $live, 'initiated_by' => 7,
+            'snapshot' => ['total' => number_format($amount / 100, 2, '.', ''), 'payment_methods' => ['qrph'],
+                'line_items' => [['name' => 'Fixture', 'amount' => $amount, 'quantity' => 1, 'currency' => 'PHP']]],
+        ]);
+        config(['services.paymongo.livemode' => ! $live]);
+        $this->fakeProvider(live: $live);
+        app(\App\Services\OnlinePaymentService::class)->create($attempt);
+        $this->assertSame('https://checkout.paymongo.com/cs_fixture', $attempt->checkout_url);
+        $this->assertSame($live, $attempt->livemode);
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Basic '.base64_encode(($live ? 'sk_live_fixture' : 'sk_test_fixture').':')));
+    }
+
+    private function createContextCheckout(string $context)
+    {
+        return match ($context) {
+            'clinic' => $this->postJson('/api/admin/clinic-appointments/1/online-payment', []),
+            'pos' => $this->posCheckout(),
+            default => $this->postJson('/api/admin/bookings/1/online-payment', [
+                'flow' => 'final', 'payment_method' => 'online',
+                'service_prices' => [['booking_service_id' => 3, 'amount' => 850]],
+                'pet_sizes' => [['booking_pet_id' => 2, 'size' => 'large']],
+            ]),
+        };
+    }
+
+    private function contextStatusUrl(string $context): string
+    {
+        return match ($context) {
+            'clinic' => '/api/admin/clinic-appointments/1/online-payment',
+            'pos' => '/api/pos/online-payment/1',
+            default => '/api/admin/bookings/1/online-payment',
+        };
+    }
+
     private function clinicCheckout(): void
     {
         $this->postJson('/api/admin/clinic-appointments/1/online-payment', [])->assertOk();
@@ -925,12 +1165,12 @@ class SharedPayMongoTest extends TestCase
             'items' => [['item_id' => 10, 'quantity' => 2]], 'total_amount' => 1]);
     }
 
-    private function fakeProvider(string $status = 'active'): void
+    private function fakeProvider(string $status = 'active', bool $live = false): void
     {
         Http::swap(new \Illuminate\Http\Client\Factory);
         Http::preventStrayRequests();
         Http::fake(['api.paymongo.com/*' => Http::response(['data' => ['id' => 'cs_fixture', 'type' => 'checkout_session',
-            'attributes' => ['checkout_url' => 'https://checkout.paymongo.com/cs_fixture', 'status' => $status, 'livemode' => false]]])]);
+            'attributes' => ['checkout_url' => 'https://checkout.paymongo.com/cs_fixture', 'status' => $status, 'livemode' => $live]]])]);
     }
 
     private function event(int $amount = 50000, bool $live = false): array
@@ -948,11 +1188,11 @@ class SharedPayMongoTest extends TestCase
         ]]];
     }
 
-    private function webhook(array $event, ?string $signature = null)
+    private function webhook(array $event, ?string $signature = null, bool $live = false)
     {
         $body = json_encode($event, JSON_UNESCAPED_SLASHES);
         $timestamp = time();
-        $signature ??= 't='.$timestamp.',te='.hash_hmac('sha256', $timestamp.'.'.$body, 'whsec_fixture').',li=';
+        $signature ??= 't='.$timestamp.($live ? ',li=' : ',te=').hash_hmac('sha256', $timestamp.'.'.$body, $live ? 'whsec_live_fixture' : 'whsec_fixture');
         return $this->call('POST', '/api/paymongo/webhook', [], [], [], [
             'CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json', 'HTTP_PAYMONGO_SIGNATURE' => $signature,
         ], $body);
