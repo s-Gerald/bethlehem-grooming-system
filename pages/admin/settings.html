@@ -549,7 +549,7 @@
                         <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#users-three"></use></svg>
                       </div>
                       <div>
-                        <h3 id="staffAccountsHeading" class="text-xl font-bold text-[#1f3850]">Accounts</h3>
+                        <h3 id="staffAccountsHeading" class="text-xl font-bold text-[#1f3850]">Staff accounts</h3>
                         <p class="mt-1 text-sm text-slate-500">Manage system accounts and access</p>
                       </div>
                     </div>
@@ -559,7 +559,7 @@
                       class="inline-flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67]"
                     >
                       <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
-                      <span>Add Account</span>
+                      <span>Add staff account</span>
                     </button>
                   </div>
 
@@ -676,7 +676,7 @@
 
               <p x-show="staffNotice" x-text="staffNotice" class="rounded-xl border border-[#c9d9e8] bg-[#eef5fb] px-4 py-3 text-sm font-semibold text-[#315b7e]" role="status"></p>
 
-              <!-- Add Account modal -->
+              <!-- Add staff account modal -->
               <template x-teleport="body">
                 <div
                   x-cloak
@@ -694,7 +694,7 @@
                   >
                     <div x-show="addStaffModal.step !== 'success'" class="flex items-start justify-between gap-4 border-b border-[#e8f0f8] px-5 py-5 sm:px-6">
                       <div>
-                        <h3 id="addStaffAccountTitle" class="text-xl font-bold text-[#1f3850]">Add Account</h3>
+                        <h3 id="addStaffAccountTitle" class="text-xl font-bold text-[#1f3850]">Add staff account</h3>
                         <p class="mt-1 text-sm font-semibold text-slate-500" x-text="addStaffModal.step === 'role' ? 'Choose account role' : (addStaffModal.staffType === 'manager' ? 'Manager' : addStaffModal.staffType === 'clinic' ? (addStaffModal.staffSubrole === 'veterinarian' ? 'Veterinarian' : 'Clinic Receptionist') : 'Grooming Receptionist')"></p>
                       </div>
                       <button

@@ -17,8 +17,9 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
 
         foreach ([
             '>Admin account</h3>',
-            '>Accounts</h3>',
-            '>Add Account</span>',
+            '>Staff accounts</h3>',
+            '>Add staff account</span>',
+            '>Add staff account</h3>',
             '>Username</span>',
             '@click="openStaffDetails(staff)"',
             '>Account details</h3>',
@@ -255,8 +256,8 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
 
         foreach ([
             'Admin account',
-            'Accounts',
-            'Add Account',
+            'Staff accounts',
+            'Add staff account',
             'openStaffStatusModal',
         ] as $adminControl) {
             $this->assertStringNotContainsString($adminControl, $security);
