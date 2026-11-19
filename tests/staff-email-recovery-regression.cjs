@@ -71,9 +71,13 @@ async function page({ token = 'a'.repeat(64), verify, complete } = {}) {
   const throttled = await page({complete: () => { throw {status: 429, retryAfter: 60}; }});
   throttled.element('recoveryPassword').value = 'ExistingPassword!234';
   await throttled.submit();
-  assert.equal(throttled.element('recoverySubmit').textContent, 'Try again in 1m 00s');
+  assert.equal(throttled.element('recoverySubmit').textContent, 'Try again in 1:00');
+  assert.match(throttled.element('recoveryError').innerHTML, />1:00</);
+  const announcement = throttled.element('recoveryCooldownStatus').textContent;
   throttled.advance(1);
-  assert.equal(throttled.element('recoverySubmit').textContent, 'Try again in 59s');
+  assert.match(throttled.element('recoveryError').innerHTML, />0:59</);
+  assert.equal(throttled.element('recoveryCooldownStatus').textContent, announcement);
+  assert.equal(throttled.element('recoverySubmit').textContent, 'Try again in 0:59');
   throttled.element('recoveryPassword').value = 'ExistingPassword!234';
   await throttled.submit();
   assert.equal(throttled.calls.filter(call => call[0] === 'complete').length, 1);

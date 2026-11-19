@@ -59,16 +59,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (failure) {
       if (['invalid', 'expired', 'locked'].includes(failure.data?.status)) unavailable();
       else if (failure.retryAfter > 0) {
-        error.textContent = 'Too many attempts. Please wait before trying again.';
-        error.classList.remove('hidden');
+        error.className = 'auth-cooldown';
+        error.setAttribute('role', 'presentation');
+        error.setAttribute('aria-live', 'off');
         stopCountdown = window.VerificationCode.startCountdown(failure.retryAfter, seconds => {
+          window.VerificationCode.renderCooldown(error, seconds, false, document.getElementById('recoveryCooldownStatus'));
           coolingDown = Boolean(seconds);
           submit.disabled = coolingDown || !password.value;
           submit.textContent = seconds
-            ? 'Try again in ' + window.VerificationCode.formatCountdown(seconds) : 'Confirm Email Change';
-          if (!seconds) error.textContent = 'You can try confirming the email change again.';
+            ? 'Try again in ' + window.VerificationCode.formatCountdown(seconds, true) : 'Confirm Email Change';
         });
       } else {
+        error.hidden = false;
+        error.className = 'mt-2 text-sm font-semibold text-red-600';
+        error.setAttribute('role', 'alert');
+        error.setAttribute('aria-live', 'assertive');
         error.textContent = failure.errors?.current_password?.[0] || failure.message || 'Recovery could not be completed. Please try again.';
         error.classList.remove('hidden'); password.setAttribute('aria-invalid', 'true');
       }

@@ -2065,6 +2065,7 @@ async function testPasswordResetRecovery() {
           get className() { return [...classes].join(' '); },
           set className(value) { classes.clear(); value.split(/\s+/).filter(Boolean).forEach(c => classes.add(c)); },
           classList: {
+            remove(name) { classes.delete(name); },
             toggle(name, force) { const enabled = force ?? !classes.has(name); if (enabled) classes.add(name); else classes.delete(name); },
             contains(name) { return classes.has(name); },
           },
@@ -2143,7 +2144,7 @@ async function testPasswordResetRecovery() {
   forgot.getElement('enterResetCode').handlers.click();
   assert.deepEqual(requests, ['customer@example.com'], 'Entering a received code needs no extra request');
   assert.equal(forgot.getElement("verifyEmail").textContent, "c***@example.com");
-  assert.equal(forgot.getElement('resendCode').textContent, 'Resend in 1m 15s');
+  assert.equal(forgot.getElement('resendCode').textContent, 'Resend in 1:15');
   forgot.advance(74000);
   assert.equal(forgot.getElement('resendCode').disabled, true);
   forgot.advance(1000);
@@ -2214,7 +2215,7 @@ async function testPasswordResetRecovery() {
   await throttled.getElement("forgotPasswordForm").handlers.submit({ preventDefault() {} });
   assert.equal(throttled.getElement('verifyCodeForm').classList.contains('hidden'), true, 'Failed requests stay on email');
   assert.equal(throttled.getElement('resetEmail').value, 'unknown@example.com');
-  assert.match(throttled.getElement('forgotPasswordMessage').textContent, /wait/i);
+  assert.match(throttled.getElement('forgotPasswordCooldown').innerHTML, />2:00</);
   assert.equal(throttled.getElement('forgotPasswordSubmit').disabled, true);
   const beforeRetry = requests.length;
   await throttled.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
@@ -2447,14 +2448,19 @@ async function testPasswordResetRecovery() {
     await locked.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
   }
   assert.equal(locked.getElement('verifyCodeSubmit').disabled, true);
-  assert.match(locked.getElement('verifyCodeSubmit').textContent, /1m 00s/);
+  assert.match(locked.getElement('verifyCodeCooldown').innerHTML, />1:00</);
+  const cooldownAnnouncement = locked.getElement('passwordResetCooldownStatus').textContent;
+  locked.advance(1000);
+  assert.match(locked.getElement('verifyCodeCooldown').innerHTML, />0:59</);
+  assert.equal(locked.getElement('passwordResetCooldownStatus').textContent, cooldownAnnouncement);
   const stillLocked = openForgot();
   assert.equal(stillLocked.getElement('verifyCodeSubmit').disabled, true, 'Reload retains the temporary cooldown');
   stillLocked.advance(59000);
-  assert.match(stillLocked.getElement('verifyCodeSubmit').textContent, /1s/);
+  assert.match(stillLocked.getElement('verifyCodeCooldown').innerHTML, />0:01</);
   stillLocked.advance(1000);
   assert.equal(stillLocked.getElement('verificationCode').disabled, false, 'Same code input recovers before OTP expiry');
   assert.equal(stillLocked.getElement('verifyCodeMessage').textContent, '');
+  assert.equal(stillLocked.getElement('verifyCodeCooldown').hidden, true);
   assert.equal(wrong, 5, 'Completing the countdown never submits a code');
   stillLocked.advance(15000);
   assert.equal(stillLocked.getElement('resendCode').disabled, false, 'Independent resend pacing still applies');
@@ -2476,8 +2482,8 @@ async function testPasswordResetRecovery() {
   resendLimited.advance(75000);
   resetRequestError = { status: 429, retryAfter: 510 };
   await resendLimited.getElement('resendCode').handlers.click();
-  assert.match(resendLimited.getElement('verifyCodeMessage').textContent, /wait/i);
-  assert.equal(resendLimited.getElement('resendCode').textContent, 'Resend in 8m 30s');
+  assert.equal(resendLimited.getElement('verifyCodeMessage').textContent, '', 'Resend pacing does not become a verification error');
+  assert.equal(resendLimited.getElement('resendCode').textContent, 'Resend in 8:30');
   const limitedRequests = requests.length;
   await resendLimited.getElement('resendCode').handlers.click();
   assert.equal(requests.length, limitedRequests);
@@ -2513,9 +2519,9 @@ async function testPasswordResetRecovery() {
   await verifyLimited.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
   assert.equal(verifyLimited.getElement('verifyCodeSubmit').disabled, true);
   assert.equal(verifyLimited.getElement('verificationCode').attributes['aria-invalid'], 'false', 'Transport limits are not invalid codes');
-  assert.equal(verifyLimited.getElement('verifyCodeSubmit').textContent, 'Continue in 1m 00s');
+  assert.equal(verifyLimited.getElement('verifyCodeSubmit').textContent, 'Continue in 1:00');
   verifyLimited.advance(1000);
-  assert.equal(verifyLimited.getElement('verifyCodeSubmit').textContent, 'Continue in 59s');
+  assert.equal(verifyLimited.getElement('verifyCodeSubmit').textContent, 'Continue in 0:59');
   verifyLimited.advance(59000);
   assert.equal(verifyLimited.getElement('verifyCodeSubmit').disabled, false);
   assert.equal(verifyLimited.getElement('verifyCodeMessage').textContent, '');
@@ -2558,9 +2564,9 @@ async function testPasswordResetRecovery() {
   passwordErrors.API.resetPassword = async () => { throw { status: 429, retryAfter: 30 }; };
   await passwordErrors.getElement('resetPasswordForm').handlers.submit({ preventDefault() {} });
   assert.equal(passwordErrors.getElement('resetPasswordSubmit').disabled, true);
-  assert.equal(passwordErrors.getElement('resetPasswordSubmit').textContent, 'Reset Password in 30s');
+  assert.equal(passwordErrors.getElement('resetPasswordSubmit').textContent, 'Reset Password in 0:30');
   passwordErrors.advance(1000);
-  assert.equal(passwordErrors.getElement('resetPasswordSubmit').textContent, 'Reset Password in 29s');
+  assert.equal(passwordErrors.getElement('resetPasswordSubmit').textContent, 'Reset Password in 0:29');
   passwordErrors.advance(29000);
   assert.equal(passwordErrors.getElement('resetPasswordSubmit').disabled, false);
   assert.equal(passwordErrors.getElement('resetPasswordMessage').textContent, '');
@@ -2746,13 +2752,15 @@ async function testStaffSetupUsernameForm() {
     };
     const requests = [];
     const redirects = [];
+    const setupTimers = new Map();
+    let setupNow = 100000;
     let onReady;
     let error = completionError;
     let scrubbed = false;
     const token = "a".repeat(64);
-    vm.runInNewContext(fs.readFileSync(path.join(projectRoot, 'scripts/utils/credential-policy.js'), 'utf8') + '\n' + source, {
-      URL, URLSearchParams,
-      window: { location: {
+    vm.runInNewContext(fs.readFileSync(path.join(projectRoot, 'scripts/auth/verification-code.js'), 'utf8') + '\n' + fs.readFileSync(path.join(projectRoot, 'scripts/utils/credential-policy.js'), 'utf8') + '\n' + source, {
+      URL, URLSearchParams, Date: {now: () => setupNow},
+      window: { setInterval(fn) { setupTimers.set(1, fn); return 1; }, clearInterval(id) { setupTimers.delete(id); }, location: {
         hash: `#token=${token}`, href: `http://localhost/set-up-password#token=${token}`,
         replace(url) { redirects.push(url); },
       } },
@@ -2770,6 +2778,7 @@ async function testStaffSetupUsernameForm() {
           if (verificationError) throw verificationError;
           return { email: "e***@gmail.com" };
         },
+        async requestNewStaffPasswordSetupLink() { requests.push(['resend']); throw {status:429, retryAfter:60}; },
         async completeStaffPasswordSetup(...args) {
           requests.push(args);
           if (error) throw error;
@@ -2780,6 +2789,7 @@ async function testStaffSetupUsernameForm() {
     await onReady();
     return {
       getElement, requests, redirects, token,
+      advance(ms) { setupNow += ms; for (const tick of [...setupTimers.values()]) tick(); },
       setCompletionError(value) { error = value; },
       async submit(username) {
         getElement("setupUsername").value = username;
@@ -2821,6 +2831,28 @@ async function testStaffSetupUsernameForm() {
   assert.equal(invalid.requests.length, 0);
   assert.equal(invalid.getElement("setupUsernameMessage").textContent, "Use letters, numbers, periods, underscores, or hyphens only.");
   assert.equal(invalid.getElement("setupUsername").getAttribute("aria-invalid"), "true");
+
+  const limited = await loadPage({completionError: {status:429, retryAfter:60}});
+  await limited.submit('ExampleStaff');
+  assert.match(limited.getElement('setupPasswordMessage').innerHTML, />1:00</);
+  const announcement = limited.getElement('setupCooldownStatus').textContent;
+  limited.advance(1000);
+  assert.match(limited.getElement('setupPasswordMessage').innerHTML, />0:59</);
+  assert.equal(limited.getElement('setupCooldownStatus').textContent, announcement);
+  await limited.submit('PreparedStaff');
+  assert.equal(limited.requests.length, 1);
+  limited.advance(59000);
+  assert.equal(limited.getElement('setupPasswordMessage').hidden, true);
+  assert.equal(limited.getElement('setupPasswordSubmit').disabled, false);
+  assert.equal(limited.requests.length, 1);
+
+  const expiredResend = await loadPage({verificationError: {expired:true}});
+  assert.equal(typeof expiredResend.getElement('requestNewSetupLink').handlers.click, 'function', 'An expired setup link keeps its existing resend action available');
+  await expiredResend.getElement('requestNewSetupLink').handlers.click();
+  assert.match(expiredResend.getElement('setupExpiredLinkMessage').innerHTML, />1:00</);
+  expiredResend.advance(60000);
+  assert.equal(expiredResend.getElement('requestNewSetupLink').disabled, false);
+  assert.equal(expiredResend.requests.length, 1, 'Completing a resend countdown never requests another link');
 
   for (const expired of [true, false]) {
     const unavailable = await loadPage({ verificationError: { expired } });

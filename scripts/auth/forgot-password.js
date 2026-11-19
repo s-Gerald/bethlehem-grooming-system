@@ -35,6 +35,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let passwordMinimum = 15;
   let expiresAt = 0;
   let resendUntil = 0;
+  let requestLimited = false;
   let verifyUntil = 0;
   let resetUntil = 0;
   let timer = null;
@@ -42,7 +43,6 @@ document.addEventListener("DOMContentLoaded", () => {
   let completed = false;
   let departed = false;
   let journey = 0;
-  const cooldownFeedback = new Map();
 
   // Only a reload may resume this journey. Links and history navigation start fresh.
   try {
@@ -50,7 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!reloading) sessionStorage.removeItem(recoveryKey);
     const saved = reloading ? JSON.parse(sessionStorage.getItem(recoveryKey) || "null") : null;
     if (saved && typeof saved.requestedEmail === "string" && ["email", "confirmation", "code", "password"].includes(saved.step)) {
-      ({ requestedEmail, maskedEmail, resetGrant, expiresAt, resendUntil, verifyUntil, resetUntil, step } = saved);
+      ({ requestedEmail, maskedEmail, resetGrant, expiresAt, resendUntil, verifyUntil, resetUntil, requestLimited = false, step } = saved);
       passwordMinimum = saved.passwordMinimum === 8 ? 8 : 15;
       emailInput.value = requestedEmail;
     } else {
@@ -68,7 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (departed) return;
     try {
       sessionStorage.setItem(recoveryKey, JSON.stringify({
-        requestedEmail, maskedEmail, resetGrant, passwordMinimum, expiresAt, resendUntil, verifyUntil, resetUntil, step,
+        requestedEmail, maskedEmail, resetGrant, passwordMinimum, expiresAt, resendUntil, verifyUntil, resetUntil, requestLimited, step,
       }));
     } catch { /* Continue in memory when storage is unavailable. */ }
   }
@@ -112,21 +112,25 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateControls() {
     const cooldown = remaining(resendUntil);
     const codeUnavailable = expiresAt <= Date.now();
+    const status = document.getElementById("passwordResetCooldownStatus");
+    window.VerificationCode.renderCooldown(document.getElementById("verifyCodeCooldown"), expiresAt > Date.now() && step === "code" ? remaining(verifyUntil) : 0, true, expiresAt > Date.now() && step === "code" ? status : null);
+    window.VerificationCode.renderCooldown(document.getElementById("forgotPasswordCooldown"), step === "email" && requestLimited ? cooldown : 0, false, status);
+    window.VerificationCode.renderCooldown(document.getElementById("resetPasswordCooldown"), step === "password" ? remaining(resetUntil) : 0, false, status);
     emailSubmit.disabled = busy || cooldown > 0;
     emailLabel.textContent = busy && step === "email" ? "Sending..." : cooldown > 0
-      ? `Send Code in ${window.VerificationCode.formatCountdown(cooldown)}` : "Send Code";
+      ? `Send Code in ${window.VerificationCode.formatCountdown(cooldown, true)}` : "Send Code";
     resend.disabled = step !== "code" || busy || cooldown > 0;
     resend.textContent = busy && step === "code" ? "Please wait..." : cooldown > 0
-      ? `Resend in ${window.VerificationCode.formatCountdown(cooldown)}` : "Resend code";
+      ? `Resend in ${window.VerificationCode.formatCountdown(cooldown, true)}` : "Resend code";
     codeInput.disabled = busy || codeUnavailable || remaining(verifyUntil) > 0;
     codeSubmit.disabled = step !== "code" || codeInput.disabled || !/^[0-9]{6}$/.test(codeInput.value);
     codeSubmit.textContent = busy && step === "code" ? "Verifying..." : remaining(verifyUntil) > 0
-      ? `Continue in ${window.VerificationCode.formatCountdown(remaining(verifyUntil))}` : "Continue";
+      ? `Continue in ${window.VerificationCode.formatCountdown(remaining(verifyUntil), true)}` : "Continue";
     back.disabled = busy;
     enterCode.disabled = busy;
     passwordSubmit.disabled = busy || remaining(resetUntil) > 0;
     passwordSubmit.textContent = busy && step === "password" ? "Resetting..." : remaining(resetUntil) > 0
-      ? `Reset Password in ${window.VerificationCode.formatCountdown(remaining(resetUntil))}` : "Reset Password";
+      ? `Reset Password in ${window.VerificationCode.formatCountdown(remaining(resetUntil), true)}` : "Reset Password";
   }
 
   function restartRecovery(message) {
@@ -149,7 +153,7 @@ document.addEventListener("DOMContentLoaded", () => {
     requestedEmail = "";
     maskedEmail = "";
     resendUntil = verifyUntil = resetUntil = 0;
-    cooldownFeedback.clear();
+    requestLimited = false;
     busy = false;
     emailInput.value = "";
     verifyEmail.textContent = "";
@@ -163,13 +167,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function tick() {
-    for (const [element, { deadline, message }] of cooldownFeedback) {
-      if (remaining(deadline) > 0) continue;
-      cooldownFeedback.delete(element);
-      if (element.textContent === message) setError(element);
-      const status = document.getElementById("passwordResetCooldownStatus");
-      if (status) status.textContent = "You can try again now.";
-    }
     if (!busy && expiresAt && remaining(expiresAt) === 0) {
       if (resetGrant) restartRecovery("Your reset session expired. Request a new code.");
       else if (step === "code") setError(codeMessage, "Code expired. Request a new code.");
@@ -189,6 +186,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function acceptRequest(response, next = "code") {
+    requestLimited = false;
     maskedEmail = response?.email || window.VerificationCode.maskEmail(requestedEmail);
     expiresAt = Date.now() + response.expires_in * 1000;
     resendUntil = Date.now() + (response.resend_after ?? 45) * 1000;
@@ -241,14 +239,14 @@ document.addEventListener("DOMContentLoaded", () => {
       if (currentJourney !== journey) return;
       if (submittedEmailRevision !== emailRevision) return;
       const accountStatus = ["account_not_found", "password_reset_unavailable"].includes(error?.code);
-      setError(emailMessage, accountStatus ? error.message : error?.status === 429 ? "Too many requests. Please wait before trying again."
+      setError(emailMessage, accountStatus ? error.message : error?.status === 429 && error.retryAfter > 0 ? ""
         : error?.status === 422 ? "Enter a valid email address."
         : error?.status === 0 ? error.message : "Couldn't request a code. Try again.");
       createAccount.classList.toggle("hidden", error?.code !== "account_not_found");
       emailInput.setAttribute("aria-invalid", String(accountStatus || error?.status === 422));
       if (accountStatus || error?.status === 422) emailInput.focus();
+      requestLimited = error?.status === 429 && error.retryAfter > 0;
       resendUntil = Date.now() + (error?.retryAfter || 0) * 1000;
-      if (error?.status === 429 && error.retryAfter > 0) trackCooldown(emailMessage, resendUntil);
       saveRecovery();
       startTimer();
     } finally {
@@ -273,10 +271,9 @@ document.addEventListener("DOMContentLoaded", () => {
       acceptRequest(response);
     } catch (error) {
       if (currentJourney !== journey) return;
-      setError(codeMessage, error?.status === 429 ? "Too many requests. Please wait before trying again."
+      setError(codeMessage, error?.status === 429 && error.retryAfter > 0 ? ""
         : "Couldn't request a code. Try again.");
       resendUntil = Date.now() + (error?.retryAfter || 0) * 1000;
-      if (error?.status === 429 && error.retryAfter > 0) trackCooldown(codeMessage, resendUntil);
       saveRecovery();
       startTimer();
     } finally {
@@ -309,10 +306,9 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (error) {
       if (currentJourney !== journey) return;
       if (error?.retryAfter) verifyUntil = Date.now() + error.retryAfter * 1000;
-      setError(codeMessage, error?.status === 429 ? "Too many attempts. Please wait before trying again."
+      setError(codeMessage, error?.status === 429 && error.retryAfter > 0 ? ""
         : error?.status !== 422 ? "Couldn't verify the code. Try again."
         : "Invalid or expired code. Check it or request a new code.");
-      if (error?.status === 429 && error.retryAfter > 0) trackCooldown(codeMessage, verifyUntil);
       codeInput.setAttribute("aria-invalid", error?.status === 422 ? "true" : "false");
     } finally {
       if (currentJourney === journey) {
@@ -379,9 +375,8 @@ document.addEventListener("DOMContentLoaded", () => {
       else if (error?.errors?.password || message === "Choose a different password.") {
         passwordBinding.setError(error?.errors?.password?.[0] || message);
         password.focus();
-      } else setError(passwordMessage, error?.status === 429 ? "Too many attempts. Please wait before trying again." : message);
+      } else setError(passwordMessage, error?.status === 429 && error.retryAfter > 0 ? "" : message);
       if (error?.retryAfter) resetUntil = Date.now() + error.retryAfter * 1000;
-      if (error?.status === 429 && error.retryAfter > 0) trackCooldown(passwordMessage, resetUntil);
       saveRecovery();
     } finally {
       if (currentJourney === journey) {
@@ -414,12 +409,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function firstApiError(error) {
     const messages = Object.values(error?.errors || {})[0];
     return Array.isArray(messages) && messages[0] ? messages[0] : error?.message || "The password could not be reset.";
-  }
-
-  function trackCooldown(element, deadline) {
-    const status = document.getElementById("passwordResetCooldownStatus");
-    if (status) status.textContent = "";
-    cooldownFeedback.set(element, { deadline, message: element.textContent });
   }
 
   function setError(element, message = "") {

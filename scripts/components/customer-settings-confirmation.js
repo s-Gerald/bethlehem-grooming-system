@@ -40,12 +40,14 @@ window.createCustomerSettingsConfirmation = function ({ onChallenge, resetPasswo
     const submitWait = Math.max(0, Math.ceil((submitAt - Date.now()) / 1000));
     if (resendError && !seconds) {
       resendError = false;
-      if (get('settingsConfirmationError').textContent === 'Please wait before resending.') feedback('You can request another code.');
+      get('settingsCooldownStatus').textContent = 'You can resend the code now.';
     }
     if (submitAt && !submitWait) {
       submitAt = 0;
-      if (get('settingsConfirmationError').textContent === 'Too many attempts. Please wait.') feedback('You can try again now.');
+
     }
+    window.VerificationCode.renderCooldown(get('settingsCodeCooldown'), expired ? 0 : challenge ? submitWait : 0, true, expired ? null : get('settingsCooldownStatus'));
+    window.VerificationCode.renderCooldown(get('settingsActionCooldown'), challenge ? 0 : submitWait, false, get('settingsCooldownStatus'));
     if (expired && !view.ended) {
       view.ended = true;
       feedback('This request has expired. Start a new request.', code);
@@ -54,14 +56,13 @@ window.createCustomerSettingsConfirmation = function ({ onChallenge, resetPasswo
     const label = challenge
       ? (view.kind === 'email' ? 'Verify email' : 'Confirm change')
       : 'Continue';
-    submit.textContent = busy ? 'Please wait…' : submitWait
-      ? 'Try again in ' + window.VerificationCode.formatCountdown(submitWait) : label;
+    submit.textContent = busy ? 'Please wait…' : label;
     submit.disabled = busy || submitWait > 0 || view.ended || Boolean(challenge && (expired || code.value.length !== 6));
     close.disabled = cancel.disabled = busy;
     newEmail.disabled = password.disabled = busy;
-    code.disabled = busy || submitWait > 0 || view.ended;
+    code.disabled = busy || view.ended;
     resend.disabled = busy || view.ended || Boolean(expired || seconds);
-    const resendLabel = seconds ? 'Resend code in ' + window.VerificationCode.formatCountdown(seconds) : 'Resend code';
+    const resendLabel = seconds ? 'Resend code in ' + window.VerificationCode.formatCountdown(seconds, true) : 'Resend code';
     if (resend.textContent !== resendLabel) resend.textContent = resendLabel;
   }
 
@@ -99,7 +100,6 @@ window.createCustomerSettingsConfirmation = function ({ onChallenge, resetPasswo
     digits.clear();
     if (challenge) {
       instruction.textContent = 'Enter the 6-digit code for ' + challenge.email + '.';
-      if (challenge.retry_after > 0) feedback('Too many attempts. Please wait.');
       if (challenge.email_delivery_token) {
         stopDelivery = window.AuthenticationEmailDelivery.watch(challenge.email_delivery_token, (status) => {
           if (status === 'sent') instruction.textContent = 'Enter the 6-digit code sent to ' + challenge.email + '.';
@@ -136,11 +136,12 @@ window.createCustomerSettingsConfirmation = function ({ onChallenge, resetPasswo
       if (resending) {
         resendAt = Date.now() + error.retryAfter * 1000;
         resendError = true;
-        feedback('Please wait before resending.');
+        get('settingsCooldownStatus').textContent = 'Please wait before resending the code.';
+        feedback();
       } else {
         submitAt = Date.now() + error.retryAfter * 1000;
         if (countdown == null) countdown = window.setInterval(updateActions, 1000);
-        feedback('Too many attempts. Please wait.');
+        feedback();
       }
       return;
     }

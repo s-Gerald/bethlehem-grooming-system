@@ -1,4 +1,4 @@
-import "../auth/verification-code.js?v=auth-feedback-20261028";
+import "../auth/verification-code.js?v=auth-feedback-20261028&cooldown-ui=20261119";
 import "../utils/philippine-mobile.js?v=mobile-policy-20261110";
 
 let dialog, trigger, codeControl, phoneControl, timer;
@@ -36,20 +36,22 @@ function updateControls() {
   }
   const waiting = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
   const verifyWait = Math.max(0, Math.ceil((verifyAt - Date.now()) / 1000));
-  if (verifyAt && !verifyWait) { verifyAt = 0; message(""); }
+  if (verifyAt && !verifyWait) verifyAt = 0;
+  window.VerificationCode.renderCooldown(field("CodeCooldown"), canVerify && step === "challenge" ? verifyWait : 0, true, canVerify && step === "challenge" ? field("CooldownStatus") : null);
+  window.VerificationCode.renderCooldown(field("ActionCooldown"), step === "entry" ? verifyWait : 0, false, field("CooldownStatus"));
   field("Next").disabled = busy || verifyWait > 0 || waiting > 0 || Boolean(phoneValidation(field("Phone").value));
   const sendWait = Math.max(waiting, verifyWait);
-  field("Next").textContent = busy ? "Please wait…" : sendWait ? `Send Code in ${window.VerificationCode.formatCountdown(sendWait)}` : "Send Code";
+  field("Next").textContent = busy ? "Please wait…" : sendWait ? `Send Code in ${window.VerificationCode.formatCountdown(sendWait, true)}` : "Send Code";
   field("Next").setAttribute("aria-busy", String(busy));
   field("Phone").disabled = busy;
   field("Password").disabled = busy;
   field("Code").disabled = busy || verifyWait > 0;
   field("Verify").disabled = busy || verifyWait > 0 || !canVerify || field("Code").value.length !== 6 || Date.now() >= expiresAt;
   field("Verify").setAttribute("aria-busy", String(busy));
-  field("VerifyLabel").textContent = busy ? "Please wait…" : verifyWait ? `Try again in ${window.VerificationCode.formatCountdown(verifyWait)}` : "Verify and Continue";
+  field("VerifyLabel").textContent = busy ? "Please wait…" : verifyWait ? `Try again in ${window.VerificationCode.formatCountdown(verifyWait, true)}` : "Verify and Continue";
   field("Spinner").hidden = !busy;
   field("Resend").disabled = busy || waiting > 0;
-  field("Resend").textContent = waiting ? `Resend Code in ${window.VerificationCode.formatCountdown(waiting)}` : "Resend Code";
+  field("Resend").textContent = waiting ? `Resend Code in ${window.VerificationCode.formatCountdown(waiting, true)}` : "Resend Code";
   const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
   field("Expiry").textContent = canVerify && remaining ? `Code expires in ${window.VerificationCode.formatCountdown(remaining)}` : "";
   field("Entry").hidden = step !== "entry";
@@ -63,7 +65,7 @@ function updateControls() {
   field("Retry").disabled = busy || waiting > 0;
   field("Retry").setAttribute("aria-busy", String(busy));
   field("Retry").textContent = busy ? "Please wait…" : waiting
-    ? `Try Again in ${window.VerificationCode.formatCountdown(waiting)}` : "Try Again";
+    ? `Try Again in ${window.VerificationCode.formatCountdown(waiting, true)}` : "Try Again";
   if (moveExpiredFocus && dialog.open) focusStep();
 }
 function setTiming(data) {
@@ -85,7 +87,8 @@ function applyCooldown(error) {
   }
 }
 function showError(error) {
-  if (error.data?.code === "verification_cooldown" || error.code === "verification_cooldown") {
+  const verificationCooldown = error.data?.code === "verification_cooldown" || error.code === "verification_cooldown";
+  if (verificationCooldown) {
     verifyAt = Date.now() + Math.max(0, Number(error.data?.retry_after ?? error.retryAfter) || 0) * 1000;
     window.clearInterval(timer); timer = window.setInterval(updateControls, 1000);
   } else applyCooldown(error);
@@ -96,7 +99,7 @@ function showError(error) {
     if (step === "challenge") showPhoneEntry(true);
     message(""); phoneMessage(phoneError); return;
   }
-  message(text, passwordError ? field("Password") : challenge ? field("Code") : field("Phone"));
+  message(verificationCooldown ? "" : text, passwordError ? field("Password") : challenge ? field("Code") : field("Phone"));
 }
 function showChallenge() {
   step = "challenge";
@@ -192,7 +195,7 @@ async function requestCode(resend = false) {
 function createDialog() {
   const stylesheet = document.createElement("link");
   stylesheet.rel = "stylesheet";
-  stylesheet.href = new URL("/css/components/verification-code.css?v=phone-eligibility-20261028", import.meta.url).href;
+  stylesheet.href = new URL("/css/components/verification-code.css?v=phone-eligibility-20261028&cooldown-ui=20261119", import.meta.url).href;
   document.head.appendChild(stylesheet);
   dialog = document.createElement("dialog");
   dialog.id = "phoneVerificationDialog";
@@ -223,6 +226,7 @@ function createDialog() {
           <label for="phoneVerificationPassword" class="phone-verification-label">Current Password</label>
           <input id="phoneVerificationPassword" class="phone-verification-phone" type="password" autocomplete="current-password" maxlength="255" aria-describedby="phoneVerificationMessage" />
         </div>
+        <p id="phoneVerificationActionCooldown" class="auth-cooldown" aria-live="off" hidden></p>
         <button id="phoneVerificationNext" type="submit" class="verification-primary">Send Code</button>
         <button id="phoneVerificationBack" type="button" class="verification-link phone-verification-back" hidden>Back to code</button>
       </div>
@@ -232,9 +236,10 @@ function createDialog() {
       <div id="phoneVerificationOtp" hidden>
         <label for="phoneVerificationCode" class="sr-only">6-digit phone verification code</label>
         <div class="verification-code-cells">
-          <input id="phoneVerificationCode" class="verification-code-input" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" aria-describedby="phoneVerificationNumber phoneVerificationMessage" />
+          <input id="phoneVerificationCode" class="verification-code-input" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" aria-describedby="phoneVerificationNumber phoneVerificationMessage phoneVerificationCodeCooldown" />
           ${'<span class="verification-code-cell" aria-hidden="true"></span>'.repeat(6)}
         </div>
+        <p id="phoneVerificationCodeCooldown" class="auth-cooldown" aria-live="off" hidden></p>
         <button id="phoneVerificationVerify" type="submit" class="verification-primary" disabled>
           <svg id="phoneVerificationSpinner" class="animate-spin" width="18" height="18" viewBox="0 0 256 256" aria-hidden="true" hidden><use href="/assets/icons/phosphor.svg#spinner-gap"></use></svg>
           <span id="phoneVerificationVerifyLabel">Verify and continue</span>
@@ -244,6 +249,7 @@ function createDialog() {
           <button id="phoneVerificationResend" type="button" class="verification-link">Resend Code</button>
         </div>
       </div>
+      <span id="phoneVerificationCooldownStatus" class="sr-only" role="status"></span>
       <p id="phoneVerificationMessage" class="verification-message" role="alert" hidden></p>
     </form>
     <div class="phone-verification-actions">

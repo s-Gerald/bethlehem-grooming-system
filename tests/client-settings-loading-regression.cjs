@@ -196,10 +196,10 @@ async function testPasswordChangeSubmissionAndErrors() {
       assert.equal(page('currentPassword').getAttribute('aria-invalid'), 'false');
     }
     if (error.status === 429) {
-      assert.match(page('settingsStatus').textContent, /Too many attempts/);
-      assert.equal(page('changePasswordLabel').textContent, 'Try again in 5m 00s');
+      assert.match(page('settingsPasswordCooldown').innerHTML, /Too many attempts/);
+      assert.equal(page('changePasswordLabel').textContent, 'Try again in 5:00');
       page.advanceSeconds(1);
-      assert.equal(page('changePasswordLabel').textContent, 'Try again in 4m 59s');
+      assert.equal(page('changePasswordLabel').textContent, 'Try again in 4:59');
       await page('passwordForm').dispatch('submit');
       assert.equal(attempts, 1);
       page.advanceSeconds(299);
@@ -271,9 +271,14 @@ async function testSecurityCodeCountdownRecoversWithoutSendingOrSubmitting() {
     page('settingsVerificationCode').value = '012345';
     await page('settingsVerificationCode').dispatch('input');
     assert.equal(page('settingsConfirmationSubmit').disabled, true);
-    assert.equal(page('settingsVerificationCode').disabled, true);
-    page.advanceSeconds(seconds - 1);
-    assert.match(page('settingsConfirmationSubmit').textContent, /1s/);
+    assert.equal(Boolean(page('settingsVerificationCode').disabled), false, 'Modal codes stay editable during cooldown');
+    assert.match(page('settingsCodeCooldown').innerHTML, /Too many incorrect codes/);
+    const announcement = page('settingsCooldownStatus').textContent;
+    page.advanceSeconds(1);
+    assert.match(page('settingsCodeCooldown').innerHTML, new RegExp('>' + (seconds === 60 ? '0:59' : seconds === 180 ? '2:59' : '4:59') + '<'));
+    assert.equal(page('settingsCooldownStatus').textContent, announcement);
+    page.advanceSeconds(seconds - 2);
+    assert.match(page('settingsCodeCooldown').innerHTML, />0:01</);
     page.advanceSeconds(1);
     assert.equal(page('settingsConfirmationSubmit').disabled, false);
     assert.equal(Boolean(page('settingsVerificationCode').disabled), false);

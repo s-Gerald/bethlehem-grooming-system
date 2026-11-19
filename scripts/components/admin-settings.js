@@ -1599,38 +1599,42 @@ function adminSettings() {
 
     stopSecurityVerificationFeedback() {
       window.clearInterval(this._securityResendTimer);
+      this.securityVerification._stopActionCountdown?.();
       this._securityResendTimer = null;
       this._stopSecurityDeliveryCheck?.();
       this._stopSecurityDeliveryCheck = null;
     },
 
     securityCountdownLabel(seconds, label = 'Try again in ') {
-      return label + window.VerificationCode.formatCountdown(seconds);
+      return label + window.VerificationCode.formatCountdown(seconds, true);
+    },
+
+    securityCooldownWarning(seconds, codes = false) {
+      return window.VerificationCode.cooldownMarkup(seconds, codes);
     },
 
     startSecurityActionCountdown(error, form) {
-      const message = 'Too many attempts. Please wait before trying again.';
-      form.error = message;
-      form.cooldownStatus = "";
-      window.VerificationCode.startCountdown(error.retryAfter, remaining => {
+      form._stopActionCountdown?.();
+      form.error = '';
+      const codes = form === this.securityVerification
+        || (form === this.staffEmailChange && ['current', 'new'].includes(form.stage))
+        || (form === this.staffRecovery && this.staffDetailsModal.view === 'recovery-code');
+      form.cooldownStatus = (codes ? 'Too many incorrect codes. ' : 'Too many attempts. ')
+        + 'Try again in ' + window.VerificationCode.formatCountdown(error.retryAfter) + '.';
+      form._stopActionCountdown = window.VerificationCode.startCountdown(error.retryAfter, remaining => {
         form.retryRemaining = remaining;
-        if (!remaining && form.error === message) {
-          form.error = '';
-          form.cooldownStatus = 'You can try again now.';
-        }
+        if (!remaining) form.cooldownStatus = 'You can try again now.';
       });
     },
 
     startSecurityResendCountdown(seconds, verification = this.securityVerification, timerKey = '_securityResendTimer', error = null) {
       window.clearInterval(this[timerKey]);
-      const message = 'Please wait before resending.';
-      if (error) verification.error = message;
+      if (error) verification.error = '';
       const until = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
       verification.cooldownStatus = seconds > 0 && !error ? 'Resending is temporarily paused.' : '';
       const tick = () => {
         verification.resendRemaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
         if (!verification.resendRemaining) {
-          if (error && verification.error === message) verification.error = '';
           if (seconds > 0) verification.cooldownStatus = 'You can resend the email now.';
           window.clearInterval(this[timerKey]);
           this[timerKey] = null;

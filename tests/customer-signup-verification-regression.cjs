@@ -298,6 +298,21 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
   await noStorage.windowHandlers.focus(); await flush();
   assert.deepEqual(noStorage.calls.at(-1),['redirect','/account']);
 
+  const pacedSignup = page(); let pacedRequests = 0;
+  pacedSignup.API.register = async () => { pacedRequests++; throw {status:429, retryAfter:60}; };
+  await pacedSignup.dispatch('signupForm', 'submit');
+  assert.match(pacedSignup.element('signupMessage').innerHTML, />1:00</);
+  const signupAnnouncement = pacedSignup.element('signupCooldownStatus').textContent;
+  pacedSignup.advance(1000);
+  assert.match(pacedSignup.element('signupMessage').innerHTML, />0:59</);
+  assert.equal(pacedSignup.element('signupCooldownStatus').textContent, signupAnnouncement);
+  await pacedSignup.dispatch('signupForm', 'submit');
+  assert.equal(pacedRequests, 1);
+  pacedSignup.advance(59000);
+  assert.equal(pacedSignup.element('signupMessage').hidden, true);
+  assert.equal(pacedSignup.element('signupSubmit').disabled, false);
+  assert.equal(pacedRequests, 1);
+
   const retry=page();let starts=0;
   retry.API.register=async payload=>{starts++;if(starts===1)throw {status:503,message:'Queue temporarily unavailable'};return {requires_verification:true,state:'pending',email:payload.email};};
   await retry.dispatch('signupForm','submit');

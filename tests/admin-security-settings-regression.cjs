@@ -17,9 +17,11 @@ let cancelRequest;
 let roleRequest;
 const focusedFields = [];
 const cooldownTicks = new Map();
+let nextCooldownTimer = 0;
+function tickCooldowns() { for (const tick of [...cooldownTicks.values()]) tick(); }
 const deliveryChecks = new Map();
 global.window = {
-  setInterval(callback) { cooldownTicks.set(1, callback); return 1; },
+  setInterval(callback) { cooldownTicks.set(++nextCooldownTimer, callback); return nextCooldownTimer; },
   clearInterval(id) { cooldownTicks.delete(id); },
   setTimeout(callback) { deliveryChecks.set(1, callback); return 1; },
   clearTimeout(id) { deliveryChecks.delete(id); },
@@ -277,17 +279,41 @@ vm.runInThisContext(componentSource, {
       };
       await settings.confirmSecurityCredentialChange();
       assert.equal(settings.securityVerification.retryRemaining, seconds);
-      now += (seconds - 1) * 1000;
-      cooldownTicks.get(1)();
-      assert.equal(settings.securityCountdownLabel(settings.securityVerification.retryRemaining), 'Try again in 1s');
+      assert.match(settings.securityCooldownWarning(settings.securityVerification.retryRemaining, true), /Too many incorrect codes/);
+      assert.equal(settings.securityVerification.error, '');
+      const announcement = settings.securityVerification.cooldownStatus;
+      settings.startSecurityResendCountdown(37);
+      now += 1000; tickCooldowns();
+      assert.match(settings.securityCooldownWarning(settings.securityVerification.retryRemaining, true), new RegExp('>' + (seconds === 60 ? '0:59' : seconds === 180 ? '2:59' : '4:59') + '<'));
+      assert.equal(settings.securityVerification.resendRemaining, 36);
+      assert.equal(settings.securityVerification.cooldownStatus, 'Resending is temporarily paused.');
+      settings.handleSecurityCodeInput(5, { target: { value: '7' } });
+      assert.equal(settings.securityVerification.digits[5], '7');
+      assert.equal(confirms, index + 1, 'Editing digits makes no verification request');
+      now += (seconds - 2) * 1000;
+      tickCooldowns();
+      assert.equal(settings.securityCountdownLabel(settings.securityVerification.retryRemaining), 'Try again in 0:01');
       await settings.confirmSecurityCredentialChange();
       assert.equal(confirms, index + 1);
       now += 1000;
-      cooldownTicks.get(1)();
+      tickCooldowns();
       assert.equal(settings.securityVerification.retryRemaining, 0);
       assert.equal(settings.securityVerification.error, '');
       assert.equal(confirms, index + 1, 'Countdown completion never submits a credential change');
       settings.closeSecurityVerification();
+    }
+    for (const [form, stage] of [[settings.staffEmailChange, 'current'], [settings.staffRecovery, 'recovery-code']]) {
+      if (form === settings.staffEmailChange) form.stage = stage;
+      else settings.staffDetailsModal.view = stage;
+      settings.startSecurityActionCountdown({retryAfter:60}, form);
+      assert.match(settings.securityCooldownWarning(form.retryRemaining, true), />1:00</);
+      const status = form.cooldownStatus;
+      now += 1000; tickCooldowns();
+      assert.match(settings.securityCooldownWarning(form.retryRemaining, true), />0:59</);
+      assert.equal(form.cooldownStatus, status, 'Staff code cooldowns do not announce each tick');
+      now += 59000; tickCooldowns();
+      assert.equal(form.retryRemaining, 0);
+      assert.equal(form.cooldownStatus, 'You can try again now.');
     }
   } finally {
     Date.now = realNow;

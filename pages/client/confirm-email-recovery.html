@@ -10,6 +10,7 @@
     <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <link rel="stylesheet" href="/css/output.css?recovery=20261025-3&availability=20261027&auth-hardening=20261030" />
     <link rel="stylesheet" href="/css/custom.css?recovery=20261025-3&grooming=actual-20261026" />
+    <link rel="stylesheet" href="/css/components/auth-cooldown.css?v=cooldown-ui-20261119" />
   </head>
   <body class="min-h-screen bg-slate-100 px-4 py-8">
     <main class="mx-auto flex min-h-[calc(100vh-4rem)] max-w-lg items-center justify-center">
@@ -34,7 +35,8 @@
       </div>
     </main>
     <script src="/scripts/api.js?auth-reliability=20261107&v=admin-email-recovery-20261025&recovery=20261025-3&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103&manager=20261118&auth-cooldown=20261118" defer></script>
-    <script src="/scripts/auth/verification-code.js?auth-cooldown=20261118" defer></script>
-    <script src="/scripts/auth/email-recovery.js?recovery=20261025-3&urls=20261103&auth-cooldown=20261118" defer></script>
+    <script src="/scripts/auth/verification-code.js?auth-cooldown=20261118&cooldown-ui=20261119" defer></script>
+    <script src="/scripts/auth/email-recovery.js?recovery=20261025-3&urls=20261103&auth-cooldown=20261118&cooldown-ui=20261119" defer></script>
+    <span id="recoveryCooldownStatus" class="sr-only" role="status"></span>
   </body>
 </html>

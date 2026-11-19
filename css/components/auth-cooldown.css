@@ -1,0 +1,19 @@
+/* Component scope: Bethlehem's existing compact amber warning treatment. */
+.auth-cooldown {
+  --auth-warning-border: #fde68a;
+  --auth-warning-background: #fffbeb;
+  --auth-warning-text: #92400e;
+  box-sizing: border-box;
+  border: 1px solid var(--auth-warning-border);
+  border-radius: .75rem;
+  padding: .75rem 1rem;
+  background: var(--auth-warning-background);
+  color: var(--auth-warning-text);
+  font-size: .875rem;
+  font-weight: 400;
+  line-height: 1.25rem;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.auth-cooldown[hidden] { display: none; }
+.auth-cooldown-time { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }

@@ -349,11 +349,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function showErrors(error) {
     if (error.retryAfter > 0) {
-      showMessage("Too many attempts. Please wait before trying again.");
+      signupMessage.className = 'auth-cooldown mt-5';
+      signupMessage.setAttribute('role', 'presentation');
+      signupMessage.setAttribute('aria-live', 'off');
       window.VerificationCode.startCountdown(error.retryAfter, seconds => {
+        window.VerificationCode.renderCooldown(signupMessage, seconds, false, document.getElementById('signupCooldownStatus'));
         signupCooldown = seconds;
         setBusyState(busy);
-        if (!seconds && !departed) showMessage("You can try creating your account again.");
       });
       return;
     }
@@ -384,7 +386,7 @@ document.addEventListener("DOMContentLoaded", () => {
     signupForm.setAttribute("aria-busy", String(isBusy));
     const label = document.getElementById("signupBtnLabel");
     if (label) label.textContent = isBusy ? "Please wait..." : signupCooldown
-      ? "Try again in " + window.VerificationCode.formatCountdown(signupCooldown) : "Create Account";
+      ? "Try again in " + window.VerificationCode.formatCountdown(signupCooldown, true) : "Create Account";
   }
 
   function clearMessage() {
@@ -393,6 +395,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function showMessage(text) {
+    signupMessage.hidden = false;
+    signupMessage.setAttribute("role", "alert");
+    signupMessage.setAttribute("aria-live", "assertive");
     signupMessage.className = "mt-5 rounded-xl border px-4 py-3 text-sm border-red-200 bg-red-50 text-red-700";
     signupMessage.textContent = text;
   }

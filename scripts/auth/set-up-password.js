@@ -42,6 +42,41 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
+  requestNewLink.addEventListener("click", async () => {
+    if (requestNewLink.disabled) return;
+    requestNewLink.disabled = true;
+    requestNewLink.textContent = "Sending...";
+    try {
+      await API.requestNewStaffPasswordSetupLink(setupToken);
+      expiredMessage.hidden = false;
+      expiredMessage.setAttribute("role", "status");
+      expiredMessage.setAttribute("aria-live", "polite");
+      expiredMessage.textContent = "A new setup link has been sent to your email.";
+      expiredMessage.className = "rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700";
+      requestNewLink.textContent = "Link Sent";
+    } catch (error) {
+      expiredMessage.hidden = false;
+      expiredMessage.setAttribute("role", "alert");
+      expiredMessage.setAttribute("aria-live", "assertive");
+      expiredMessage.textContent = firstApiError(error);
+      expiredMessage.className = "rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700";
+      if (error.retryAfter > 0) {
+        expiredMessage.className = "auth-cooldown";
+        expiredMessage.setAttribute("role", "presentation");
+        expiredMessage.setAttribute("aria-live", "off");
+        window.VerificationCode.startCountdown(error.retryAfter, seconds => {
+          window.VerificationCode.renderCooldown(expiredMessage, seconds, false, document.getElementById("setupCooldownStatus"));
+          requestNewLink.disabled = Boolean(seconds);
+          requestNewLink.textContent = seconds
+            ? "Request new link in " + window.VerificationCode.formatCountdown(seconds, true) : "Request New Setup Link";
+        });
+      } else {
+        requestNewLink.disabled = false;
+        requestNewLink.textContent = "Request New Setup Link";
+      }
+    }
+  });
+
   let passwordMinimum = 15;
   try {
     const response = await API.verifyStaffPasswordSetupToken(setupToken);
@@ -95,12 +130,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (error) {
       if (error.retryAfter > 0) {
         setBusy(false);
-        setMessage("error", "Too many attempts. Please wait before trying again.");
+        setMessage();
+        message.className = 'auth-cooldown';
+        message.setAttribute('role', 'presentation');
+        message.setAttribute('aria-live', 'off');
         window.VerificationCode.startCountdown(error.retryAfter, seconds => {
+          window.VerificationCode.renderCooldown(message, seconds, false, document.getElementById("setupCooldownStatus"));
           submit.disabled = Boolean(seconds);
           if (submitLabel) submitLabel.textContent = seconds
-            ? "Try again in " + window.VerificationCode.formatCountdown(seconds) : "Create Account";
-          if (!seconds) setMessage("error", "You can try creating your account again.");
+            ? "Try again in " + window.VerificationCode.formatCountdown(seconds, true) : "Create Account";
         });
         return;
       }
@@ -129,31 +167,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (submitLabel) submitLabel.textContent = busy ? "Creating Account..." : "Create Account";
   }
 
-  requestNewLink.addEventListener("click", async () => {
-    if (requestNewLink.disabled) return;
-    requestNewLink.disabled = true;
-    requestNewLink.textContent = "Sending...";
-    try {
-      await API.requestNewStaffPasswordSetupLink(setupToken);
-      expiredMessage.textContent = "A new setup link has been sent to your email.";
-      expiredMessage.className = "rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700";
-      requestNewLink.textContent = "Link Sent";
-    } catch (error) {
-      expiredMessage.textContent = firstApiError(error);
-      expiredMessage.className = "rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700";
-      if (error.retryAfter > 0) {
-        window.VerificationCode.startCountdown(error.retryAfter, seconds => {
-          requestNewLink.disabled = Boolean(seconds);
-          requestNewLink.textContent = seconds
-            ? "Request new link in " + window.VerificationCode.formatCountdown(seconds) : "Request New Setup Link";
-          if (!seconds) expiredMessage.textContent = "You can request a new link now.";
-        });
-      } else {
-        requestNewLink.disabled = false;
-        requestNewLink.textContent = "Request New Setup Link";
-      }
-    }
-  });
 
   function showExpiredLink() {
     accountDescription?.classList.add("hidden");
@@ -185,6 +198,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function setMessage(type = null, text = "") {
+    message.hidden = !type;
+    message.setAttribute("role", "alert");
+    message.setAttribute("aria-live", "assertive");
     if (!type) {
       message.className = "hidden rounded-2xl border px-4 py-3 text-sm";
       message.textContent = "";

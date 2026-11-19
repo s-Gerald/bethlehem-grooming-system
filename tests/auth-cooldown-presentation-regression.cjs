@@ -1,0 +1,25 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+const context = { window: {} };
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../scripts/auth/verification-code.js'), 'utf8'), context);
+const warning = { hidden: true, innerHTML: '' };
+const status = { textContent: '' };
+const code = context.window.VerificationCode;
+code.renderCooldown(warning, 60, true, status);
+assert.equal(warning.hidden, false);
+assert.equal(warning.innerHTML, 'Too many incorrect codes. Try again in <span class="auth-cooldown-time">1:00</span>.');
+const announcement = status.textContent;
+code.renderCooldown(warning, 59, true, status);
+assert.match(warning.innerHTML, />0:59</);
+assert.equal(status.textContent, announcement, 'The live region stays unchanged between the start and end');
+code.renderCooldown(warning, 0, true, status);
+assert.equal(warning.hidden, true);
+assert.equal(warning.innerHTML, '');
+assert.equal(status.textContent, 'You can try again now.');
+code.renderCooldown(warning, 180, false, status);
+assert.equal(warning.innerHTML, 'Too many attempts. Try again in <span class="auth-cooldown-time">3:00</span>.');
+console.log('Authentication cooldown presentation regression tests passed.');

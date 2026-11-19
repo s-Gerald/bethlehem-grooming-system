@@ -517,9 +517,12 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     const attributes = new Map(id === 'phoneVerificationSpinner' ? [['hidden', '']] : []);
     const listeners = {};
     const classes = new Set();
+    let htmlValue = '';
     const node = {
       id, value: '', textContent: '', hidden: false, disabled: false, open: false,
+      get innerHTML() { return htmlValue; },
       set innerHTML(html) {
+        htmlValue = html;
         for (const match of html.matchAll(/<([a-z][\w-]*)\b[^>]*\bid="([^"]+)"[^>]*>([^<]*)/gi)) {
           element(match[2]).textContent = match[3].trim();
         }
@@ -700,7 +703,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     assert.equal(global.document.activeElement, element('phoneVerificationCode'));
     assert.equal(element('phoneVerificationVerify').disabled, true);
     assert.equal(element('phoneVerificationResend').disabled, true);
-    assert.match(element('phoneVerificationResend').textContent, /1m 00s/);
+    assert.match(element('phoneVerificationResend').textContent, /1:00/);
     await element('phoneVerificationResend').dispatch('click'); assert.equal(calls.resends, 0);
     const code = element('phoneVerificationCode');
     await code.dispatch('paste', { clipboardData: { getData: () => '12a345678' } });
@@ -764,7 +767,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await element('phoneVerificationChange').dispatch('click');
     assert.equal(element('phoneVerificationBack').hidden, true, 'An expired challenge cannot return to code entry.');
     await element('phoneVerificationClose').dispatch('click');
-    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=mobile-policy-20261110&urls=20261103');
+    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=mobile-policy-20261110&urls=20261103&cooldown-ui=20261119');
     recovery = { success: true, challenge_id: 'generation-two', masked_destination: '0917 •••• 567', expires_in: 120, resend_after: 30, status: 'active', can_verify: true, replacement: true };
     const sendsBeforeRecovery = calls.sends;
     await openPhoneVerification(trigger, { ...user, phone_verification_status: 'verified' }, { navigate: false });
@@ -787,7 +790,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     assert.equal(element('phoneVerificationVerify').disabled, true);
     assert.equal(element('phoneVerificationRecovery').hidden, false);
     assert.equal(element('phoneVerificationRetry').disabled, true);
-    assert.equal(element('phoneVerificationRetry').textContent, 'Try Again in 42s');
+    assert.equal(element('phoneVerificationRetry').textContent, 'Try Again in 0:42');
     const requestsBeforeRecoveryEdit = [calls.sends, calls.resends, calls.profiles, stateCalls];
     await element('phoneVerificationChange').dispatch('click');
     assert.equal(element('phoneVerificationPhone').value, '0917 123 4567');
@@ -816,11 +819,13 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     assert.equal(element('phoneVerificationRetry').disabled, true);
     assert.equal(element('phoneVerificationChange').disabled, false);
     await element('phoneVerificationClose').dispatch('click');
-    recovery = { ...uncertainNew, status: 'locked', resend_after: 0 };
+    recovery = { ...uncertainNew, status: 'active', can_verify: true, retry_after: 60, resend_after: 0 };
     await openPhoneVerification(trigger, user, { navigate: false });
-    assert.equal(element('phoneVerificationRetry').disabled, true);
+    assert.equal(element('phoneVerificationVerify').disabled, true);
+    assert.equal(element('phoneVerificationResend').disabled, false, 'Verification and resend cooldowns stay separate');
+    assert.match(element('phoneVerificationCodeCooldown').innerHTML, />1:00</);
     await element('phoneVerificationChange').dispatch('click');
-    assert.equal(element('phoneVerificationNext').disabled, true, 'Changing numbers cannot bypass lockout.');
+    assert.equal(element('phoneVerificationNext').disabled, true, 'Changing numbers cannot bypass an active verification cooldown.');
     await element('phoneVerificationClose').dispatch('click');
     recovery = { success: true, challenge_id: 'generation-two', masked_destination: '0917 •••• 567', expires_in: 120, resend_after: 0, status: 'active', can_verify: true, replacement: true };
     await openPhoneVerification(trigger, { ...user, phone_verification_status: 'verified' }, { navigate: false });

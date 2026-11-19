@@ -297,6 +297,31 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
         $this->assertStringNotContainsString('requestStaffCredentialChange', $api);
     }
 
+    public function test_verification_cooldown_is_below_the_editable_code_and_separate_from_actions(): void
+    {
+        $document = new \DOMDocument();
+        @$document->loadHTML(file_get_contents(base_path('pages/admin/settings.html')));
+        $xpath = new \DOMXPath($document);
+        $warning = $document->getElementById('securityVerificationCooldown');
+        $this->assertNotNull($warning);
+        $this->assertSame('off', $warning->getAttribute('aria-live'));
+        $this->assertSame('auth-cooldown', $warning->getAttribute('class'));
+        $this->assertSame('fieldset', $xpath->query('preceding-sibling::*[1]', $warning)->item(0)->nodeName);
+        $this->assertSame(0, $xpath->query('.//input[@disabled or contains(@*[name()=":disabled"], "retryRemaining")]', $warning->parentNode)->length);
+        $this->assertSame(0, $xpath->query('ancestor::button', $warning)->length);
+        $buttons = $xpath->query('.//button[@type="submit"]', $warning->parentNode);
+        $this->assertSame(1, $buttons->length);
+        $this->assertStringContainsString('securityVerification.retryRemaining', $buttons->item(0)->getAttribute(':disabled'));
+        $this->assertStringContainsString('Confirm change', $buttons->item(0)->textContent);
+        foreach (['ownEmailCodeCooldown', 'recoveryCodeCooldown'] as $id) {
+            $staffWarning = $document->getElementById($id);
+            $this->assertNotNull($staffWarning);
+            $this->assertSame('off', $staffWarning->getAttribute('aria-live'));
+            $this->assertContains($xpath->query('preceding-sibling::*[1]', $staffWarning)->item(0)->nodeName, ['fieldset', 'div']);
+            $this->assertSame(0, $xpath->query('ancestor::button', $staffWarning)->length);
+        }
+    }
+
     private function sourceBetween(string $source, string $start, string $end): string
     {
         $startPosition = strpos($source, $start);

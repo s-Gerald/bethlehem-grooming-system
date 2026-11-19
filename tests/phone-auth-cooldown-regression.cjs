@@ -29,16 +29,23 @@ field('Code').value = '123456';
 for (const seconds of [60, 180, 300]) {
   context.setTiming({ challenge_id: 'same-code', status: 'active', can_verify: true,
     retry_after: seconds, resend_after: 60, expires_in: 600 });
+  vm.runInContext('step = "challenge";', context);
   context.updateControls();
   assert.equal(field('Verify').disabled, true);
+  assert.match(field('CodeCooldown').innerHTML, /Too many incorrect codes/);
+  const announcement = field('CooldownStatus').textContent;
+  now += 1000; timers.get(1)();
+  assert.match(field('CodeCooldown').innerHTML, new RegExp('>' + (seconds === 60 ? '0:59' : seconds === 180 ? '2:59' : '4:59') + '<'));
+  assert.equal(field('CooldownStatus').textContent, announcement);
   assert.match(field('VerifyLabel').textContent, /Try again in/);
-  now += (seconds - 1) * 1000;
+  now += (seconds - 2) * 1000;
   timers.get(1)();
-  assert.match(field('VerifyLabel').textContent, /1s/);
+  assert.match(field('CodeCooldown').innerHTML, />0:01</);
   now += 1000;
   timers.get(1)();
   assert.equal(field('Verify').disabled, false, 'The same unexpired code becomes usable automatically');
   assert.equal(field('Code').value, '123456');
+  assert.equal(field('CodeCooldown').hidden, true);
   assert.equal(field('Message').textContent, '');
   assert.equal(requests, 0, 'Countdown completion never sends or verifies');
 }

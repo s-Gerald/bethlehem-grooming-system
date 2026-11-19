@@ -117,7 +117,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!serverUser || phoneAction.disabled) return;
     phoneAction.disabled = true; hideStatus();
     try {
-      const { openPhoneVerification } = await import("./customer-phone-verification.js?v=mobile-policy-20261110&urls=20261103");
+      const { openPhoneVerification } = await import("./customer-phone-verification.js?v=mobile-policy-20261110&urls=20261103&cooldown-ui=20261119");
       await openPhoneVerification(phoneAction, serverUser, { navigate: false });
     } catch (error) { showStatus(error.message || "Unable to open phone verification.", "error"); }
     finally { phoneAction.disabled = false; }
@@ -438,13 +438,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (first) first.focus();
       else if (error.retryAfter > 0) {
         window.VerificationCode.startCountdown(error.retryAfter, remaining => {
-          const wasCoolingDown = passwordCoolingDown;
           passwordCoolingDown = Boolean(remaining);
           passwordSubmit.disabled = passwordCoolingDown;
-          if (remaining && !wasCoolingDown) showStatus('Too many attempts. Please wait before trying again.', 'error');
+          window.VerificationCode.renderCooldown(document.getElementById('settingsPasswordCooldown'), remaining, false, document.getElementById('settingsPasswordCooldownStatus'));
           passwordLabel.textContent = remaining
-            ? 'Try again in ' + window.VerificationCode.formatCountdown(remaining) : 'Change Password';
-          if (!remaining) showStatus('You can try changing your password again.', 'info');
+            ? 'Try again in ' + window.VerificationCode.formatCountdown(remaining, true) : 'Change Password';
+
         });
       }
       else if (error.code === 'password_screening_unavailable') showStatus('Password safety checking is temporarily unavailable. Try again later.', 'error');

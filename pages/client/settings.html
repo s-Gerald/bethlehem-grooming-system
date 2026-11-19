@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="stylesheet" href="/css/components/verification-code.css?v=customer-security-20261107-v1" />
+    <link rel="stylesheet" href="/css/components/verification-code.css?v=customer-security-20261107-v1&cooldown-ui=20261119" />
     <title>Settings | Bethlehem Animal Clinic</title>
 
     <link rel="stylesheet" href="/css/output.css?v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&names=20261028-v2&auth-hardening=20261030&customer-ux=20261031-v1&customer-security=20261107-v1" />
@@ -453,6 +453,8 @@
                     </div>
                   </div>
 
+                  <p id="settingsPasswordCooldown" class="auth-cooldown" aria-live="off" hidden></p>
+                  <span id="settingsPasswordCooldownStatus" class="sr-only" role="status"></span>
                   <div class="flex justify-end pt-1">
                     <button
                       id="changePasswordSubmit"
@@ -505,7 +507,7 @@
         <div id="settingsVerificationFields" hidden class="space-y-3">
           <p id="settingsVerificationInstruction" class="text-sm text-portal-muted"></p>
           <div class="verification-code-cells">
-            <input id="settingsVerificationCode" class="verification-code-input" type="text" inputmode="numeric" autocomplete="one-time-code" aria-label="6-digit verification code" aria-describedby="settingsVerificationInstruction settingsVerificationCodeError" />
+            <input id="settingsVerificationCode" class="verification-code-input" type="text" inputmode="numeric" autocomplete="one-time-code" aria-label="6-digit verification code" aria-describedby="settingsVerificationInstruction settingsVerificationCodeError settingsCodeCooldown" />
             <span class="verification-code-cell" aria-hidden="true"></span>
             <span class="verification-code-cell" aria-hidden="true"></span>
             <span class="verification-code-cell" aria-hidden="true"></span>
@@ -513,10 +515,13 @@
             <span class="verification-code-cell" aria-hidden="true"></span>
             <span class="verification-code-cell" aria-hidden="true"></span>
           </div>
+          <p id="settingsCodeCooldown" class="auth-cooldown" aria-live="off" hidden></p>
           <p id="settingsVerificationCodeError" class="text-sm text-red-700" aria-live="polite" hidden></p>
           <button id="settingsVerificationResend" type="button" class="verification-link text-sm">Resend code</button>
           <p id="settingsVerificationDelivery" class="text-sm text-portal-muted" role="status" hidden></p>
         </div>
+        <p id="settingsActionCooldown" class="auth-cooldown" aria-live="off" hidden></p>
+        <span id="settingsCooldownStatus" class="sr-only" role="status"></span>
         <p id="settingsConfirmationError" class="text-sm text-red-700" role="alert" hidden></p>
         <div class="flex flex-wrap justify-end gap-2">
           <button id="settingsConfirmationCancel" type="button" class="portal-button-secondary text-sm">Cancel</button>
@@ -529,12 +534,12 @@
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-policy-20261110"></script>
     <script src="/scripts/components/client-notification-ui.js?name-correction=20261108&v=20261030-pet-information&urls=20261103&customer-header=20261106-v2&short-notes=20261110"></script>
     <script type="module" src="/scripts/components/customer-header-notifications.js?v=customer-cache-20261005-v1&customer-header=20261106-v2"></script>
-    <script type="module" src="/scripts/components/customer-pre-registration-button.js?v=mobile-policy-20261110&registration-ui=20261027-v3&auth-feedback=20261028-v3&urls=20261103&queue-copy=20261103-v1"></script>
+    <script type="module" src="/scripts/components/customer-pre-registration-button.js?v=mobile-policy-20261110&registration-ui=20261027-v3&auth-feedback=20261028-v3&urls=20261103&queue-copy=20261103-v1&cooldown-ui=20261119"></script>
     <script src="/scripts/utils/credential-policy.js?v=20261107"></script>
     <script src="/scripts/utils/account-email.js?v=email-entry-20261028"></script>
-    <script src="/scripts/auth/verification-code.js?v=20261107&auth-cooldown=20261118"></script>
+    <script src="/scripts/auth/verification-code.js?v=20261107&auth-cooldown=20261118&cooldown-ui=20261119"></script>
     <script src="/scripts/auth/email-delivery.js?v=20261107&auth-cooldown=20261118"></script>
-    <script src="/scripts/components/customer-settings-confirmation.js?name-correction=20261108&v=20261107-v1&auth-cooldown=20261118"></script>
-    <script src="/scripts/components/client-settings.js?name-correction=20261108&customer-security=20261107-v1&v=mobile-policy-20261110&names=20261028-v2&auth-feedback=20261028-v3&mobile-format=20261110&remember=20261029&urls=20261103&credentials=20261107&auth-cooldown=20261118"></script>
+    <script src="/scripts/components/customer-settings-confirmation.js?name-correction=20261108&v=20261107-v1&auth-cooldown=20261118&cooldown-ui=20261119"></script>
+    <script src="/scripts/components/client-settings.js?name-correction=20261108&customer-security=20261107-v1&v=mobile-policy-20261110&names=20261028-v2&auth-feedback=20261028-v3&mobile-format=20261110&remember=20261029&urls=20261103&credentials=20261107&auth-cooldown=20261118&cooldown-ui=20261119"></script>
   </body>
 </html>
