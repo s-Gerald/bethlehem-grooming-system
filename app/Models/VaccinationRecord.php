@@ -12,6 +12,15 @@ class VaccinationRecord extends Model
 
     public const DUE_SOON_DAYS = 30;
 
+    public const MANUAL_PRICE_MESSAGE = 'Enter a price from ₱0.01 to ₱10,000.00, up to 2 decimal places.';
+
+    public static function validManualPrice(mixed $value): bool
+    {
+        return (is_string($value) || is_int($value) || is_float($value))
+            && preg_match('/^\d+(?:\.\d{1,2})?$/D', (string) $value)
+            && (float) $value >= 0.01 && (float) $value <= 10000;
+    }
+
     public const STATUS_CURRENT = 'current';
 
     public const STATUS_DUE_SOON = 'due_soon';
@@ -30,6 +39,8 @@ class VaccinationRecord extends Model
 
     protected $fillable = [
         'treatment_type',
+        'record_source',
+        'manual_price',
         'inventory_quantity',
         'expected_price',
         'expected_weight_kg',
@@ -59,6 +70,7 @@ class VaccinationRecord extends Model
     ];
 
     protected $casts = [
+        'manual_price' => 'decimal:2',
         'inventory_quantity' => 'decimal:2',
         'expected_price' => 'decimal:2',
         'expected_weight_kg' => 'decimal:2',

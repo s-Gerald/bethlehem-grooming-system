@@ -79,7 +79,10 @@ class ClinicMedicineChargeService
 
     public function recordCharge(ClinicAppointment $case, InventoryItem $item, array $pricing, string $requestKey, ?int $recordId): void
     {
-        $case->charges()->make([
+        $charge = $recordId !== null
+            ? $case->charges()->firstOrNew(['vaccination_record_id' => $recordId])
+            : $case->charges()->make();
+        $charge->fill([
             'kind' => 'medicine', 'description' => $item->item_name, 'inventory_item_id' => $item->item_id,
             'vaccination_record_id' => $recordId,
             'quantity' => 1, 'unit_price' => $pricing['price'], 'amount' => $pricing['price'],

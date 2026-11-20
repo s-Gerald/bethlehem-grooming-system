@@ -7,7 +7,6 @@ use App\Models\GatewayPayment;
 use App\Models\InventoryItem;
 use App\Models\User;
 use App\Models\VaccinationRecord;
-use App\Support\ClinicClinicalRules;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
@@ -40,11 +39,11 @@ class ClinicTreatmentFinalizer
     {
         if ($record->published_at !== null) return;
         $this->assertPublishable($record);
-        $usesInventory = $record->inventory_item_id !== null;
+        $usesInventory = $record->record_source === 'inventory';
 
         $item = null;
         if ($usesInventory) {
-            $item = InventoryItem::query()->whereKey($record->inventory_item_id)->lockForUpdate()->first();
+            $item = InventoryItem::query()->whereKey($record->inventory_item_id)->with('weightPrices')->lockForUpdate()->first();
             if (! $item || ! $item->is_active || $item->category !== $record->treatment_type) {
                 throw ValidationException::withMessages(['inventory_item_id' => 'Select an active Inventory product of the correct treatment type.']);
             }
@@ -67,58 +66,28 @@ class ClinicTreatmentFinalizer
 
     private function assertPublishable(VaccinationRecord $record): void
     {
-        if ($record->voided_at !== null || ! $record->hasPublishingRequirements()) {
-            throw ValidationException::withMessages(['treatment' => 'Complete the treatment name and administration date.']);
-        }
-        $usesInventory = $record->inventory_item_id !== null;
-        if ($usesInventory && $record->administered_date->toDateString() !== now()->toDateString()) {
-            throw ValidationException::withMessages(['administered_date' => 'Review this treatment’s administration date before finalizing.']);
-        }
-        $errors = ClinicClinicalRules::doseErrors($record->dose_amount, $record->dose_unit, $usesInventory)
-            + ClinicClinicalRules::administrationErrors($record->route, $record->administration_site, $usesInventory);
+        $errors = app(ClinicTreatmentChargeService::class)->publishingErrors($record);
         if ($errors) {
             throw ValidationException::withMessages($errors);
-        }
-
-        if ($usesInventory) {
-            if (! is_numeric($record->inventory_quantity) || (float) $record->inventory_quantity < 1
-                || (float) $record->inventory_quantity > 99999999
-                || floor((float) $record->inventory_quantity) !== (float) $record->inventory_quantity) {
-                throw ValidationException::withMessages(['inventory_quantity' => 'Enter a whole number of physical inventory units, at least 1.']);
-            }
         }
     }
 
     private function publishRecord(VaccinationRecord $record, ?ClinicAppointment $case, User $actor, ?InventoryItem $item): void
     {
-        $usesInventory = $item !== null;
-
-        if ($usesInventory && $record->treatment_type === 'medicine') {
-            if (! $case || ! $record->inventory_quantity || ! $record->request_key) {
-                throw ValidationException::withMessages(['inventory_quantity' => 'An ongoing Clinic case and inventory quantity used are required for medicine treatments.']);
-            }
-            app(ClinicMedicineChargeService::class)->save($case, [[
-                'inventory_item_id' => $record->inventory_item_id,
-                'inventory_quantity' => $record->inventory_quantity,
-                'expected_price' => $record->expected_price,
-                'expected_weight_kg' => $record->expected_weight_kg,
-                'request_key' => $record->request_key,
-                'vaccination_record_id' => $record->id,
-                'batch_number' => $record->batch_number,
-                'expiry_date' => $record->product_expiry_date?->toDateString(),
-            ]], $actor);
-        } elseif ($usesInventory) {
-            if ($case && ($item->selling_price === null || (float) $item->selling_price < 0)) {
-                throw ValidationException::withMessages(['inventory_item_id' => 'Set this vaccine\'s selling price in Inventory before finalizing its case charge.']);
-            }
+        if ($case) {
+            // An existing charge must never bypass current price/weight review or physical usage.
+            app(ClinicTreatmentChargeService::class)->sync($record, $case, $item);
+        }
+        if ($item) {
             $this->stockMovements->remove($actor, [[
                 'item_id' => $item->item_id,
                 'quantity' => $record->inventory_quantity,
                 'unit_cost_at_time' => $item->unit_cost,
+                'selling_price' => $record->expected_price,
                 'reason' => 'used',
                 'batch_number' => $record->batch_number,
                 'expiry_date' => $record->product_expiry_date?->toDateString(),
-                'notes' => "Vaccination · {$record->pet->pet_name}",
+                'notes' => ($record->treatment_type === 'medicine' ? 'Medicine/treatment' : 'Vaccination').' · '.$record->pet->pet_name,
                 'reference_type' => 'clinic',
                 'reference_id' => $record->clinic_appointment_id,
                 'vaccination_record_id' => $record->id,
@@ -129,25 +98,11 @@ class ClinicTreatmentFinalizer
             'published_at' => now(),
             'published_by_user_id' => $actor->user_id,
         ])->save();
-
-        if ($case && $usesInventory && $record->treatment_type !== 'medicine') {
-            $this->recordVaccineCharge($case, $record, $item);
-            app(ClinicBillingService::class)->updateTotal($case);
-        }
     }
 
     public function price(InventoryItem $item, ClinicAppointment $case): array
     {
-        if (InventoryItem::isMeasuredUnit($item->unit)) {
-            throw ValidationException::withMessages(['inventory_item_id' => 'Select a product with physical inventory units.']);
-        }
-        if ($item->category === 'medicine') {
-            return app(ClinicMedicineChargeService::class)->price($item, $case->vitals?->weight_kg);
-        }
-        if ($item->selling_price === null || (float) $item->selling_price < 0) {
-            throw ValidationException::withMessages(['inventory_item_id' => 'Set this vaccine’s selling price in Inventory.']);
-        }
-        return ['price' => $item->selling_price, 'pet_weight_kg' => null];
+        return app(ClinicTreatmentChargeService::class)->price($item, $case);
     }
 
     /** The group, selected cases and shared inventory item are locked by the caller. */
@@ -160,7 +115,7 @@ class ClinicTreatmentFinalizer
         $available = $this->batchBalances->treatmentAvailability($item, $balance)['available_quantity'];
         $available = min($available, $this->batchBalances->quantities($item, $balance, (float) $reservation)['saleable_quantity']);
         $medicine = app(ClinicMedicineChargeService::class);
-        $prepared = $records->map(function (VaccinationRecord $record, int $id) use ($cases, $item, $scope, $medicine, &$available) {
+        $prepared = $records->map(function (VaccinationRecord $record, int $id) use ($cases, $item, $scope, &$available) {
             $case = $cases->get($id);
             try {
                 $this->assertPublishable($record);
@@ -168,12 +123,7 @@ class ClinicTreatmentFinalizer
                     throw ValidationException::withMessages(['inventory_quantity' => 'The selected patients need more unexpired stock than is available.']);
                 }
                 $available -= (float) $record->inventory_quantity;
-                $pricing = $item->category === 'medicine'
-                    ? $medicine->reviewPrice($item, $case->vitals?->weight_kg, $record->expected_price, $record->expected_weight_kg)
-                    : $this->price($item, $case);
-                if ($item->category === 'vaccine' && (float) $pricing['price'] !== (float) $record->expected_price) {
-                    throw ValidationException::withMessages(['price' => 'The vaccine price changed. Review the price again.']);
-                }
+                $pricing = app(ClinicTreatmentChargeService::class)->reviewPrice($record, $item, $case);
                 $total = round((float) $case->charges_sum_amount + (float) $pricing['price'], 2);
                 if ($total > 99999999.99) {
                     throw ValidationException::withMessages(['charges' => 'The case charges exceed the supported total.']);
@@ -208,18 +158,9 @@ class ClinicTreatmentFinalizer
             if ($item->category === 'medicine') {
                 $medicine->recordCharge($case, $item, $pricing, $record->request_key, $record->id);
             } else {
-                $this->recordVaccineCharge($case, $record, $item);
+                app(ClinicTreatmentChargeService::class)->recordCharge($case, $record, $pricing['price'], $item->item_id);
             }
             $case->update(['total_amount' => $total]);
         }
-    }
-
-    private function recordVaccineCharge(ClinicAppointment $case, VaccinationRecord $record, InventoryItem $item): void
-    {
-        $case->charges()->create([
-            'kind' => 'vaccine', 'description' => $record->vaccine_name,
-            'inventory_item_id' => $item->item_id, 'vaccination_record_id' => $record->id,
-            'quantity' => 1, 'unit_price' => $item->selling_price, 'amount' => $item->selling_price,
-        ]);
     }
 }

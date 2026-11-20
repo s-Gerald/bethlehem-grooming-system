@@ -140,7 +140,7 @@ class AdminVaccinationInterfaceTest extends TestCase
             'vaccination-dose-amount' => 'doseAmountRequired',
             'vaccination-dose-unit' => 'doseUnitRequired',
             'vaccination-dose-unit-other' => 'customDoseUnitRequired',
-            'vaccination-route' => 'inventoryClinicalRequired',
+            'vaccination-route' => 'currentClinicalRequired',
             'vaccination-site' => 'siteRequired',
         ] as $field => $requiredState) {
             $this->assertMatchesRegularExpression(
@@ -188,7 +188,7 @@ class AdminVaccinationInterfaceTest extends TestCase
         $this->assertStringContainsString('selectedProduct.next_batch?.expiry_date', $form);
         $this->assertStringContainsString('Next Vaccination Date', $form);
 
-        $inventoryForm = $this->sourceBetween($form, '<section x-show="recordKind === \'inventory\'"', '<section x-show="recordKind === \'historical\'"');
+        $inventoryForm = $this->sourceBetween($form, '<section x-show="recordKind === \'inventory\'"', '<section x-show="recordKind !== \'inventory\'"');
         foreach ([
             'x-model="form.vaccine_name"',
             'x-model="form.product_name"',
@@ -226,8 +226,8 @@ class AdminVaccinationInterfaceTest extends TestCase
 
         $this->assertStringContainsString('id="vaccination-administered-date" type="text" readonly', $form);
         $this->assertStringContainsString('id="historical-administered-date" type="date"', $form);
-        $this->assertStringContainsString('this.recordKind === "historical" ? {', $payloadBuilder);
-        $this->assertStringContainsString('administered_date: nullableText("administered_date")', $payloadBuilder);
+        $this->assertStringContainsString("this.recordKind === 'historical' ? {administered_date:", $payloadBuilder);
+        $this->assertStringContainsString("administered_date: nullableText('administered_date')", $payloadBuilder);
 
         $this->assertStringContainsString('inventory_item_id: this.recordKind === "inventory" ? nullableId("inventory_item_id") : null', $payloadBuilder);
         $this->assertStringContainsString('clinic_appointment_id: this.formModal.clinicAppointmentId', $payloadBuilder);

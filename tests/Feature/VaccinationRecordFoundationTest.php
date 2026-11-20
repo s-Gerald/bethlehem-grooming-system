@@ -18,6 +18,30 @@ class VaccinationRecordFoundationTest extends TestCase
 {
     private $migration;
 
+    public function test_source_migration_preserves_legacy_facts_and_never_backfills_manual_prices(): void
+    {
+        $migration = require database_path('migrations/2026_11_20_000001_add_explicit_treatment_source_and_manual_price.php');
+        $migration->down();
+        $this->insertPet(101);
+        $this->insertInventoryItem(301);
+        foreach ([301, null] as $index => $itemId) {
+            DB::table('vaccination_records')->insert([
+                'id' => $index + 1, 'pet_id' => 101, 'inventory_item_id' => $itemId,
+                'vaccine_name' => 'Original treatment', 'administered_date' => '2020-01-01',
+                'dose_amount' => '0.8', 'dose_unit' => 'mL', 'notes' => 'Original notes',
+            ]);
+        }
+        $original = DB::table('vaccination_records')->get()->map(fn ($row) => (array) $row)->all();
+        $migration->up();
+        $this->assertDatabaseHas('vaccination_records', ['id' => 1, 'record_source' => 'inventory', 'manual_price' => null]);
+        $this->assertDatabaseHas('vaccination_records', ['id' => 2, 'record_source' => 'historical', 'manual_price' => null]);
+        $this->assertSame(0, DB::table('vaccination_records')->where('record_source', 'manual')->count());
+        foreach ($original as $row) $this->assertDatabaseHas('vaccination_records', $row);
+        $migration->down();
+        $this->assertSame($original, DB::table('vaccination_records')->get()->map(fn ($row) => (array) $row)->all());
+        $migration->up();
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -57,6 +81,7 @@ class VaccinationRecordFoundationTest extends TestCase
         $this->migration->up();
         (require database_path('migrations/2026_10_12_000001_extend_vaccination_records_for_treatments.php'))->up();
         (require database_path('migrations/2026_10_12_000004_separate_treatment_clinical_details_from_inventory.php'))->up();
+        (require database_path('migrations/2026_11_20_000001_add_explicit_treatment_source_and_manual_price.php'))->up();
     }
 
     protected function tearDown(): void

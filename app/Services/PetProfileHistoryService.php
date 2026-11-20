@@ -7,6 +7,7 @@ use App\Models\BookingPet;
 use App\Models\ClinicAppointment;
 use App\Models\Pet;
 use App\Models\VaccinationRecord;
+use App\Support\ClinicTreatmentPresentation;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -116,14 +117,15 @@ class PetProfileHistoryService
     public function vaccinationRecords(Pet $pet): Collection
     {
         return $pet->vaccinationRecords()
-            ->visibleToClients()
-            ->with([
-                'clinicAppointment:id,appointment_reference',
-            ])
+            ->published()->notVoided()
+            ->with(ClinicTreatmentPresentation::RELATIONS)
             ->orderByDesc('administered_date')
             ->orderByDesc('id')
             ->get()
-            ->map(fn (VaccinationRecord $record) => $this->formatVaccinationRecord($record))
+            ->map(fn (VaccinationRecord $record) => [
+                ...ClinicTreatmentPresentation::record($record),
+                'appointment_reference' => $record->clinicAppointment?->appointment_reference,
+            ])
             ->values();
     }
 
@@ -178,24 +180,4 @@ class PetProfileHistoryService
             ])->values(),
         ];
     }
-
-    private function formatVaccinationRecord(VaccinationRecord $record): array
-    {
-        return [
-            'vaccine_name' => $record->vaccine_name,
-            'product_name' => $record->product_name,
-            'manufacturer' => $record->manufacturer,
-            'batch_number' => $record->batch_number,
-            'administered_date' => $record->administered_date?->toDateString(),
-            'next_due_date' => $record->next_due_date?->toDateString(),
-            'product_expiry_date' => $record->product_expiry_date?->toDateString(),
-            'dose_amount' => $record->dose_amount,
-            'dose_unit' => $record->dose_unit,
-            'route' => $record->route,
-            'administration_site' => $record->administration_site,
-            'appointment_reference' => $record->clinicAppointment?->appointment_reference,
-            'due_status' => $record->dueStatus(),
-        ];
-    }
-
 }

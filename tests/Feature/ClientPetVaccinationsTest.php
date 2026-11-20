@@ -57,6 +57,7 @@ class ClientPetVaccinationsTest extends TestCase
         $this->vaccinationMigration->up();
         (require database_path('migrations/2026_10_12_000001_extend_vaccination_records_for_treatments.php'))->up();
         (require database_path('migrations/2026_10_12_000004_separate_treatment_clinical_details_from_inventory.php'))->up();
+        (require database_path('migrations/2026_11_20_000001_add_explicit_treatment_source_and_manual_price.php'))->up();
     }
 
     protected function tearDown(): void

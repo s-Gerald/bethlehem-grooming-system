@@ -22,6 +22,8 @@ vm.runInContext(source, sandbox);
 
 function component() {
   const instance = sandbox.adminClinicVaccinations();
+  assert.equal(instance.recordKind, 'manual');
+  instance.recordKind = 'inventory';
   instance.$nextTick = (callback) => callback();
   instance.$refs = {};
   instance.$store = { clinicAccess: { permissions: { clinical: true } }, clinicFeedback: { confirm: async () => true, notify() {} } };
@@ -33,7 +35,7 @@ const vaccine = {
   available_quantity: 3, next_batch: { batch_number: "EARLY", expiry_date: "2027-12-01" },
 };
 const draft = {
-  id: 7, state: "draft", inventory_item_id: 301, vaccine_name: "Rabies",
+  id: 7, state: "draft", record_source: 'inventory', inventory_item_id: 301, vaccine_name: "Rabies",
   administered_date: sandbox.vaccinationToday(), dose_amount: 1, dose_unit: "mL",
   inventory_quantity: 1, clinic_appointment_id: 201,
 };
@@ -59,7 +61,7 @@ const draft = {
   discovery.changeTreatmentType('vaccine');
   resolveMedicine({data: [{...vaccine, category: 'medicine'}]}); await pendingMedicine;
   assert.equal(discovery.medicineResults.length, 0);
-  discovery.recordKind = 'historical'; discovery.changeSource();
+  discovery.recordKind = 'manual'; discovery.changeSource();
   assert.equal(discovery.productDropdown.open, false);
 
   const defaults = component(); defaults.formModal.open = true;
@@ -165,7 +167,7 @@ const draft = {
   for (const field of ["administered_by_user_id", "administered_by_name"]) assert.equal(Object.hasOwn(payload, field), false);
 
   const historical = component();
-  historical.openEditForm({ ...draft, inventory_item_id: null, administered_date: "2020-01-01", manufacturer: "Original", batch_number: "OLD", administered_by_user_id: null, administered_by_name: "External vet" });
+  historical.openEditForm({ ...draft, record_source: 'historical', inventory_item_id: null, administered_date: "2020-01-01", manufacturer: "Original", batch_number: "OLD", administered_by_user_id: null, administered_by_name: "External vet" });
   assert.equal(historical.recordKind, "historical");
   historical.form.next_due_date = "2020-02-01";
   historical.form.dose_amount = "";
@@ -210,6 +212,7 @@ const draft = {
   treatment.appointment = { id: 201, status: "in_consultation", weight_kg: 4 };
   treatment.currentUserId = 2;
   treatment.openCreateForm();
+  treatment.recordKind = 'inventory'; treatment.changeSource();
   treatment.changeTreatmentType("medicine");
   treatment.selectMedicine(medicine);
   assert.equal(treatment.medicineQuote.price, 250);
@@ -254,17 +257,18 @@ const draft = {
   assert.equal(treatment.validateForm(), true);
   assert.equal(treatment.buildPayload().expected_price, 250);
 
-  treatment.recordKind = "historical";
+  treatment.recordKind = "manual";
   treatment.changeSource();
-  treatment.form.vaccine_name = "External medicine";
-  treatment.form.administered_date = "2020-01-01";
-  treatment.form.administered_by_name = "External provider";
+  treatment.form.vaccine_name = "Manual medicine";
+  treatment.form.manual_price = '350.50';
   assert.equal(treatment.validateForm(), true);
   const externalPayload = treatment.buildPayload();
   assert.equal(externalPayload.inventory_item_id, null);
   assert.equal(Object.hasOwn(externalPayload, "expected_price"), false);
   assert.equal(externalPayload.inventory_quantity, null);
-  assert.equal(externalPayload.administered_date, "2020-01-01");
+  assert.equal(externalPayload.record_source, 'manual');
+  assert.equal(externalPayload.manual_price, '350.50');
+  assert.equal(Object.hasOwn(externalPayload, 'administered_date'), false);
   treatment.changeTreatmentType("vaccine");
   assert.equal(treatment.selectedMedicine, null);
   assert.equal(treatment.form.inventory_item_id, "");

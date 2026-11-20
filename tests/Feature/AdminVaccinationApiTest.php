@@ -21,6 +21,206 @@ class AdminVaccinationApiTest extends TestCase
 
     private $vaccinationMigration;
 
+    private function finalizeTreatmentVisit(): \Illuminate\Testing\TestResponse
+    {
+        return $this->postJson('/api/admin/clinic-cases/201/finish');
+    }
+
+    private function manualTreatment(array $changes = []): array
+    {
+        return array_replace([
+            'record_source' => 'manual', 'treatment_type' => 'medicine', 'clinic_appointment_id' => 201,
+            'vaccine_name' => 'Ceftriaxone', 'manual_price' => '350.50', 'complete_entry' => true,
+            'dose_amount' => '0.8', 'dose_unit' => 'mL', 'route' => 'intramuscular',
+            'administration_site' => 'Right thigh', 'notes' => 'Administered during consultation',
+            'request_key' => (string) \Illuminate\Support\Str::uuid(),
+        ], $changes);
+    }
+
+    public function test_manual_add_update_remove_synchronizes_the_bill_without_stock_use(): void
+    {
+        $this->medicineStock();
+        $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->manualTreatment())->assertCreated()
+            ->assertJsonPath('vaccination.record_source', 'manual')->assertJsonPath('vaccination.manual_price', '350.50')
+            ->assertJsonPath('vaccination.administered_date', '2026-07-23')->json('vaccination.id');
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'description' => 'Ceftriaxone',
+            'quantity' => 1, 'unit_price' => 350.50, 'amount' => 350.50, 'inventory_item_id' => null]);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 201, 'total_amount' => 350.50]);
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['vaccine_name' => 'Ceftriaxone updated', 'manual_price' => '400'])->assertOk();
+        $this->assertDatabaseCount('clinic_charges', 1);
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'description' => 'Ceftriaxone updated', 'amount' => 400]);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 201, 'total_amount' => 400]);
+        $this->deleteJson("/api/admin/pets/101/vaccinations/{$id}")->assertOk();
+        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 201, 'total_amount' => 0]);
+        $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
+    }
+
+    public static function invalidManualPrices(): array
+    {
+        return array_map(fn ($value) => [$value], ['abc', '₱350', '$350', '-1', '+1', '1e5', '1e2', '3.5.0', '350.501', '0', '0.00', '10000.01', '10001', '.50', '350.', '', null, true, []]);
+    }
+
+    public function test_manual_vaccine_preserves_product_details_and_retries_do_not_duplicate_its_charge(): void
+    {
+        $this->medicineStock();
+        $payload = $this->manualTreatment(['treatment_type' => 'vaccine', 'product_name' => 'Rabies product', 'manufacturer' => 'Brand',
+            'batch_number' => 'MANUAL-LOT', 'product_expiry_date' => '2027-01-01', 'next_due_date' => '2027-07-23']);
+        $this->postJson('/api/admin/pets/101/vaccinations', array_replace($payload, ['product_expiry_date' => '2026-07-22']))
+            ->assertUnprocessable()->assertJsonValidationErrors('product_expiry_date');
+        $id = $this->postJson('/api/admin/pets/101/vaccinations', $payload)->assertCreated()->json('vaccination.id');
+        $this->postJson('/api/admin/pets/101/vaccinations', $payload)->assertOk()->assertJsonPath('vaccination.id', $id);
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['manual_price' => '1e2'])->assertUnprocessable()->assertJsonValidationErrors('manual_price');
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'amount' => 350.50]);
+        $chargeId = DB::table('clinic_charges')->value('id');
+        $this->patchJson("/api/admin/clinic-cases/201/charges/{$chargeId}", ['unit_price' => 1])->assertUnprocessable()->assertJsonValidationErrors('charges');
+        $this->finalizeTreatmentVisit()->assertOk();
+        $this->assertDatabaseCount('clinic_charges', 1);
+        $this->getJson("/api/admin/pets/101/vaccinations/{$id}")->assertOk()->assertJsonPath('vaccination.record_source', 'manual')
+            ->assertJsonPath('vaccination.product_name', 'Rabies product')->assertJsonPath('vaccination.manufacturer', 'Brand')
+            ->assertJsonPath('vaccination.batch_number', 'MANUAL-LOT')->assertJsonPath('vaccination.product_expiry_date', '2027-01-01')
+            ->assertJsonPath('vaccination.next_due_date', '2027-07-23');
+        $this->authenticateAs('admin', 1);
+        $this->postJson("/api/admin/pets/101/vaccinations/{$id}/void", ['void_reason' => 'Incorrect product'])->assertOk();
+        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 201, 'total_amount' => 0]);
+        $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
+    }
+
+    public function test_new_manual_source_is_default_and_requires_current_date_and_full_clinical_details(): void
+    {
+        $this->medicineStock();
+        $payload = $this->manualTreatment();
+        unset($payload['record_source']);
+        $this->postJson('/api/admin/pets/101/vaccinations', $payload + ['administered_date' => '2020-01-01'])
+            ->assertUnprocessable()->assertJsonValidationErrors('administered_date');
+        $this->postJson('/api/admin/pets/101/vaccinations', array_replace($payload, ['dose_amount' => null, 'dose_unit' => null, 'route' => null]))
+            ->assertUnprocessable()->assertJsonValidationErrors(['dose_amount', 'dose_unit', 'route']);
+        $this->postJson('/api/admin/pets/101/vaccinations', array_replace($payload, ['administration_site' => null]))
+            ->assertUnprocessable()->assertJsonValidationErrors('administration_site');
+        $this->postJson('/api/admin/pets/101/vaccinations', $payload)->assertCreated()->assertJsonPath('vaccination.record_source', 'manual');
+        $this->postJson('/api/admin/pets/101/vaccinations', ['record_source' => 'historical'])
+            ->assertUnprocessable()->assertJsonValidationErrors('record_source');
+        $id = $this->insertVaccination(101, 'Legacy external medicine', '2020-01-01', ['clinic_appointment_id' => 201]);
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['record_source' => 'manual', 'manual_price' => 350])
+            ->assertUnprocessable()->assertJsonValidationErrors('record_source');
+        $this->getJson("/api/admin/pets/101/vaccinations/{$id}")->assertOk()->assertJsonPath('vaccination.record_source', 'historical');
+        $this->assertDatabaseCount('clinic_charges', 1);
+    }
+
+    public function test_inventory_vaccine_charge_is_immediate_and_price_changes_require_review_before_consumption(): void
+    {
+        $this->medicineStock();
+        $this->insertRabiesStock(302);
+        DB::table('inventory_items')->where('item_id', 302)->update(['selling_price' => 500]);
+        $id = $this->postJson('/api/admin/pets/101/vaccinations', [
+            'record_source' => 'inventory', 'inventory_item_id' => 302, 'clinic_appointment_id' => 201, 'inventory_quantity' => 1,
+            'dose_amount' => '0.8', 'dose_unit' => 'mL', 'route' => 'oral', 'expected_price' => 500, 'complete_entry' => true,
+        ])->assertCreated()->json('vaccination.id');
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'description' => 'Rabies Vaccine', 'quantity' => 1, 'amount' => 500]);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 201, 'total_amount' => 500]);
+        $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
+        DB::table('inventory_items')->where('item_id', 302)->update(['selling_price' => 550]);
+        $this->finalizeTreatmentVisit()->assertUnprocessable()->assertJsonValidationErrors("treatments.$id.expected_price");
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'amount' => 500]);
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['expected_price' => 500])->assertUnprocessable();
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['expected_price' => null])->assertUnprocessable();
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['expected_price' => 550])->assertOk();
+        $this->finalizeTreatmentVisit()->assertOk();
+        $this->assertDatabaseCount('clinic_charges', 1);
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'amount' => 550]);
+        $this->assertSame(1, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
+    }
+
+    #[DataProvider('invalidManualPrices')]
+    public function test_manual_price_rejects_invalid_values_without_saving_or_billing(mixed $price): void
+    {
+        $this->medicineStock();
+        $this->postJson('/api/admin/pets/101/vaccinations', $this->manualTreatment(['manual_price' => $price]))
+            ->assertUnprocessable()->assertJsonValidationErrors('manual_price');
+        $this->assertDatabaseCount('vaccination_records', 0);
+        $this->assertDatabaseCount('clinic_charges', 0);
+    }
+
+    public function test_manual_prices_accept_two_decimals_and_per_treatment_limit_without_capping_case_total(): void
+    {
+        $this->medicineStock();
+        foreach (['350', '350.5', '350.50', '0.01', '10000.00', '10000'] as $price) {
+            $this->postJson('/api/admin/pets/101/vaccinations', $this->manualTreatment(['manual_price' => $price]))->assertCreated();
+        }
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 201, 'total_amount' => 21051.01]);
+        $this->assertDatabaseCount('clinic_charges', 6);
+    }
+
+    public function test_manual_drafts_are_unbilled_until_complete_and_finalization_retains_history_without_duplicate_charges(): void
+    {
+        $this->medicineStock();
+        $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->manualTreatment([
+            'complete_entry' => false, 'manual_price' => null, 'route' => null,
+        ]))->assertCreated()->json('vaccination.id');
+        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->finalizeTreatmentVisit()->assertUnprocessable();
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['manual_price' => '350.50', 'route' => 'intramuscular', 'complete_entry' => true])->assertOk();
+        $this->assertDatabaseCount('clinic_charges', 1);
+        $this->finalizeTreatmentVisit()->assertOk();
+        DB::transaction(fn () => app(\App\Services\ClinicTreatmentFinalizer::class)
+            ->finalizeVisit(\App\Models\ClinicAppointment::whereKey(201)->lockForUpdate()->first(), auth()->user()));
+        $this->assertDatabaseCount('clinic_charges', 1);
+        $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
+        $this->getJson('/api/admin/pets/101/vaccinations?clinic_appointment_id=201')->assertOk()
+            ->assertJsonPath('vaccinations.0.record_source', 'manual')->assertJsonPath('vaccinations.0.state', 'published')
+            ->assertJsonPath('vaccinations.0.manual_price', '350.50')->assertJsonPath('vaccinations.0.dose_amount', '0.800')
+            ->assertJsonPath('vaccinations.0.route', 'intramuscular')->assertJsonPath('vaccinations.0.administration_site', 'Right thigh')
+            ->assertJsonPath('vaccinations.0.notes', 'Administered during consultation')->assertJsonPath('vaccinations.0.clinic_appointment_id', 201);
+    }
+
+    public function test_manual_charge_failure_rolls_back_treatment_and_editing_incomplete_removes_charge(): void
+    {
+        $this->medicineStock();
+        $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->manualTreatment())->assertCreated()->json('vaccination.id');
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['manual_price' => null])->assertOk();
+        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 201, 'total_amount' => 0]);
+        $this->mock(\App\Services\ClinicBillingService::class)->shouldReceive('updateTotal')
+            ->andThrow(\Illuminate\Validation\ValidationException::withMessages(['charges' => 'Unable to update total.']));
+        $this->postJson('/api/admin/pets/101/vaccinations', $this->manualTreatment())->assertUnprocessable();
+        $this->assertDatabaseCount('vaccination_records', 1);
+        $this->assertDatabaseCount('clinic_charges', 0);
+    }
+
+    public function test_manual_update_and_removal_roll_back_when_billing_total_update_fails(): void
+    {
+        $this->medicineStock();
+        $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->manualTreatment())->assertCreated()->json('vaccination.id');
+        $this->mock(\App\Services\ClinicBillingService::class)->shouldReceive('updateTotal')
+            ->andThrow(\Illuminate\Validation\ValidationException::withMessages(['charges' => 'Unable to update total.']));
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['vaccine_name' => 'Changed', 'manual_price' => '400'])->assertUnprocessable();
+        $this->assertDatabaseHas('vaccination_records', ['id' => $id, 'vaccine_name' => 'Ceftriaxone', 'manual_price' => 350.50]);
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'description' => 'Ceftriaxone', 'amount' => 350.50]);
+        $this->deleteJson("/api/admin/pets/101/vaccinations/{$id}")->assertUnprocessable();
+        $this->assertDatabaseHas('vaccination_records', ['id' => $id]);
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'amount' => 350.50]);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 201, 'total_amount' => 350.50]);
+    }
+
+    public function test_inventory_add_bills_before_stock_use_and_finalization_still_revalidates_prices(): void
+    {
+        $this->medicineStock();
+        $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->medicineTreatment(['complete_entry' => true]))->assertCreated()->json('vaccination.id');
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'amount' => 250]);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 201, 'total_amount' => 250]);
+        $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
+        DB::table('inventory_items')->where('item_id', 301)->update(['selling_price' => 450]);
+        $this->finalizeTreatmentVisit()->assertUnprocessable();
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'amount' => 250]);
+        $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['expected_price' => 450, 'complete_entry' => true])->assertOk();
+        $this->finalizeTreatmentVisit()->assertOk();
+        $this->assertDatabaseCount('clinic_charges', 1);
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'amount' => 450]);
+        $this->assertSame(1, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
+    }
+
     public function test_bulk_vaccination_checks_total_stock_and_preserves_each_patient_dose_on_retry(): void
     {
         Carbon::setTestNow('2026-07-23 14:15:00');
@@ -216,6 +416,7 @@ class AdminVaccinationApiTest extends TestCase
         (require database_path('migrations/2026_10_11_000001_add_inventory_weight_pricing_mode.php'))->up();
         (require database_path('migrations/2026_10_12_000004_separate_treatment_clinical_details_from_inventory.php'))->up();
         (require database_path('migrations/2026_10_13_000003_link_treatment_inventory_movements.php'))->up();
+        (require database_path('migrations/2026_11_20_000001_add_explicit_treatment_source_and_manual_price.php'))->up();
     }
 
     protected function tearDown(): void
@@ -990,23 +1191,23 @@ class AdminVaccinationApiTest extends TestCase
         $this->insertPet(101, 'Mochi', 'cat');
         $this->insertRabiesStock(301);
         foreach (['2026-06-01', '2026-07-23'] as $date) {
-            $id = $this->postJson('/api/admin/pets/101/vaccinations', [
-                'inventory_item_id' => null, 'vaccine_name' => 'External Rabies',
-                'administered_date' => $date, 'product_name' => 'Original product', 'manufacturer' => 'Original manufacturer',
-                'batch_number' => 'ORIGINAL', 'product_expiry_date' => '2026-08-01', 'complete_entry' => true,
-            ])->assertCreated()->json('vaccination.id');
+            $id = $this->insertVaccination(101, 'External Rabies', $date, [
+                'product_name' => 'Original product', 'manufacturer' => 'Original manufacturer',
+                'batch_number' => 'ORIGINAL', 'product_expiry_date' => '2026-08-01',
+            ]);
             $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['notes' => 'Documented later.'])
-                ->assertOk()->assertJsonPath('vaccination.administered_date', $date);
+                ->assertOk()->assertJsonPath('vaccination.administered_date', $date)->assertJsonPath('vaccination.record_source', 'historical');
             $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish", ['consume_inventory' => false])
                 ->assertOk()->assertJsonPath('vaccination.administered_date', $date)
                 ->assertJsonPath('vaccination.batch_number', 'ORIGINAL')
                 ->assertJsonPath('vaccination.manufacturer', 'Original manufacturer');
         }
+        $this->assertDatabaseCount('clinic_charges', 0);
         $this->assertStockOnHand(301, '6');
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
     }
 
-    public function test_old_inventory_drafts_require_explicit_historical_documentation_and_keep_the_date(): void
+    public function test_old_inventory_drafts_preserve_the_date_and_cannot_create_new_historical_entries(): void
     {
         Carbon::setTestNow('2026-07-23 10:00:00');
         $this->authenticateAs('staff', 2);
@@ -1016,10 +1217,10 @@ class AdminVaccinationApiTest extends TestCase
         DB::table('vaccination_records')->where('id', $id)->update(['administered_date' => '2026-07-20', 'batch_number' => 'ORIGINAL']);
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish", ['consume_inventory' => true])
             ->assertUnprocessable()->assertJsonValidationErrors('administered_date');
-        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['inventory_item_id' => null])
-            ->assertOk()->assertJsonPath('vaccination.administered_date', '2026-07-20');
-        $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish", ['consume_inventory' => false])
-            ->assertOk()->assertJsonPath('vaccination.administered_date', '2026-07-20')
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['record_source' => 'historical', 'inventory_item_id' => null])
+            ->assertUnprocessable()->assertJsonValidationErrors('record_source');
+        $this->getJson("/api/admin/pets/101/vaccinations/{$id}")
+            ->assertOk()->assertJsonPath('vaccination.administered_date', '2026-07-20')->assertJsonPath('vaccination.record_source', 'inventory')
             ->assertJsonPath('vaccination.batch_number', 'ORIGINAL');
         $this->assertStockOnHand(301, '6');
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
@@ -1200,7 +1401,7 @@ class AdminVaccinationApiTest extends TestCase
     private function medicineTreatment(array $changes = []): array
     {
         return array_replace([
-            'treatment_type' => 'medicine', 'inventory_item_id' => 301, 'clinic_appointment_id' => 201,
+            'record_source' => 'inventory', 'treatment_type' => 'medicine', 'inventory_item_id' => 301, 'clinic_appointment_id' => 201,
             'dose_amount' => 0.5, 'dose_unit' => 'mL', 'route' => 'oral',
             'inventory_quantity' => 1,
             'expected_price' => 250, 'expected_weight_kg' => null,
@@ -1230,7 +1431,7 @@ class AdminVaccinationApiTest extends TestCase
         $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->medicineTreatment())->assertCreated()->json('vaccination.id');
         DB::table('clinic_appointments')->where('id', 201)->update(['status' => 'checked_in']);
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertConflict();
-        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertDatabaseCount('clinic_charges', 1);
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
         DB::table('clinic_appointments')->where('id', 201)->update(['status' => 'in_consultation']);
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertOk();
@@ -1248,7 +1449,7 @@ class AdminVaccinationApiTest extends TestCase
             ->assertJsonPath('vaccination.strength_concentration', '10 mg/mL')->json('vaccination.id');
         $this->postJson('/api/admin/pets/101/vaccinations', $payload)->assertOk()->assertJsonPath('vaccination.id', $id);
         $this->assertDatabaseCount('vaccination_records', 1);
-        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertDatabaseCount('clinic_charges', 1);
         $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", [...$payload, 'inventory_quantity' => 1])->assertOk();
         $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['notes' => 'Updated twice'])->assertOk();
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
@@ -1286,7 +1487,7 @@ class AdminVaccinationApiTest extends TestCase
         $id = $this->postJson('/api/admin/pets/101/vaccinations', $payload)->assertCreated()->json('vaccination.id');
         DB::table('clinic_vitals')->where('clinic_appointment_id', 201)->update(['weight_kg' => 4.5]);
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertUnprocessable();
-        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertDatabaseCount('clinic_charges', 1);
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
         $this->assertDatabaseHas('vaccination_records', ['id' => $id, 'published_at' => null]);
         $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['expected_weight_kg' => 4.5])->assertOk();
@@ -1302,7 +1503,7 @@ class AdminVaccinationApiTest extends TestCase
         DB::table('inventory_transactions')->update(['expiry_date' => '2027-07-23']);
         $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['inventory_quantity' => 3])->assertOk();
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertUnprocessable();
-        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertDatabaseCount('clinic_charges', 1);
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
         $this->assertDatabaseHas('vaccination_records', ['id' => $id, 'published_at' => null]);
         $this->assertEquals(2, DB::table('inventory_items')->where('item_id', 301)->value('quantity_on_hand'));
@@ -1311,10 +1512,9 @@ class AdminVaccinationApiTest extends TestCase
     public function test_historical_medicine_has_no_charge_or_stock_use_and_history_is_chronological(): void
     {
         $this->medicineStock();
-        $payload = $this->medicineTreatment(['inventory_item_id' => null, 'vaccine_name' => 'External medicine',
-            'administered_date' => '2020-01-02', ]);
-        $id = $this->postJson('/api/admin/pets/101/vaccinations', $payload)->assertCreated()
-            ->assertJsonPath('vaccination.inventory_quantity', null)->assertJsonPath('vaccination.expected_price', null)->json('vaccination.id');
+        $id = $this->insertVaccination(101, 'External medicine', '2020-01-02', ['treatment_type' => 'medicine', 'clinic_appointment_id' => 201]);
+        $this->getJson("/api/admin/pets/101/vaccinations/{$id}")->assertOk()
+            ->assertJsonPath('vaccination.record_source', 'historical')->assertJsonPath('vaccination.manual_price', null);
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish", ['consume_inventory' => false])->assertOk();
         $vaccineId = $this->insertVaccination(101, 'Rabies', '2021-01-01');
         $this->getJson('/api/admin/pets/101/vaccinations')->assertOk()->assertJsonPath('vaccinations.0.id', $vaccineId)
@@ -1330,7 +1530,7 @@ class AdminVaccinationApiTest extends TestCase
         DB::table('clinic_appointments')->where('id', 201)->update(['case_type' => 'consultation']);
         $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->medicineTreatment())->assertCreated()->json('vaccination.id');
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish", ['finish_case' => true])->assertUnprocessable();
-        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertDatabaseCount('clinic_charges', 1);
         $this->assertDatabaseHas('vaccination_records', ['id' => $id, 'published_at' => null]);
         $this->assertDatabaseHas('clinic_appointments', ['id' => 201, 'status' => 'in_consultation']);
         DB::table('clinic_vitals')->insert(['clinic_appointment_id' => 201, 'weight_kg' => 4,
@@ -1342,16 +1542,17 @@ class AdminVaccinationApiTest extends TestCase
         $this->assertSame(1, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
     }
 
-    public function test_medicine_draft_can_be_converted_to_external_without_stock_or_charges(): void
+    public function test_inventory_draft_can_be_changed_to_manual_with_one_updated_charge_and_no_stock_use(): void
     {
         $this->medicineStock();
         $payload = $this->medicineTreatment();
         $id = $this->postJson('/api/admin/pets/101/vaccinations', $payload)->assertCreated()->json('vaccination.id');
         $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", [
-            'inventory_item_id' => null, 'vaccine_name' => 'External medicine', 'administered_date' => '2020-01-01',
+            'record_source' => 'manual', 'inventory_item_id' => null, 'vaccine_name' => 'Manual medicine', 'manual_price' => '350.50',
             ])->assertOk()->assertJsonPath('vaccination.inventory_quantity', null)->assertJsonPath('vaccination.expected_price', null);
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish", ['consume_inventory' => false])->assertOk();
-        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertDatabaseCount('clinic_charges', 1);
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'inventory_item_id' => null, 'amount' => 350.50]);
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
         $this->assertEquals(2, DB::table('inventory_items')->where('item_id', 301)->value('quantity_on_hand'));
     }
@@ -1490,7 +1691,8 @@ class AdminVaccinationApiTest extends TestCase
         $this->getJson('/api/admin/clinic-medicine-options?q=Medicine')->assertOk()
             ->assertJsonPath('data.0.unit', 'ml')->assertJsonPath('data.0.quantity_on_hand', 2)
             ->assertJsonPath('data.0.available_quantity', 0)->assertJsonPath('data.0.stock_status', 'legacy_unit');
-        $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->medicineTreatment())->assertCreated()->json('vaccination.id');
+        $this->postJson('/api/admin/pets/101/vaccinations', $this->medicineTreatment())->assertUnprocessable()->assertJsonValidationErrors('inventory_item_id');
+        $id = $this->insertVaccination(101, 'Legacy medicine', '2026-07-23', $this->medicineTreatment());
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertUnprocessable()->assertJsonValidationErrors('inventory_item_id');
         $this->assertStockOnHand(301, '2');
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
@@ -1503,7 +1705,9 @@ class AdminVaccinationApiTest extends TestCase
         DB::table('pets')->update(['weight' => 4]);
         DB::table('inventory_items')->where('item_id', 301)->update(['pricing_method' => 'weight_based', 'weight_pricing_mode' => 'ranges']);
         DB::table('inventory_item_weight_prices')->insert(['item_id' => 301, 'min_weight_kg' => 1, 'max_weight_kg' => 5, 'price' => 400]);
-        $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->medicineTreatment(['expected_price' => 400, 'expected_weight_kg' => 4]))->assertCreated()->json('vaccination.id');
+        $this->postJson('/api/admin/pets/101/vaccinations', $this->medicineTreatment(['expected_price' => 400, 'expected_weight_kg' => 4]))
+            ->assertUnprocessable()->assertJsonValidationErrors('weight_kg');
+        $id = $this->insertVaccination(101, 'Clinic Medicine', '2026-07-23', $this->medicineTreatment(['expected_price' => 400, 'expected_weight_kg' => 4]));
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertUnprocessable()->assertJsonValidationErrors('weight_kg');
         DB::table('clinic_vitals')->insert(['clinic_appointment_id' => 201, 'weight_kg' => 8]);
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertUnprocessable();
@@ -1522,7 +1726,7 @@ class AdminVaccinationApiTest extends TestCase
         $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->medicineTreatment(['inventory_quantity' => 2]))->assertCreated()->json('vaccination.id');
         DB::table('inventory_items')->where('item_id', 301)->update(['selling_price' => 300]);
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertUnprocessable()->assertJsonValidationErrors('medicines');
-        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertDatabaseCount('clinic_charges', 1);
         $this->assertStockOnHand(301, '2');
         $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['expected_price' => 300])->assertOk();
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertOk();
@@ -1579,7 +1783,7 @@ class AdminVaccinationApiTest extends TestCase
         $this->postJson('/api/admin/clinic-cases/201/confinement', ['reason' => 'Observe', 'request_key' => (string) \Illuminate\Support\Str::uuid()])->assertCreated();
         $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->medicineTreatment())->assertCreated()->json('vaccination.id');
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish", ['finish_case' => true])->assertUnprocessable()->assertJsonValidationErrors('status');
-        $this->assertDatabaseCount('clinic_charges', 0); $this->assertStockOnHand(301, '2');
+        $this->assertDatabaseCount('clinic_charges', 1); $this->assertStockOnHand(301, '2');
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertOk();
         $vaccineId = $this->insertFinalizableDraft(302, 201);
         $this->postJson("/api/admin/pets/101/vaccinations/{$vaccineId}/publish")->assertOk();
@@ -1709,7 +1913,7 @@ class AdminVaccinationApiTest extends TestCase
             $vitals = ['weight_kg' => 4, 'temperature_c' => 38.5, 'heart_rate_bpm' => 80, 'respiratory_rate_bpm' => 20];
             $endpoint = '/api/admin/clinic-appointments/201/record';
             $this->postJson($endpoint, [...$vitals, 'working_diagnosis' => 'Unfinished', 'finish_case' => false])->assertOk();
-            $this->assertDatabaseCount('clinic_charges', 0);
+            $this->assertDatabaseCount('clinic_charges', 1);
             $this->assertDatabaseHas('vaccination_records', ['id' => $id, 'published_at' => null]);
             $this->postJson($endpoint, ['finish_case' => true])->assertUnprocessable()->assertJsonValidationErrors('weight_kg');
             $payload = [...$vitals, 'weight_kg' => 5, 'working_diagnosis' => 'Final assessment', 'finish_case' => true];
@@ -1739,7 +1943,7 @@ class AdminVaccinationApiTest extends TestCase
             'inventory_item_id' => 302, 'inventory_quantity' => 1, 'clinic_appointment_id' => 201,
             'dose_amount' => 0.5, 'dose_unit' => 'mL', 'route' => 'subcutaneous', 'administration_site' => 'Right shoulder',
         ])->assertCreated()->json('vaccination.id');
-        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertDatabaseCount('clinic_charges', 2);
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
         $this->patchJson("/api/admin/pets/101/vaccinations/{$medicine}", ['notes' => 'Updated during consultation'])->assertOk();
         $this->postJson('/api/admin/clinic-cases/201/finish')->assertOk()->assertJsonPath('case.status', 'for_payment');
@@ -1766,7 +1970,7 @@ class AdminVaccinationApiTest extends TestCase
         $this->postJson('/api/admin/clinic-cases/201/finish')->assertUnprocessable();
         $this->assertDatabaseHas('clinic_appointments', ['id' => 201, 'status' => 'in_consultation']);
         $this->assertSame(0, DB::table('vaccination_records')->whereNotNull('published_at')->count());
-        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertDatabaseCount('clinic_charges', 3);
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
         $this->assertStockOnHand(301, '2');
     }
@@ -1804,7 +2008,7 @@ class AdminVaccinationApiTest extends TestCase
             $this->patchJson("$url/$id", ['route' => $nonInjectableRoute, 'complete_entry' => true])->assertOk()
                 ->assertJsonPath('vaccination.next_due_date', null);
         }
-        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertDatabaseCount('clinic_charges', 2);
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
         $this->postJson('/api/admin/clinic-cases/201/finish')->assertOk()->assertJsonPath('case.status', 'for_payment');
         $this->assertDatabaseCount('clinic_charges', 2);
@@ -1822,7 +2026,7 @@ class AdminVaccinationApiTest extends TestCase
             ->assertJsonValidationErrors("treatments.$id.administration_site");
         $this->assertDatabaseHas('clinic_appointments', ['id' => 201, 'status' => 'in_consultation']);
         $this->assertSame(0, DB::table('vaccination_records')->whereNotNull('published_at')->count());
-        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertDatabaseCount('clinic_charges', 1);
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
         $this->assertStockOnHand(301, '2');
 
@@ -1843,7 +2047,7 @@ class AdminVaccinationApiTest extends TestCase
         $this->assertStockOnHand(301, '2');
     }
 
-    public function test_incomplete_treatments_block_the_visit_boundary_and_external_entries_commit_without_stock(): void
+    public function test_incomplete_manual_treatments_block_the_visit_boundary_until_clinical_details_and_price_are_valid(): void
     {
         $this->medicineStock();
         $id = $this->postJson('/api/admin/pets/101/vaccinations', [
@@ -1851,11 +2055,11 @@ class AdminVaccinationApiTest extends TestCase
         ])->assertCreated()->json('vaccination.id');
         $this->postJson('/api/admin/clinic-cases/201/finish')->assertUnprocessable()->assertJsonValidationErrors('treatments.'.$id.'.treatment');
         $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", [
-            'vaccine_name' => 'External treatment', 'administered_date' => '2020-01-01',
+            'vaccine_name' => 'Manual treatment', 'manual_price' => '350.50', 'dose_amount' => '0.8', 'dose_unit' => 'mL', 'route' => 'oral',
         ])->assertOk();
         $this->postJson('/api/admin/clinic-cases/201/finish')->assertOk();
         $this->assertNotNull(DB::table('vaccination_records')->where('id', $id)->value('published_at'));
-        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'amount' => 350.50]);
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
     }
 
@@ -2055,6 +2259,7 @@ class AdminVaccinationApiTest extends TestCase
         array $overrides = [],
     ): int {
         return DB::table('vaccination_records')->insertGetId([
+            'record_source' => isset($overrides['inventory_item_id']) ? 'inventory' : 'historical',
             'pet_id' => $petId,
             'vaccine_name' => $vaccineName,
             'administered_date' => $administeredDate,

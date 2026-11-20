@@ -14,6 +14,69 @@ use Tests\TestCase;
 
 class SharedPayMongoTest extends TestCase
 {
+    private function addReviewedManualTreatment(): int
+    {
+        foreach (['2026_07_23_000004_create_vaccination_records_table.php',
+            '2026_10_12_000001_extend_vaccination_records_for_treatments.php',
+            '2026_11_20_000001_add_explicit_treatment_source_and_manual_price.php'] as $migration) {
+            (require database_path('migrations/'.$migration))->up();
+        }
+        Schema::table('clinic_charges', function (Blueprint $table) {
+            $table->unsignedBigInteger('vaccination_record_id')->nullable()->unique();
+            $table->unsignedInteger('inventory_item_id')->nullable();
+            $table->uuid('request_key')->nullable();
+            foreach (['pet_weight_kg', 'min_weight_kg', 'max_weight_kg'] as $field) $table->decimal($field, 8, 2)->nullable();
+        });
+        return DB::transaction(function () {
+            $case = \App\Models\ClinicAppointment::whereKey(1)->lockForUpdate()->firstOrFail();
+            $case->update(['status' => 'in_consultation']);
+            $record = \App\Models\VaccinationRecord::create([
+                'clinic_appointment_id' => 1, 'pet_id' => 4, 'record_source' => 'manual', 'treatment_type' => 'medicine',
+                'vaccine_name' => 'Ceftriaxone', 'manual_price' => '350.50', 'dose_amount' => '0.8', 'dose_unit' => 'mL',
+                'route' => 'oral', 'administered_date' => now()->toDateString(),
+            ]);
+            app(\App\Services\ClinicTreatmentChargeService::class)->sync($record, $case);
+            $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'total_amount' => 850.50]);
+            app(\App\Services\ClinicTreatmentFinalizer::class)->finalizeVisit($case, User::findOrFail(7));
+            $case->update(['status' => 'for_payment']);
+            return $record->id;
+        });
+    }
+
+    public function test_cash_payment_and_receipt_use_reviewed_manual_treatment_plus_existing_charges(): void
+    {
+        $id = $this->addReviewedManualTreatment();
+        $this->postJson('/api/admin/clinic-appointments/1/pay', ['payment_method' => 'cash', 'total_amount' => 500, 'amount_paid' => 1000])
+            ->assertUnprocessable()->assertJsonValidationErrors('total_amount');
+        $response = $this->postJson('/api/admin/clinic-appointments/1/pay', ['payment_method' => 'cash', 'total_amount' => 850.50, 'amount_paid' => 1000])
+            ->assertOk()->assertJsonPath('appointment.status', 'completed')->assertJsonPath('appointment.change', 149.5)
+            ->assertJsonCount(2, 'appointment.charges');
+        $treatment = collect($response->json('appointment.charges'))->firstWhere('vaccination_record_id', $id);
+        $this->assertSame('Ceftriaxone', $treatment['description']);
+        $this->assertSame('350.50', $treatment['amount']);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'paid' => true, 'total_amount' => 850.50]);
+        $this->assertDatabaseCount('clinic_charges', 2);
+        $this->assertDatabaseCount('inventory_transactions', 0);
+    }
+
+    public function test_paymongo_checkout_and_webhook_use_reviewed_manual_treatment_total(): void
+    {
+        $id = $this->addReviewedManualTreatment();
+        $this->postJson('/api/admin/clinic-appointments/1/online-payment', ['total_amount' => 1])->assertOk()
+            ->assertJsonPath('online_payment.amount', '850.50');
+        Http::assertSent(function ($request) {
+            $lines = $request['data']['attributes']['line_items'];
+            return count($lines) === 2 && $lines[1]['amount'] === 35050 && $lines[1]['quantity'] === 1;
+        });
+        $event = $this->event(85050);
+        $this->webhook($event)->assertOk();
+        $this->webhook($event)->assertOk();
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'paid' => true, 'status' => 'completed', 'total_amount' => 850.50]);
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'quantity' => 1, 'amount' => 350.50]);
+        $this->assertDatabaseCount('clinic_charges', 2);
+        $this->assertDatabaseCount('inventory_transactions', 0);
+    }
+
     public function test_one_group_checkout_locks_siblings_and_webhook_completes_every_patient_once(): void
     {
         Schema::create('walkins', fn (Blueprint $table) => $table->id());
@@ -233,7 +296,7 @@ class SharedPayMongoTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (['pos_sale_sequences', 'gateway_stock_reservations', 'clinic_charges', 'clinic_appointments', 'clinic_visit_groups', 'pos_transaction_items', 'pos_transactions', 'gateway_payments', 'grooming_payment_products', 'inventory_transactions', 'inventory_items',
+        foreach (['vaccination_records', 'pos_sale_sequences', 'gateway_stock_reservations', 'clinic_charges', 'clinic_appointments', 'clinic_visit_groups', 'pos_transaction_items', 'pos_transactions', 'gateway_payments', 'grooming_payment_products', 'inventory_transactions', 'inventory_items',
             'notifications', 'payments', 'booking_services', 'services', 'booking_pets', 'pets', 'bookings', 'users'] as $table) {
             Schema::dropIfExists($table);
         }

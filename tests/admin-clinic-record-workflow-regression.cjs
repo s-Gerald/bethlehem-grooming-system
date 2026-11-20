@@ -36,6 +36,7 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
     assert.equal(intakeTreatment.caseOngoing(), status === 'in_consultation');
   }
   const state = attach(context.adminClinicVaccinations()); state.inline = true; state.init();
+  assert.equal(state.recordKind, 'manual', 'New treatments default to Manual treatment');
   context.API.getAdminVaccinationOptions = async () => ({vaccines: [product]});
   const reads = [], older = deferred();
   context.API.getAdminPetVaccinations = async (pet, id) => {
@@ -47,7 +48,7 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   state.openForAppointment(appt(90));
   assert.equal(state.formModal.open, true, 'Selecting Treatment immediately opens entry');
   assert.equal(state.formModal.clinicAppointmentId, 90);
-  state.selectVaccine(product);
+  state.recordKind = 'inventory'; state.changeSource(); state.selectVaccine(product);
   assert.equal(writes.length, 0, 'Selection has no stock or billing side effects');
   state.openForAppointment(appt(91)); await settle();
   assert.equal(state.formModal.clinicAppointmentId, 91, 'Switching visits for the same pet resets the case association');
@@ -71,7 +72,7 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
     const vaccination = {...savedRecords.find(record => record.id === id), id,state:'draft',...payload};
     savedRecords = [vaccination]; return {vaccination};
   };
-  state.selectVaccine(product);state.form.notes = 'Current visit';
+  state.recordKind = 'inventory'; state.changeSource(); state.selectVaccine(product);state.form.notes = 'Current visit';
   state.form.dose_amount = '0.5'; state.form.dose_unit = 'mL';
   assert.equal(await state.saveTreatment(), false);
   assert.equal(writes.length, 0);
@@ -92,6 +93,9 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   state.validateAdministrationFields('route');
   assert.equal(state.siteRequired, true);
   assert.equal(state.form.administration_site, 'Left side');
+  state.applyBackendValidation({errors: {medicines: ['The pet weight or medicine price has changed.']}}, 'Unable to save.');
+  assert.match(state.formErrors.inventory_item_id, /pet weight or medicine price/, 'Price review errors point to the product selector');
+  state.formErrors = {}; state.formErrorSummary = '';
   assert.equal(state.hasUnfinishedTreatment(),true);
   await state.saveTreatment();
   assert.equal(state.formModal.open,true);
@@ -157,7 +161,7 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   assert.equal(writes.at(-1)[2].complete_entry,undefined);
 
   state.openForAppointment(appt(91)); await settle(); modal.open = true;
-  state.records[0] = {...state.records[0], inventory_item_id: 5, dose_amount: '0.5', dose_unit: 'mL',
+  state.records[0] = {...state.records[0], record_source: 'inventory', inventory_item_id: 5, dose_amount: '0.5', dose_unit: 'mL',
     route: 'intramuscular', administration_site: null};
   const finishCount = caseSaves.length;
   await modal.saveRecord(true);
@@ -176,10 +180,58 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   await state.removeTreatment(state.records[0]);assert.notEqual(writes.at(-1)[0],'delete');
   confirmRemove=true;await state.removeTreatment(state.records[0]);assert.equal(writes.at(-1)[0],'delete');
   assert.equal(state.records.length,0);
-  state.recordKind='historical';state.changeSource();state.form.vaccine_name='External vaccine';state.form.administered_date='2020-01-01';
+  state.recordKind='manual';state.changeSource();state.form.vaccine_name='Ceftriaxone';state.treatmentType='medicine';
   state.form.route = 'subcutaneous';
-  assert.equal(state.siteRequired, false, 'Historical documentation can retain an injectable route without a known site');
-  await state.saveTreatment();assert.equal(writes.at(-1)[2].inventory_item_id,null);
+  assert.equal(state.siteRequired, true, 'Manual treatments require the same clinical injection details');
+  state.form.dose_amount='0.8'; state.form.dose_unit='mL'; state.form.administration_site='Right thigh';
+  for (const price of ['abc','₱350','-1','+1','1e5','350.501','0','10000.01','3.5.0','350.','.50']) {
+    state.form.manual_price=price;
+    assert.ok(state.formValidationErrors(true).manual_price, `Reject invalid Manual price ${price}`);
+  }
+  for (const price of ['350','350.5','350.50','10000.00','0.01']) {
+    state.form.manual_price=price;
+    assert.equal(state.formValidationErrors(true).manual_price, undefined, `Accept valid Manual price ${price}`);
+  }
+  state.form.manual_price='';
+  assert.ok(state.formValidationErrors(true).manual_price);
+  assert.equal(state.formValidationErrors(false).manual_price, undefined, 'Incomplete case drafts may omit the price');
+  state.form.manual_price='350.50';
+  const billing = attach(context.clinicCaseWorkspace());
+  billing.$store.clinicAccess.permissions.billing_view = true;
+  billing.syncWorkspace(true, appt(91), 'vaccinations');
+  let billingReads = 0, serverPrice = '350.50';
+  context.API.getClinicCaseCharges = async id => {
+    assert.equal(id, 91); ++billingReads;
+    return {charges: {data: serverPrice ? [{id: 30, kind: 'medicine', description: 'Ceftriaxone', vaccination_record_id: 10, amount: serverPrice}] : [], current_page: 1, last_page: 1}, total_amount: serverPrice || '0.00'};
+  };
+  // Execute the actual workspace event binding, including its case/permission guard.
+  const clinicHtml = fs.readFileSync(path.join(root, 'pages/admin/clinic.html'), 'utf8');
+  const billingBinding = clinicHtml.match(/@clinic-treatment-updated\.window="([^"]+)"/)[1];
+  const refreshBilling = vm.runInContext(`(function($event) { with(this) { ${billingBinding} } })`, context);
+  context.window.addEventListener('clinic-treatment-updated', event => refreshBilling.call(billing, event));
+  const billingEvents = () => events.filter(event => event.type === 'clinic-treatment-updated');
+  let beforeRefresh = billingEvents().length;
+  await state.saveTreatment();
+  await settle();
+  assert.equal(billingEvents().length, beforeRefresh + 1, 'Successful Add refreshes Billing once');
+  assert.equal(billingEvents().at(-1).detail.id, 91);
+  assert.equal(billingReads, 1); assert.equal(billing.billingTotal, '350.50');
+  assert.equal(billing.treatmentCharges[0].description, 'Ceftriaxone');
+  assert.equal(writes.at(-1)[2].inventory_item_id,null);
+  assert.equal(writes.at(-1)[2].manual_price,'350.50', 'Dose does not multiply the final charge');
+  assert.equal(writes.at(-1)[2].record_source,'manual');
+  assert.equal(Object.hasOwn(writes.at(-1)[2], 'administered_date'), false, 'Current administration date is server controlled');
+  state.openEditForm(state.records[0]); state.form.manual_price='400'; beforeRefresh=billingEvents().length; serverPrice='400.00';
+  await state.saveTreatment(); assert.equal(billingEvents().length,beforeRefresh+1, 'Successful Update refreshes Billing once');
+  await settle();
+  assert.equal(billingReads, 2); assert.equal(billing.billingTotal, '400.00');
+  beforeRefresh=billingEvents().length;
+  serverPrice=null;
+  await state.removeTreatment(state.records[0]); assert.equal(billingEvents().length,beforeRefresh+1,'Successful Remove refreshes Billing once');
+  await settle();
+  assert.equal(billingReads, 3); assert.equal(billing.billingTotal, '0.00'); assert.equal(billing.treatmentCharges.length, 0);
+  context.window.dispatchEvent(new context.CustomEvent('clinic-treatment-updated', {detail: {id: 90}}));
+  assert.equal(billingReads, 3, 'Other-case mutations never refetch this case Billing');
   const count=writes.length;state.$store.clinicAccess.permissions.clinical=false;await state.saveTreatment();
   assert.equal(writes.length,count,'Read-only roles cannot add treatments');
   state.$store.clinicAccess.permissions.clinical=true;state.appointment.paid=true;
@@ -189,6 +241,9 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   assert.equal(context.clinicTreatmentSummary({route:'oral'}),'Oral');
   const fields = Object.fromEntries(context.clinicTreatmentDetails({treatment_type:'medicine',manufacturer:'Maker',batch_number:'LOT',product_expiry_date:'2027-01-01',notes:'Saved note',clinic_appointment_reference:'CL-91',inventory_quantity:'1.00',inventory_unit:'bottle'}).map(field => [field.label,field.value]));
   assert.equal(fields.Manufacturer,'Maker');assert.equal(fields['Batch / Lot'],'LOT');assert.equal(fields.Notes,'Saved note');assert.equal(fields.Case,'CL-91');assert.equal(fields.Quantity,'1 bottle');
+  const manualFields = Object.fromEntries(context.clinicTreatmentDetails({record_source:'manual',manual_price:'350.50',dose_amount:'0.8',dose_unit:'mL'}).map(field=>[field.label,field.value]));
+  assert.equal(manualFields.Source, 'Manual treatment'); assert.equal(manualFields.Price, '₱350.50'); assert.equal(manualFields.Dose,'0.8 mL');
+  assert.equal(context.clinicTreatmentDetails({record_source:'historical'}).find(field=>field.label==='Source').value,'Historical / external');
 
   const cold = attach(context.adminClinicVaccinations());
   cold.inline = true; cold.init();

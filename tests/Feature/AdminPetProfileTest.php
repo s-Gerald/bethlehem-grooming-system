@@ -11,6 +11,31 @@ use Tests\TestCase;
 
 class AdminPetProfileTest extends TestCase
 {
+    public function test_completed_case_and_patient_history_keep_manual_clinical_details_and_legacy_source(): void
+    {
+        $this->insertPet(101, 'Mochi');
+        $this->authenticate(20, 'admin');
+        $this->createCaseHistoryTables();
+        DB::table('clinic_appointments')->insert(['id' => 701, 'pet_id' => 101, 'appointment_reference' => 'CL-701',
+            'appointment_date' => '2026-11-20', 'status' => 'completed']);
+        DB::table('vaccination_records')->insert([
+            'pet_id' => 101, 'clinic_appointment_id' => 701, 'record_source' => 'manual', 'treatment_type' => 'medicine',
+            'vaccine_name' => 'Ceftriaxone', 'manual_price' => '350.50', 'dose_amount' => '0.8', 'dose_unit' => 'mL',
+            'route' => 'intramuscular', 'administration_site' => 'Right thigh', 'administered_date' => '2026-11-20',
+            'published_at' => '2026-11-20 12:00:00',
+        ]);
+        DB::table('vaccination_records')->insert(['pet_id' => 101, 'vaccine_name' => 'External vaccine',
+            'administered_date' => '2020-01-01', 'published_at' => '2020-01-02 12:00:00']);
+        $this->getJson('/api/admin/pets/101/profile?view=history')->assertOk()
+            ->assertJsonPath('vaccinations.0.record_source', 'manual')->assertJsonPath('vaccinations.0.manual_price', '350.50')
+            ->assertJsonPath('vaccinations.1.record_source', 'historical');
+        $this->getJson('/api/admin/pets/101/cases/701/details?view=history')->assertOk()->assertJsonCount(1, 'treatments')
+            ->assertJsonPath('treatments.0.record_source', 'manual')->assertJsonPath('treatments.0.manual_price', '350.50')
+            ->assertJsonPath('treatments.0.treatment_name', 'Ceftriaxone')->assertJsonPath('treatments.0.dose_amount', '0.800')
+            ->assertJsonPath('treatments.0.dose_unit', 'mL')->assertJsonPath('treatments.0.route', 'intramuscular')
+            ->assertJsonPath('treatments.0.administration_site', 'Right thigh')->assertJsonPath('treatments.0.clinic_appointment_reference', 'CL-701');
+    }
+
     public function test_staff_without_clinic_access_receive_no_clinical_profile_data(): void
     {
         $this->insertPet(101, 'Mochi');
@@ -162,6 +187,8 @@ class AdminPetProfileTest extends TestCase
             $table->text('instructions')->nullable();
         });
         Schema::create('vaccination_records', function (Blueprint $table) {
+            $table->string('record_source')->default('historical');
+            $table->decimal('manual_price', 8, 2)->nullable();
             $table->string('treatment_type')->default('vaccine');
             $table->id();
             $table->unsignedInteger('pet_id');

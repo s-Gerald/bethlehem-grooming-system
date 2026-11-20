@@ -105,6 +105,8 @@ context.window.addEventListener = () => {};
 context.clinicLocalDate = date => date.toISOString().slice(0, 10);
 vm.runInContext(fs.readFileSync("scripts/components/admin-vaccinations.js", "utf8"), context);
 const modal = context.adminClinicVaccinations();
+assert.equal(modal.recordKind, 'manual');
+modal.recordKind = 'inventory';
 modal.$nextTick = callback => callback(); modal.$refs = {};
 modal.$store = {clinicAccess: {permissions: {clinical: true}}};
 modal.appointment = { id: 1, status: "in_consultation", weight_kg: 12.4 };

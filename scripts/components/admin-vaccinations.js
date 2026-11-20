@@ -1,4 +1,4 @@
-// Current Inventory use and historical documentation have separate stock behavior.
+// Current treatments are billed on save; only finalization consumes Inventory stock.
 function vaccinationToday() {
   return clinicLocalDate(new Date());
 }
@@ -9,6 +9,7 @@ function emptyVaccinationDraftForm() {
     inventory_quantity: 1,
     request_key: null,
     vaccine_name: "",
+    manual_price: "",
     product_name: "",
     manufacturer: "",
     batch_number: "",
@@ -60,7 +61,7 @@ function adminClinicVaccinations() {
     medicineQuery: "", medicineResults: [], medicineLoading: false, medicineError: "",
     selectedMedicine: null,
     _medicineTimer: null, _medicineRequest: 0,
-    recordKind: "inventory",
+    recordKind: "manual",
     form: emptyVaccinationDraftForm(),
     formErrors: {},
     formErrorSummary: "",
@@ -117,7 +118,7 @@ function adminClinicVaccinations() {
       if (record?.state === 'draft') {
         this.openEditForm(record);
         this.completionAttempted = true;
-        this.formErrors = Object.fromEntries(entries.map(([field, messages]) => [field.split('.').slice(2).join('.'), messages.join(' ')]));
+        this.formErrors = Object.fromEntries(entries.map(([field, messages]) => [this.validationField(field.split('.').slice(2).join('.')), messages.join(' ')]));
       }
       this.formErrorSummary = message;
       this.$nextTick(() => {
@@ -245,7 +246,7 @@ function adminClinicVaccinations() {
       this.completionAttempted = false;
       this.treatmentType = "vaccine";
       this.clearMedicine();
-      this.recordKind = "inventory";
+      this.recordKind = "manual";
       this.formModal = {
         open: true,
         mode: "create",
@@ -270,6 +271,7 @@ function adminClinicVaccinations() {
         request_key: record.request_key ?? null,
         inventory_item_id: record.inventory_item_id ? String(record.inventory_item_id) : "",
         vaccine_name: record.vaccine_name || "",
+        manual_price: record.manual_price ?? "",
         product_name: record.product_name || "",
         manufacturer: record.manufacturer || "",
         batch_number: record.batch_number || "",
@@ -295,7 +297,7 @@ function adminClinicVaccinations() {
       this.legacyDoseUnit = record.dose_unit || '';
       this.completionAttempted = false;
       this.clearMedicine();
-      this.recordKind = record.inventory_item_id ? "inventory" : "historical";
+      this.recordKind = record.record_source || (record.inventory_item_id ? "inventory" : "historical");
       this.selectedVaccine = null;
       this.vaccineQuery = "";
       if (!this.optionsLoading && !this.optionsError && this.recordKind === "inventory") this.restoreVaccineSelection();
@@ -444,7 +446,7 @@ function adminClinicVaccinations() {
       this.treatmentType = type;
       this.clearVaccine();
       this.clearMedicine();
-      for (const field of ["vaccine_name", "product_name", "manufacturer", "batch_number", "product_expiry_date", "next_due_date", "dose_amount", "dose_unit", "dose_unit_other"]) this.form[field] = "";
+      for (const field of ["vaccine_name", "manual_price", "product_name", "manufacturer", "batch_number", "product_expiry_date", "next_due_date", "dose_amount", "dose_unit", "dose_unit_other"]) this.form[field] = "";
       this.legacyDoseUnit = '';
       this.completionAttempted = false;
       this.form.inventory_quantity = 1;
@@ -458,7 +460,8 @@ function adminClinicVaccinations() {
       this.clearMedicine();
       this.form.inventory_quantity = 1;
       this.completionAttempted = false;
-      if (this.recordKind === "inventory") this.form.administered_date = vaccinationToday();
+      this.form.manual_price = "";
+      if (this.recordKind !== "historical") this.form.administered_date = vaccinationToday();
       this.formErrors = {};
       this.formErrorSummary = "";
     },
@@ -535,13 +538,13 @@ function adminClinicVaccinations() {
       this.revalidateFields("inventory_item_id", "inventory_quantity");
     },
 
-    get inventoryClinicalRequired() { return this.recordKind === "inventory"; },
+    get currentClinicalRequired() { return this.recordKind !== "historical"; },
     get siteRequired() {
-      return this.inventoryClinicalRequired && CLINIC_CLINICAL_RULES.injectionSiteRoutes.includes(this.form.route);
+      return this.currentClinicalRequired && CLINIC_CLINICAL_RULES.injectionSiteRoutes.includes(this.form.route);
     },
     get customDoseUnitRequired() { return this.form.dose_unit === "other" && this.legacyDoseUnit !== "other"; },
-    get doseAmountRequired() { return this.inventoryClinicalRequired || Boolean(this.form.dose_unit); },
-    get doseUnitRequired() { return this.inventoryClinicalRequired || String(this.form.dose_amount ?? "").trim() !== ""; },
+    get doseAmountRequired() { return this.currentClinicalRequired || Boolean(this.form.dose_unit); },
+    get doseUnitRequired() { return this.currentClinicalRequired || String(this.form.dose_amount ?? "").trim() !== ""; },
 
     get effectiveDoseUnit() {
       if (this.form.dose_unit === this.legacyDoseUnit) return this.legacyDoseUnit;
@@ -559,7 +562,7 @@ function adminClinicVaccinations() {
       return errors;
     },
     validateDoseFields(interaction = 'blur') {
-      const errors = this.doseFieldErrors(this.completionAttempted && this.inventoryClinicalRequired);
+      const errors = this.doseFieldErrors(this.completionAttempted && this.currentClinicalRequired);
       this.updateFieldErrors(['dose_amount', 'dose_unit', 'dose_unit_other'], errors, interaction === 'blur');
     },
     administrationFieldErrors(treatment, required) {
@@ -580,15 +583,30 @@ function adminClinicVaccinations() {
     },
     validateAdministrationFields(field) {
       const fields = field === "route" ? ["route", "administration_site"] : ["administration_site"];
-      this.updateFieldErrors(fields, this.administrationFieldErrors(this.form, this.completionAttempted && this.inventoryClinicalRequired));
+      this.updateFieldErrors(fields, this.administrationFieldErrors(this.form, this.completionAttempted && this.currentClinicalRequired));
+    },
+    manualPriceError(value, required) {
+      const price = String(value ?? '').trim();
+      return ((!price && required) || (price && (!/^\d+(?:\.\d{1,2})?$/.test(price) || Number(price) < 0.01 || Number(price) > 10000)))
+        ? 'Enter a price from ₱0.01 to ₱10,000.00, up to 2 decimal places.' : '';
+    },
+    validateManualPrice(interaction = 'input') {
+      const error = this.manualPriceError(this.form.manual_price, this.completionAttempted);
+      this.updateFieldErrors(['manual_price'], error ? {manual_price: error} : {}, interaction === 'blur');
     },
     incompleteInventoryTreatmentErrors() {
       for (const record of this.records) {
-        if (record.state !== "draft" || !record.inventory_item_id) continue;
+        const source = record.record_source || (record.inventory_item_id ? 'inventory' : 'historical');
+        if (record.state !== "draft" || source === 'historical') continue;
         const errors = {
           ...clinicDoseErrors(record.dose_amount, record.dose_unit, true),
           ...this.administrationFieldErrors(record, true),
         };
+        if (source === 'manual') {
+          if (!record.vaccine_name?.trim()) errors.vaccine_name = 'Enter the treatment name.';
+          const priceError = this.manualPriceError(record.manual_price, true);
+          if (priceError) errors.manual_price = priceError;
+        }
         if (Object.keys(errors).length) {
           return Object.fromEntries(Object.entries(errors).map(([field, message]) => [`treatments.${record.id}.${field}`, [message]]));
         }
@@ -617,7 +635,7 @@ function adminClinicVaccinations() {
     formValidationErrors(complete) {
       const errors = {};
       const value = (field) => String(this.form[field] ?? "").trim();
-      const usesInventory = this.inventoryClinicalRequired;
+      const usesInventory = this.recordKind === 'inventory';
       const medicine = this.treatmentType === "medicine";
       if (usesInventory) {
         const quantity = value("inventory_quantity");
@@ -632,14 +650,19 @@ function adminClinicVaccinations() {
         if (complete && !value("administered_date")) errors.administered_date = "Review this treatment’s missing administration date before saving.";
       }
 
-      Object.assign(errors, this.doseFieldErrors(complete && usesInventory), this.administrationFieldErrors(this.form, complete && usesInventory));
+      Object.assign(errors, this.doseFieldErrors(complete && this.currentClinicalRequired), this.administrationFieldErrors(this.form, complete && this.currentClinicalRequired));
+      if (this.recordKind === 'manual') {
+        const priceError = this.manualPriceError(this.form.manual_price, complete);
+        if (priceError) errors.manual_price = priceError;
+        if (complete && !this.formModal.clinicAppointmentId) errors.clinic_appointment_id = 'Select an ongoing Clinic case.';
+      }
 
-      if (!medicine && usesInventory && value("next_due_date") && value("next_due_date") < vaccinationToday()) {
+      if (!medicine && this.currentClinicalRequired && value("next_due_date") && value("next_due_date") < vaccinationToday()) {
         errors.next_due_date = "Next vaccination date cannot be before today.";
       }
       if (!usesInventory) {
         if (complete && !value("vaccine_name")) errors.vaccine_name = "Enter the treatment name.";
-        if ((complete && !value("administered_date")) || (value("administered_date") && (!/^\d{4}-\d{2}-\d{2}$/.test(value("administered_date")) || Number.isNaN(new Date(value("administered_date")).getTime()) || value("administered_date") > vaccinationToday()))) {
+        if (this.recordKind === 'historical' && ((complete && !value("administered_date")) || (value("administered_date") && (!/^\d{4}-\d{2}-\d{2}$/.test(value("administered_date")) || Number.isNaN(new Date(value("administered_date")).getTime()) || value("administered_date") > vaccinationToday())))) {
           errors.administered_date = "Enter the actual administration date, on or before today.";
         }
         for (const field of medicine ? [] : ["next_due_date", "product_expiry_date"]) {
@@ -682,16 +705,19 @@ function adminClinicVaccinations() {
 
       return {
         treatment_type: this.treatmentType,
+        record_source: this.recordKind,
+        ...(this.recordKind === 'manual' ? {manual_price: nullableText('manual_price')} : {}),
         ...(this.form.request_key ? { request_key: this.form.request_key } : {}),
         ...(this.treatmentType === "medicine" && this.recordKind === "inventory" ? {
           expected_price: this.medicineQuote?.price ?? null,
           expected_weight_kg: this.medicineQuote?.pet_weight_kg ?? null,
         } : {}),
+        ...(this.treatmentType === 'vaccine' && this.recordKind === 'inventory' ? {expected_price: this.selectedVaccine?.selling_price ?? null} : {}),
         inventory_quantity: this.recordKind === "inventory" ? nullableText("inventory_quantity") : null,
         inventory_item_id: this.recordKind === "inventory" ? nullableId("inventory_item_id") : null,
-        ...(this.recordKind === "historical" ? {
+        ...(this.recordKind !== "inventory" ? {
           vaccine_name: nullableText("vaccine_name"),
-          administered_date: nullableText("administered_date"),
+          ...(this.recordKind === 'historical' ? {administered_date: nullableText('administered_date')} : {}),
           product_name: nullableText("product_name"),
           manufacturer: nullableText("manufacturer"),
           batch_number: nullableText("batch_number"),
@@ -731,6 +757,7 @@ function adminClinicVaccinations() {
         const saved = await (editing
           ? API.updateAdminPetVaccination(petId, this.formModal.recordId, payload)
           : API.createAdminPetVaccination(petId, payload));
+        window.dispatchEvent(new CustomEvent('clinic-treatment-updated', {detail: {id}}));
         if (id !== this.appointment?.id || petId !== this.pet?.id) return false;
         ++this._recordsRequest;
         this.loading = false;
@@ -757,6 +784,7 @@ function adminClinicVaccinations() {
           message: 'Remove this treatment from the current visit?', cancelLabel: 'Cancel', confirmLabel: 'Remove', danger: true});
         if (!confirmed || id !== this.appointment?.id || !this.caseOngoing()) return;
         await API.deleteAdminPetVaccination(petId, record.id);
+        window.dispatchEvent(new CustomEvent('clinic-treatment-updated', {detail: {id}}));
         if (id !== this.appointment?.id) return;
         ++this._recordsRequest;
         this.loading = false;
@@ -768,11 +796,15 @@ function adminClinicVaccinations() {
       finally { this.actionBusyId = null; }
     },
 
+    validationField(field) {
+      return ['medicines', 'expected_price', 'expected_weight_kg', 'weight_kg'].includes(field) ? 'inventory_item_id' : field;
+    },
+
     applyBackendValidation(error, fallback) {
       const backendErrors = error.errors || {};
       this.formErrors = Object.fromEntries(
         Object.entries(backendErrors).map(([field, messages]) => [
-          field,
+          this.validationField(field),
           Array.isArray(messages) ? messages.join(" ") : String(messages),
         ]),
       );
