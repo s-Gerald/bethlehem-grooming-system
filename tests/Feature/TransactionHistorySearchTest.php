@@ -27,12 +27,24 @@ class TransactionHistorySearchTest extends TestCase
                 'total_amount' => $amount, 'paid_at' => '2026-10-03 15:00:00',
             ]);
         }
+        DB::table('clinic_charges')->insert([
+            ['clinic_appointment_id' => 1, 'kind' => 'medicine', 'description' => 'Recorded medicine', 'quantity' => 1, 'unit_price' => 500, 'amount' => 500],
+            ['clinic_appointment_id' => 2, 'kind' => 'vaccine', 'description' => 'Recorded vaccine', 'quantity' => 1, 'unit_price' => 100, 'amount' => 100],
+            ['clinic_appointment_id' => 2, 'kind' => 'service', 'description' => 'Clinic service', 'quantity' => 2, 'unit_price' => 75, 'amount' => 150],
+        ]);
         foreach (['', 'Rigby', 'CL-SESSION-2', 'Gerald Senining'] as $search) {
             $result = $this->search(['search' => $search, 'transaction_type' => 'clinic_payment']);
             $this->assertSame(1, $result['total']);
             $this->assertSame(750, $result['collection_total']);
             $this->assertCount(2, $result['transactions'][0]['patients']);
             $this->assertSame('Gerald · Admin', $result['transactions'][0]['processedByName']);
+            $charges = array_merge(...array_column($result['transactions'][0]['patients'], 'charges'));
+            $this->assertSame(['medicine', 'vaccine', 'service'], array_column($charges, 'kind'));
+            $this->assertSame(['1.00', '1.00', '2.00'], array_column($charges, 'quantity'));
+            $this->assertSame(['500.00', '100.00', '150.00'], array_column($charges, 'amount'));
+            foreach ($charges as $charge) {
+                $this->assertSame(['id', 'kind', 'description', 'quantity', 'unit_price', 'amount'], array_keys($charge));
+            }
         }
     }
 
@@ -107,6 +119,7 @@ class TransactionHistorySearchTest extends TestCase
         Schema::create('clinic_charges', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('clinic_appointment_id');
+            $table->string('kind');
             $table->string('description');
             $table->decimal('quantity');
             $table->decimal('unit_price');
@@ -288,8 +301,9 @@ class TransactionHistorySearchTest extends TestCase
             'paid_at' => '2026-10-03 14:00:00', 'chief_complaint' => 'Private encounter', 'notes' => 'Private notes',
         ]);
         DB::table('clinic_charges')->insert([
-            ['clinic_appointment_id' => 1, 'description' => 'Consultation', 'quantity' => 1, 'unit_price' => 500, 'amount' => 500],
-            ['clinic_appointment_id' => 1, 'description' => 'Clinic supplies', 'quantity' => 2, 'unit_price' => 112.75, 'amount' => 225.50],
+            ['clinic_appointment_id' => 1, 'kind' => 'medicine', 'description' => 'Recorded medicine', 'quantity' => 1, 'unit_price' => 500, 'amount' => 500],
+            ['clinic_appointment_id' => 1, 'kind' => 'vaccine', 'description' => 'Recorded vaccine', 'quantity' => 1, 'unit_price' => 100, 'amount' => 100],
+            ['clinic_appointment_id' => 1, 'kind' => 'service', 'description' => 'Clinic service', 'quantity' => 2, 'unit_price' => 62.75, 'amount' => 125.50],
         ]);
         foreach (['for_payment', 'cancelled', 'completed'] as $index => $status) {
             DB::table('clinic_appointments')->insert([
@@ -312,9 +326,14 @@ class TransactionHistorySearchTest extends TestCase
         $this->assertSame('Gerald · Admin', $tx['processedByName']);
         $this->assertEquals(1000, $tx['amountPaid']);
         $this->assertEquals(274.50, $tx['changeGiven']);
-        $this->assertSame(['Consultation', 'Clinic supplies'], array_column($tx['charges'], 'description'));
-        $this->assertEquals([500, 225.50], array_column($tx['charges'], 'amount'));
-        $this->assertEquals(2, $tx['charges'][1]['quantity']);
+        $this->assertSame(['Recorded medicine', 'Recorded vaccine', 'Clinic service'], array_column($tx['charges'], 'description'));
+        $this->assertSame(['medicine', 'vaccine', 'service'], array_column($tx['charges'], 'kind'));
+        $this->assertSame(['1.00', '1.00', '2.00'], array_column($tx['charges'], 'quantity'));
+        $this->assertSame(['500.00', '100.00', '62.75'], array_column($tx['charges'], 'unit_price'));
+        $this->assertSame(['500.00', '100.00', '125.50'], array_column($tx['charges'], 'amount'));
+        foreach ($tx['charges'] as $charge) {
+            $this->assertSame(['id', 'kind', 'description', 'quantity', 'unit_price', 'amount'], array_keys($charge));
+        }
         foreach (['chief_complaint', 'notes', 'record', 'paymentSummary', 'groomingServicesTotal'] as $field) {
             $this->assertArrayNotHasKey($field, $tx);
         }

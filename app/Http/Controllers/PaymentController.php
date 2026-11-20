@@ -7,6 +7,7 @@ use App\Models\Booking;
 use App\Models\BookingPet;
 use App\Models\BookingService;
 use App\Models\ClinicAppointment;
+use App\Models\ClinicCharge;
 use App\Models\ClinicVisitGroup;
 use App\Models\GatewayPayment;
 use App\Models\Payment;
@@ -900,13 +901,19 @@ class PaymentController extends Controller
             'processedByName' => $appointment->paidBy?->actorAttribution(),
             'paidAt' => $appointment->paid_at?->format('Y-m-d H:i:s'),
             'dateKey' => $appointment->paid_at?->toDateString() ?? 'unknown',
-            'charges' => $appointment->charges->map(fn ($charge) => [
-                'id' => $charge->id,
-                'description' => $charge->description,
-                'quantity' => $charge->quantity,
-                'unit_price' => $charge->unit_price,
-                'amount' => $charge->amount,
-            ])->values(),
+            'charges' => $appointment->charges->map(fn (ClinicCharge $charge) => $this->formatClinicCharge($charge))->values(),
+        ];
+    }
+
+    private function formatClinicCharge(ClinicCharge $charge): array
+    {
+        return [
+            'id' => $charge->id,
+            'kind' => $charge->kind,
+            'description' => $charge->description,
+            'quantity' => $charge->quantity,
+            'unit_price' => $charge->unit_price,
+            'amount' => $charge->amount,
         ];
     }
 
@@ -920,7 +927,7 @@ class PaymentController extends Controller
             'pet_name' => \App\Support\PetProfileSnapshot::pet($patient->pet_profile_snapshot, $patient->pet_id)?->pet_name
                 ?? $patient->pet?->pet_name,
             'subtotal' => $patient->total_amount,
-            'charges' => $patient->charges,
+            'charges' => $patient->charges->map(fn (ClinicCharge $charge) => $this->formatClinicCharge($charge))->values(),
         ])->values();
 
         return [

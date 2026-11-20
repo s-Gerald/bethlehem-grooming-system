@@ -130,15 +130,21 @@ context.window.PaymentInvoice.print = id => assert.equal(id, 'clinicPaymentInvoi
 ui.printInvoice();
 assert.equal(JSON.stringify(clinicTx), clinicBefore);
 ui.closeDetails();
-for (const grouped of [false, true]) {
-  const charges = ['medicine', 'vaccine'].map((kind, id) => ({id, kind, description: 'Epoeitin Alpha 4000IU', quantity: 1, unit_price: '1700.00', amount: '1700.00'}));
-  const treatmentTx = {...clinicTx, finalPrice: 3400, amountPaid: 3500, changeGiven: 100,
+for (const [grouped, mixed] of [[false, false], [false, true], [true, false], [true, true]]) {
+  const charges = ['medicine', 'vaccine'].map((kind, id) => ({id, kind, description: 'Epoeitin Alpha 4000IU', quantity: '1.00', unit_price: '1700.00', amount: '1700.00'}));
+  if (mixed) charges.push({id: 3, kind: 'service', description: 'Epoeitin Alpha 4000IU', quantity: '2.00', unit_price: '500.00', amount: '1000.00'});
+  const total = mixed ? 4400 : 3400;
+  const treatmentTx = {...clinicTx, finalPrice: total, amountPaid: total + 100, changeGiven: 100,
     charges: grouped ? [] : charges, patients: grouped ? charges.map((charge, id) => ({id, charges: [charge]})) : []};
   const snapshot = JSON.stringify(treatmentTx);
   ui.openDetails(treatmentTx, null);
-  assert.equal(context.window.PaymentInvoice.clinicInvoiceHasQuantity(ui.receiptModal), false, 'Historical Clinic invoices share single-treatment quantity suppression');
-  charges.forEach(charge => assert.equal(context.window.PaymentInvoice.clinicChargeQuantity(charge), '—'));
-  assert.equal(ui.receiptModal.finalPrice, 3400); assert.equal(ui.receiptModal.amountPaid, 3500); assert.equal(ui.receiptModal.change, 100);
+  const receiptCharges = grouped ? ui.receiptModal.patients.flatMap(patient => patient.charges) : ui.receiptModal.charges;
+  assert.deepEqual(receiptCharges, charges, 'Transaction receipts retain the normalized server charge shape, including kind');
+  assert.deepEqual(receiptCharges.map(charge => charge.kind), mixed ? ['medicine', 'vaccine', 'service'] : ['medicine', 'vaccine']);
+  assert.equal(context.window.PaymentInvoice.clinicInvoiceHasQuantity(ui.receiptModal), mixed, 'Historical invoices suppress single treatments and retain useful service quantities');
+  assert.equal(context.window.PaymentInvoice.clinicInvoiceHasQuantity(ui.receiptModal), context.window.PaymentInvoice.clinicInvoiceHasQuantity({charges}), 'History and immediate-payment charge shapes make the same invoice decision');
+  receiptCharges.forEach(charge => assert.equal(context.window.PaymentInvoice.clinicChargeQuantity(charge), charge.kind === 'service' ? '2' : '—'));
+  assert.equal(ui.receiptModal.finalPrice, total); assert.equal(ui.receiptModal.amountPaid, total + 100); assert.equal(ui.receiptModal.change, 100);
   ui.printInvoice();
   assert.equal(JSON.stringify(treatmentTx), snapshot);
   ui.closeDetails();
