@@ -40,8 +40,21 @@ function page() {
 }
 (async () => {
   const state = page();
+  for (const kind of ['medicine', 'vaccine']) {
+    for (const quantity of [1, '1.00']) {
+      const charge = {kind, description: 'ProHeart', quantity, unit_price: '3200.00', amount: '3200.00'};
+      const snapshot = JSON.stringify(charge);
+      assert.equal(state.paymentChargeDetail(charge), '', `${kind}: a single billing line needs no secondary detail`);
+      assert.equal(JSON.stringify(charge), snapshot, 'Formatting does not alter the billed quantity or amount');
+    }
+    assert.equal(state.paymentChargeDetail({kind, quantity: 2, unit_price: '500.00'}), `2 × ${state.money(500)}`);
+  }
+  assert.equal(state.paymentChargeDetail({kind: 'service', description: 'ProHeart', quantity: 1, unit_price: '350.50'}), `1 × ${state.money(350.50)}`, 'Unrelated charges retain their unit breakdown regardless of description');
+  assert.equal(state.paymentChargeDetail({kind: 'medicine', quantity: null, unit_price: '350.50'}), '');
+  assert.equal(state.paymentChargeDetail({kind: 'vaccine', quantity: 2, unit_price: null}), '');
   assert.equal(state.forPaymentCount, 1);
   state.reviewPayment(state.activeCases[0]);
+  assert.equal(state.paymentTotalDue, 350.5, 'Presentation does not change Total Due');
   assert.equal(context.document.body.style.overflow, 'hidden');
   assert.equal(state.canConfirmPayment, false);
   for (const invalid of ['', '0', '-1', '350.49', '350.501', 'abc', '2000.01', '1000000']) {

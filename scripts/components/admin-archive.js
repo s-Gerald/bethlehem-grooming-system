@@ -726,6 +726,7 @@ function adminArchive() {
       return [
         {label: 'Product', value: item.product_name},
         {label: 'Strength / concentration', value: item.strength_concentration},
+        {label: 'Quantity', value: this.clinicText(item.inventory_quantity) ? `${Number(item.inventory_quantity)} ${item.inventory_unit || ''}`.trim() : ''},
         {label: 'Dose', value: this.clinicText(item.dose_amount) ? `${item.dose_amount} ${item.dose_unit || ''}`.trim() : ''},
         {label: 'Route', value: route}, {label: 'Administration site', value: item.administration_site},
         {label: 'Administered', value: item.administered_date ? this.formatAppointmentDate(item.administered_date, '') : ''},

@@ -598,8 +598,10 @@ class AdminVaccinationController extends Controller
         unset($data['dose_unit_other'], $data['complete_entry']);
         if (! $record) $data['treatment_type'] = $type;
         if ($medicine) {
-            $data = [...$data, 'next_due_date' => null, 'product_name' => null,
-                'manufacturer' => null, 'batch_number' => null];
+            $data = [...$data, 'next_due_date' => null, 'product_name' => null];
+            if ($source !== 'manual') {
+                $data = [...$data, 'manufacturer' => null, 'batch_number' => null];
+            }
         }
         if (! $usesInventory) $data = [...$data, 'inventory_item_id' => null, 'inventory_quantity' => null];
         else $data['manual_price'] = null;

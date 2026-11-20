@@ -404,7 +404,7 @@
                     <div x-show="!payment.session" class="divide-y divide-slate-100">
                       <template x-for="charge in (payment.case?.charges || [])" :key="charge.id">
                         <div class="flex justify-between gap-3 py-2 text-sm">
-                          <div class="min-w-0"><p class="break-words font-semibold text-slate-700" x-text="charge.description"></p><p class="mt-1 text-xs text-slate-500" x-text="paymentChargeDetail(charge)"></p><p x-show="charge.pet_weight_kg != null" class="text-xs text-slate-500" x-text="'Pet weight: ' + charge.pet_weight_kg + ' kg · ' + clinicPriceRange(charge)"></p></div>
+                          <div class="min-w-0"><p class="break-words font-semibold text-slate-700" x-text="charge.description"></p><p x-show="paymentChargeDetail(charge)" class="mt-1 text-xs text-slate-500" x-text="paymentChargeDetail(charge)"></p><p x-show="charge.pet_weight_kg != null" class="text-xs text-slate-500" x-text="'Pet weight: ' + charge.pet_weight_kg + ' kg · ' + clinicPriceRange(charge)"></p></div>
                           <strong class="shrink-0 tabular-nums text-slate-700" x-text="money(charge.amount)"></strong>
                         </div>
                       </template>
@@ -463,7 +463,7 @@
                         </template>
                       </div>
                     </template>
-                    <template x-for="charge in receiptModal.charges" :key="charge.id"><div class="receipt-success-service"><span class="min-w-0 break-words"><span x-text="charge.description"></span><small class="block text-slate-500" x-text="paymentChargeDetail(charge)"></small></span><strong x-text="money(charge.amount)"></strong></div></template>
+                    <template x-for="charge in receiptModal.charges" :key="charge.id"><div class="receipt-success-service"><span class="min-w-0 break-words"><span x-text="charge.description"></span><small x-show="paymentChargeDetail(charge)" class="block text-slate-500" x-text="paymentChargeDetail(charge)"></small></span><strong x-text="money(charge.amount)"></strong></div></template>
                   </section>
                   <section class="receipt-success-section">
                     <h5>Payment Details</h5>
@@ -1434,15 +1434,15 @@
                       <input id="treatment-manual-price" type="text" inputmode="decimal" data-money-input autocomplete="off" x-model="form.manual_price" @input="form.manual_price = $event.target.value; validateManualPrice('input')" @blur="validateManualPrice('blur')" aria-required="true" aria-describedby="treatment-manual-price-error" :aria-invalid="Boolean(formErrors.manual_price)" class="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:border-[#315b7e]" :class="formErrors.manual_price ? 'border-red-400' : 'border-slate-300'">
                       <p id="treatment-manual-price-error" x-show="fieldError('manual_price')" role="alert" class="mt-1 text-xs text-red-600" x-text="fieldError('manual_price')"></p>
                     </div>
-                    <div x-show="treatmentType === 'vaccine'">
+                    <div x-show="recordKind === 'historical' && treatmentType === 'vaccine'">
                       <label for="manual-product-name" class="mb-1 block text-xs font-semibold text-slate-600">Product Name</label>
                       <input id="manual-product-name" x-model="form.product_name" type="text" maxlength="150" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#315b7e]" :aria-invalid="Boolean(formErrors.product_name)" :class="formErrors.product_name ? 'border-red-400' : 'border-slate-300'">
                     </div>
-                    <div x-show="treatmentType === 'vaccine'">
+                    <div x-show="recordKind === 'manual' || treatmentType === 'vaccine'">
                       <label for="manual-manufacturer" class="mb-1 block text-xs font-semibold text-slate-600">Brand</label>
                       <input id="manual-manufacturer" x-model="form.manufacturer" type="text" maxlength="150" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#315b7e]" :aria-invalid="Boolean(formErrors.manufacturer)" :class="formErrors.manufacturer ? 'border-red-400' : 'border-slate-300'">
                     </div>
-                    <div x-show="treatmentType === 'vaccine'">
+                    <div x-show="recordKind === 'manual' || treatmentType === 'vaccine'">
                       <label for="manual-batch" class="mb-1 block text-xs font-semibold text-slate-600">Batch Number</label>
                       <input id="manual-batch" x-model="form.batch_number" type="text" maxlength="100" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#315b7e]" :aria-invalid="Boolean(formErrors.batch_number)" :class="formErrors.batch_number ? 'border-red-400' : 'border-slate-300'">
                     </div>
@@ -1756,12 +1756,12 @@
 
     <script src="/scripts/components/clinic-feedback.js?undo-admission=20261110-v1&v=services-20261017"></script>
     <script src="/scripts/components/clinic-attachments.js?v=image-preview-20261115"></script>
-    <script src="/scripts/components/clinic-record-presentation.js?manual-treatment=20261120&v=20261029&short-notes=20261110&owner-identity=20261118"></script>
-    <script src="/scripts/components/admin-clinic.js?attending-clinician=20261119&image-preview=20261115&undo-admission=20261110-v1&monitoring-validation=20261110-v1&confinement-discharge=20261110&treatment-validation=20261108&clinical-history=20261029&clinical-validation=20261027-v1&services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261107-v1&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&gateway=20261023-combined&clinic-roles=20261024&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261110&references=20261031&pet-sessions=20261031-v1&pet-birthdate=20261103-v1&urls=20261103&queue-copy=20261103-admin-v1&pet-profile=20261110-v1&body-condition=20261110-v2&clinic-activity=20261110&short-notes=500-20261110&owner-session=20261111"></script>
+    <script src="/scripts/components/clinic-record-presentation.js?manual-fields=20261120-v1&manual-treatment=20261120&v=20261029&short-notes=20261110&owner-identity=20261118"></script>
+    <script src="/scripts/components/admin-clinic.js?payment-detail=20261120-v1&attending-clinician=20261119&image-preview=20261115&undo-admission=20261110-v1&monitoring-validation=20261110-v1&confinement-discharge=20261110&treatment-validation=20261108&clinical-history=20261029&clinical-validation=20261027-v1&services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261107-v1&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&gateway=20261023-combined&clinic-roles=20261024&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261110&references=20261031&pet-sessions=20261031-v1&pet-birthdate=20261103-v1&urls=20261103&queue-copy=20261103-admin-v1&pet-profile=20261110-v1&body-condition=20261110-v2&clinic-activity=20261110&short-notes=500-20261110&owner-session=20261111"></script>
     <script src="/scripts/components/admin-clinic-case-workspace.js?v=20261015-imaging-v2&case-flow=20261013-v5&owner-session=20261111"></script>
     <script src="/scripts/components/admin-clinic-bulk-review.js?v=20261111"></script>
     <script src="/scripts/components/admin-clinic-confinement.js?undo-admission=20261110-v1&monitoring-validation=20261110-v1&confinement-discharge=20261110&clinical-history=20261029&v=20261015-confinement-weight-v1&pet-weight=pet-weight-size-20261107-v1&short-notes=20261110"></script>
-    <script src="/scripts/components/admin-vaccinations.js?treatment-expiry=20261120-v1&manual-treatment=20261120&treatment-validation=20261108&clinical-history=20261029&clinical-validation=20261027-v1&v=20261014-billing-v1&roles=20261010-4&clinic-products=20261010&treatments=working-visit-20261014&icons=20261018&admin-perf=20261019&product-dropdown=20261029-v3&short-notes=20261110"></script>
+    <script src="/scripts/components/admin-vaccinations.js?manual-fields=20261120-v1&treatment-expiry=20261120-v1&manual-treatment=20261120&treatment-validation=20261108&clinical-history=20261029&clinical-validation=20261027-v1&v=20261014-billing-v1&roles=20261010-4&clinic-products=20261010&treatments=working-visit-20261014&icons=20261018&admin-perf=20261019&product-dropdown=20261029-v3&short-notes=20261110"></script>
     <script src="/scripts/components/inventory-money-input.js?v=20261013-clinic-services"></script>
     <script src="/scripts/components/admin-clinic-shell.js?services=20261017&v=20261015-imaging-v2&case-flow=20261013-v5&unified-cases=20261014&loading-ui=universal-20261018&urls=20261103"></script>
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>

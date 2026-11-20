@@ -28,11 +28,11 @@ function clinicTreatmentDetails(record) {
   return [
     {label: 'Treatment type', value: record.treatment_type === 'medicine' ? 'Medicine' : 'Vaccine'},
     {label: 'Treatment', value: record.treatment_name || record.vaccine_name},
-    {label: 'Product', value: record.product_name || record.inventory_item_name},
+    ...(record.record_source !== 'manual' || record.product_name ? [{label: 'Product', value: record.product_name || record.inventory_item_name}] : []),
     {label: 'Source', value: ({manual: 'Manual treatment', inventory: 'Bethlehem inventory', historical: 'Historical / external'})[record.record_source || (record.inventory_item_id ? 'inventory' : 'historical')]},
     ...(record.record_source === 'manual' ? [{label: 'Price', value: clinicHistoryPrice(record.manual_price)}] : []),
     {label: 'Status', value: ({draft: 'Draft', published: 'Published', voided: 'Voided'})[record.state] || record.state},
-    {label: 'Manufacturer', value: record.manufacturer},
+    {label: record.record_source === 'manual' ? 'Brand' : 'Manufacturer', value: record.manufacturer},
     {label: 'Batch / Lot', value: record.batch_number},
     {label: 'Expiry', value: date(record.product_expiry_date)},
     {label: 'Quantity', value: record.inventory_quantity == null ? '—' : `${Number(record.inventory_quantity)} ${record.inventory_unit || ''}`.trim()},

@@ -44,6 +44,42 @@ class AdminVaccinationApiTest extends TestCase
     }
 
     #[DataProvider('treatmentTypes')]
+    public function test_manual_brand_and_batch_are_optional_persist_on_edit_and_keep_their_length_limits(string $type): void
+    {
+        $this->medicineStock();
+        $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->manualTreatment([
+            'treatment_type' => $type, 'manufacturer' => 'Rocephin', 'batch_number' => 'LOT-2026-051', 'product_expiry_date' => '2028-07-20',
+        ]))->assertCreated()->assertJsonPath('vaccination.manufacturer', 'Rocephin')->assertJsonPath('vaccination.batch_number', 'LOT-2026-051')
+            ->assertJsonPath('vaccination.product_name', null)->assertJsonPath('vaccination.product_expiry_date', '2028-07-20')->json('vaccination.id');
+        $this->patchJson("/api/admin/pets/101/vaccinations/$id", ['notes' => 'Edited draft', 'complete_entry' => true])->assertOk()
+            ->assertJsonPath('vaccination.manufacturer', 'Rocephin')->assertJsonPath('vaccination.batch_number', 'LOT-2026-051');
+        $this->patchJson("/api/admin/pets/101/vaccinations/$id", ['manufacturer' => str_repeat('B', 150), 'batch_number' => str_repeat('L', 100)])->assertOk()
+            ->assertJsonPath('vaccination.manufacturer', str_repeat('B', 150))->assertJsonPath('vaccination.batch_number', str_repeat('L', 100));
+        foreach (['manufacturer' => str_repeat('B', 151), 'batch_number' => str_repeat('L', 101)] as $field => $value) {
+            $this->patchJson("/api/admin/pets/101/vaccinations/$id", [$field => $value])->assertUnprocessable()->assertJsonValidationErrors($field);
+        }
+        $this->patchJson("/api/admin/pets/101/vaccinations/$id", ['manufacturer' => 'Rocephin', 'batch_number' => 'LOT-2026-051'])->assertOk();
+        $this->postJson('/api/admin/pets/101/vaccinations', $this->manualTreatment(['treatment_type' => $type]))->assertCreated()
+            ->assertJsonPath('vaccination.manufacturer', null)->assertJsonPath('vaccination.batch_number', null)->assertJsonPath('vaccination.product_name', null);
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'amount' => 350.50]);
+        $this->finalizeTreatmentVisit()->assertOk();
+        $this->getJson("/api/admin/pets/101/vaccinations/$id")->assertOk()->assertJsonPath('vaccination.state', 'published')
+            ->assertJsonPath('vaccination.manufacturer', 'Rocephin')->assertJsonPath('vaccination.batch_number', 'LOT-2026-051');
+        $this->assertDatabaseCount('clinic_charges', 2);
+        $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
+    }
+
+    public function test_editing_a_previously_saved_manual_vaccine_preserves_its_product_snapshot(): void
+    {
+        $this->medicineStock();
+        $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->manualTreatment([
+            'treatment_type' => 'vaccine', 'product_name' => 'Previously saved product',
+        ]))->assertCreated()->json('vaccination.id');
+        $this->patchJson("/api/admin/pets/101/vaccinations/$id", ['manufacturer' => 'Updated brand', 'complete_entry' => true])->assertOk()
+            ->assertJsonPath('vaccination.product_name', 'Previously saved product');
+    }
+
+    #[DataProvider('treatmentTypes')]
     public function test_manual_expiration_is_required_on_add_and_must_not_precede_administration(string $type): void
     {
         $this->medicineStock();

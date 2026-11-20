@@ -186,6 +186,7 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   assert.equal(state.siteRequired, true, 'Manual treatments require the same clinical injection details');
   state.form.dose_amount='0.8'; state.form.dose_unit='mL'; state.form.administration_site='Right thigh';
   state.form.product_expiry_date='2099-01-01';
+  state.form.manufacturer='Rocephin'; state.form.batch_number='LOT-2026-051';
   for (const price of ['abc','₱350','-1','+1','1e5','350.501','0','10000.01','3.5.0','350.','.50']) {
     state.form.manual_price=price;
     assert.ok(state.formValidationErrors(true).manual_price, `Reject invalid Manual price ${price}`);
@@ -222,8 +223,10 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   assert.equal(writes.at(-1)[2].inventory_item_id,null);
   assert.equal(writes.at(-1)[2].manual_price,'350.50', 'Dose does not multiply the final charge');
   assert.equal(writes.at(-1)[2].record_source,'manual');
+  assert.equal(writes.at(-1)[2].manufacturer, 'Rocephin'); assert.equal(writes.at(-1)[2].batch_number, 'LOT-2026-051');
   assert.equal(Object.hasOwn(writes.at(-1)[2], 'administered_date'), false, 'Current administration date is server controlled');
   state.openEditForm(state.records[0]); state.form.manual_price='400'; beforeRefresh=billingEvents().length; serverPrice='400.00';
+  assert.equal(state.form.manufacturer, 'Rocephin'); assert.equal(state.form.batch_number, 'LOT-2026-051');
   await state.saveTreatment(); assert.equal(billingEvents().length,beforeRefresh+1, 'Successful Update refreshes Billing once');
   await settle();
   assert.equal(billingReads, 2); assert.equal(billing.billingTotal, '400.00');
@@ -245,6 +248,12 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   assert.equal(fields.Manufacturer,'Maker');assert.equal(fields['Batch / Lot'],'LOT');assert.equal(fields.Notes,'Saved note');assert.equal(fields.Case,'CL-91');assert.equal(fields.Quantity,'1 bottle');
   const manualFields = Object.fromEntries(context.clinicTreatmentDetails({record_source:'manual',manual_price:'350.50',dose_amount:'0.8',dose_unit:'mL'}).map(field=>[field.label,field.value]));
   assert.equal(manualFields.Source, 'Manual treatment'); assert.equal(manualFields.Price, '₱350.50'); assert.equal(manualFields.Dose,'0.8 mL');
+  assert.equal(Object.hasOwn(manualFields, 'Product'), false, 'Current Manual treatments omit a meaningless Product row');
+  const manualDetails = Object.fromEntries(context.clinicTreatmentDetails({record_source:'manual',manufacturer:'Rocephin',batch_number:'LOT-2026-051'}).map(field=>[field.label,field.value]));
+  assert.equal(manualDetails.Brand, 'Rocephin'); assert.equal(manualDetails['Batch / Lot'], 'LOT-2026-051');
+  assert.equal(Object.hasOwn(manualDetails, 'Manufacturer'), false);
+  assert.equal(context.clinicTreatmentDetails({record_source:'historical',product_name:'Legacy product'}).find(field=>field.label==='Product').value,'Legacy product');
+  assert.equal(context.clinicTreatmentDetails({record_source:'manual',product_name:'Stored product snapshot'}).find(field=>field.label==='Product').value,'Stored product snapshot');
   assert.equal(context.clinicTreatmentDetails({record_source:'historical'}).find(field=>field.label==='Source').value,'Historical / external');
 
   const cold = attach(context.adminClinicVaccinations());

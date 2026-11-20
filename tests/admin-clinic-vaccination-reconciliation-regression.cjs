@@ -60,6 +60,17 @@ const draft = {
       assert.equal(manual.validateForm(true), true, `${type}: same-day or later expiration is valid`);
       assert.equal(manual.buildPayload().product_expiry_date, expiry);
     }
+    assert.equal(Object.hasOwn(manual.buildPayload(), 'product_name'), false, `${type}: current Manual entries do not send a hidden Product name`);
+    manual.openEditForm({id: 20, state: 'draft', record_source: 'manual', treatment_type: type, clinic_appointment_id: 201,
+      vaccine_name: 'Saved treatment', manufacturer: 'Rocephin', batch_number: 'LOT-2026-051', product_name: 'Stored product snapshot',
+      administered_date: sandbox.vaccinationToday(), product_expiry_date: '2099-01-01', manual_price: '350.50', dose_amount: '0.8', dose_unit: 'mL', route: 'oral'});
+    assert.equal(manual.form.manufacturer, 'Rocephin'); assert.equal(manual.form.batch_number, 'LOT-2026-051');
+    assert.equal(manual.buildPayload().manufacturer, 'Rocephin'); assert.equal(manual.buildPayload().batch_number, 'LOT-2026-051');
+    assert.equal(Object.hasOwn(manual.buildPayload(), 'product_name'), false, 'Editing omits the hidden Product snapshot rather than clearing it');
+    manual.recordKind = 'inventory'; manual.changeSource();
+    assert.equal(manual.form.manufacturer, ''); assert.equal(manual.form.batch_number, ''); assert.equal(manual.form.product_name, '');
+    assert.equal(Object.hasOwn(manual.buildPayload(), 'manufacturer'), false);
+    manual.recordKind = 'manual'; manual.changeSource();
     manual.records = [{id: 12, state: 'draft', record_source: 'manual', vaccine_name: 'Saved draft', manual_price: '350.50',
       dose_amount: '0.8', dose_unit: 'mL', route: 'oral', administered_date: sandbox.vaccinationToday(), product_expiry_date: null}];
     assert.ok(manual.incompleteInventoryTreatmentErrors()['treatments.12.product_expiry_date'], 'Existing drafts require expiration before case completion');
@@ -195,7 +206,7 @@ const draft = {
   for (const field of ["administered_by_user_id", "administered_by_name"]) assert.equal(Object.hasOwn(payload, field), false);
 
   const historical = component();
-  historical.openEditForm({ ...draft, record_source: 'historical', inventory_item_id: null, administered_date: "2020-01-01", manufacturer: "Original", batch_number: "OLD", administered_by_user_id: null, administered_by_name: "External vet" });
+  historical.openEditForm({ ...draft, record_source: 'historical', inventory_item_id: null, product_name: 'Legacy product', administered_date: "2020-01-01", manufacturer: "Original", batch_number: "OLD", administered_by_user_id: null, administered_by_name: "External vet" });
   assert.equal(historical.recordKind, "historical");
   historical.form.next_due_date = "2020-02-01";
   historical.form.dose_amount = "";
@@ -205,6 +216,7 @@ const draft = {
   assert.equal(historicalPayload.inventory_item_id, null);
   assert.equal(historicalPayload.administered_date, "2020-01-01");
   assert.equal(historicalPayload.manufacturer, "Original");
+  assert.equal(historicalPayload.product_name, 'Legacy product');
   assert.equal(historicalPayload.batch_number, "OLD");
   assert.equal(Object.hasOwn(historicalPayload, "administered_by_name"), false);
 

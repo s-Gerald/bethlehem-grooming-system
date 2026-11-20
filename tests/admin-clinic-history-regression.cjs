@@ -10,7 +10,9 @@ const context = {Date, Intl, URLSearchParams, Set,
   API: {adminGetPetCaseDetails: async (...args) => {calls.push(args); return response;}},
   viewClinicAttachment: async (...args) => calls.push(args),
 };
-vm.runInNewContext(fs.readFileSync('scripts/components/admin-archive.js', 'utf8'), context);
+vm.createContext(context);
+vm.runInContext(fs.readFileSync('scripts/components/clinic-record-presentation.js', 'utf8'), context);
+vm.runInContext(fs.readFileSync('scripts/components/admin-archive.js', 'utf8'), context);
 const ui = context.adminArchive();
 ui.$nextTick = callback => callback();
 ui.$refs = {clinicVisitClose: closeButton, clinicVisitBody: {scrollTop: 100}};
@@ -21,7 +23,8 @@ const visit = {id: 9, pet: {id: 2, name: 'Charlie', weight: 18}, status: 'comple
     attachments: [{id: 1, file_name: 'skin.png'}, {id: 2, file_name: 'chest.jpg', clinic_case_service_id: 5},
       {id: 3, file_name: 'abdomen.jpeg', clinic_case_service_id: 99}]}};
 const original = JSON.stringify(visit);
-response = {treatments: [{id: 1, state: 'published'}, {id: 2, state: 'draft'}, {id: 3, state: 'voided', voided_at: '2026-10-15'}],
+response = {treatments: [{id: 1, state: 'published', record_source: 'inventory', treatment_type: 'medicine',
+    inventory_quantity: '5.00', inventory_unit: 'vial', dose_amount: 20, dose_unit: 'mL'}, {id: 2, state: 'draft'}, {id: 3, state: 'voided', voided_at: '2026-10-15'}],
   services: [{id: 5, status: 'performed', service_snapshot: {name: 'Chest X-Ray'}, clinic_service: {name: 'Renamed service'},
     quantity: 2, applied_price: '350'}, {id: 6, status: 'cancelled'}]};
 
@@ -36,6 +39,25 @@ response = {treatments: [{id: 1, state: 'published'}, {id: 2, state: 'draft'}, {
   assert.equal(ui.clinicVitals(ui.detailsClinicRecord).map(field => field.label).join(','), 'Weight,Temperature,Heart rate');
   assert.equal(ui.clinicVitals(ui.detailsClinicRecord)[0].value, '5.30 kg');
   assert.equal(ui.clinicCare.treatments.length, 1, 'Draft and voided care must not read as provided');
+  const inventoryTreatment = ui.clinicCare.treatments[0];
+  for (const treatment_type of ['medicine', 'vaccine']) {
+    const fields = ui.clinicTreatmentFields({...inventoryTreatment, treatment_type});
+    assert.equal(fields.find(field => field.label === 'Quantity')?.value, '5 vial');
+    assert.equal(fields.find(field => field.label === 'Dose')?.value, '20 mL');
+    const patientFields = context.clinicTreatmentDetails({...inventoryTreatment, treatment_type});
+    for (const label of ['Quantity', 'Dose']) assert.equal(fields.find(field => field.label === label).value, patientFields.find(field => field.label === label).value, `History and Patient Records agree on ${label}`);
+    assert.equal(fields.findIndex(field => field.label === 'Quantity') + 1, fields.findIndex(field => field.label === 'Dose'), 'Quantity sits next to Dose');
+  }
+  for (const [inventory_quantity, inventory_unit, expected] of [[2, 'bottle', '2 bottle'], [3, 'tablet', '3 tablet'], [5, null, '5']]) {
+    assert.equal(ui.clinicTreatmentFields({...inventoryTreatment, inventory_quantity, inventory_unit}).find(field => field.label === 'Quantity').value, expected);
+  }
+  for (const record_source of ['manual', 'historical']) {
+    for (const inventory_quantity of [undefined, null, '']) {
+      const fields = ui.clinicTreatmentFields({record_source, inventory_quantity, inventory_unit: 'vial', quantity: 1, dose_amount: 20, dose_unit: 'mL'});
+      assert.equal(fields.some(field => field.label === 'Quantity'), false, 'No quantity is inferred from billing or clinical dose');
+      assert.equal(fields.find(field => field.label === 'Dose').value, '20 mL');
+    }
+  }
   assert.equal(ui.clinicCare.services.length, 1);
   assert.equal(ui.clinicServiceName(ui.clinicCare.services[0]), 'Chest X-Ray', 'Use the encounter snapshot');
   assert.match(ui.clinicServicePrice(ui.clinicCare.services[0]), /700\.00/);

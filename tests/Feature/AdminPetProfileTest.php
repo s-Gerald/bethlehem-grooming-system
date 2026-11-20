@@ -21,17 +21,22 @@ class AdminPetProfileTest extends TestCase
         DB::table('vaccination_records')->insert([
             'pet_id' => 101, 'clinic_appointment_id' => 701, 'record_source' => 'manual', 'treatment_type' => 'medicine',
             'vaccine_name' => 'Ceftriaxone', 'manual_price' => '350.50', 'dose_amount' => '0.8', 'dose_unit' => 'mL',
+            'manufacturer' => 'Rocephin', 'batch_number' => 'LOT-2026-051', 'product_expiry_date' => '2028-07-20',
             'route' => 'intramuscular', 'administration_site' => 'Right thigh', 'administered_date' => '2026-11-20',
             'published_at' => '2026-11-20 12:00:00',
         ]);
         DB::table('vaccination_records')->insert(['pet_id' => 101, 'vaccine_name' => 'External vaccine',
-            'administered_date' => '2020-01-01', 'published_at' => '2020-01-02 12:00:00']);
+            'product_name' => 'Legacy product', 'administered_date' => '2020-01-01', 'published_at' => '2020-01-02 12:00:00']);
         $this->getJson('/api/admin/pets/101/profile?view=history')->assertOk()
             ->assertJsonPath('vaccinations.0.record_source', 'manual')->assertJsonPath('vaccinations.0.manual_price', '350.50')
-            ->assertJsonPath('vaccinations.1.record_source', 'historical');
+            ->assertJsonPath('vaccinations.0.manufacturer', 'Rocephin')->assertJsonPath('vaccinations.0.batch_number', 'LOT-2026-051')
+            ->assertJsonPath('vaccinations.0.product_expiry_date', '2028-07-20')->assertJsonPath('vaccinations.0.product_name', null)
+            ->assertJsonPath('vaccinations.1.record_source', 'historical')->assertJsonPath('vaccinations.1.product_name', 'Legacy product');
         $this->getJson('/api/admin/pets/101/cases/701/details?view=history')->assertOk()->assertJsonCount(1, 'treatments')
             ->assertJsonPath('treatments.0.record_source', 'manual')->assertJsonPath('treatments.0.manual_price', '350.50')
             ->assertJsonPath('treatments.0.treatment_name', 'Ceftriaxone')->assertJsonPath('treatments.0.dose_amount', '0.800')
+            ->assertJsonPath('treatments.0.manufacturer', 'Rocephin')->assertJsonPath('treatments.0.batch_number', 'LOT-2026-051')
+            ->assertJsonPath('treatments.0.product_expiry_date', '2028-07-20')->assertJsonPath('treatments.0.product_name', null)
             ->assertJsonPath('treatments.0.dose_unit', 'mL')->assertJsonPath('treatments.0.route', 'intramuscular')
             ->assertJsonPath('treatments.0.administration_site', 'Right thigh')->assertJsonPath('treatments.0.clinic_appointment_reference', 'CL-701');
     }

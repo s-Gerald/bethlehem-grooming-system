@@ -461,6 +461,7 @@ function adminClinicVaccinations() {
       this.form.inventory_quantity = 1;
       this.completionAttempted = false;
       this.form.manual_price = "";
+      for (const field of ["product_name", "manufacturer", "batch_number"]) this.form[field] = "";
       if (this.recordKind !== "historical") this.form.administered_date = vaccinationToday();
       this.formErrors = {};
       this.formErrorSummary = "";
@@ -730,7 +731,7 @@ function adminClinicVaccinations() {
         ...(this.recordKind !== "inventory" ? {
           vaccine_name: nullableText("vaccine_name"),
           ...(this.recordKind === 'historical' ? {administered_date: nullableText('administered_date')} : {}),
-          product_name: nullableText("product_name"),
+          ...(this.recordKind === 'historical' ? {product_name: nullableText("product_name")} : {}),
           manufacturer: nullableText("manufacturer"),
           batch_number: nullableText("batch_number"),
           product_expiry_date: nullableText("product_expiry_date"),

@@ -1001,6 +1001,7 @@ function adminClinicPage() {
       return charge.quantity == null ? '—' : Number(charge.quantity).toLocaleString('en-PH', {maximumFractionDigits: 2});
     },
     paymentChargeDetail(charge) {
+      if (['medicine', 'vaccine'].includes(charge.kind) && Number(charge.quantity) === 1) return '';
       return charge.quantity != null && charge.unit_price != null ? `${this.paymentChargeQuantity(charge)} × ${this.money(charge.unit_price)}` : '';
     },
     formatClinicPaidAt(value) {
