@@ -102,7 +102,6 @@ for (const [weight,price] of [[5.05,200],[10.05,400],[15.05,700]]) assert.equal(
 for (const weight of [0.5, 50.01]) assert.match(context.clinicMedicinePrice(item, weight).error, /No price is configured/);
 assert.equal(context.clinicMedicinePrice({pricing_method:"flat",selling_price:"300"}, null).price, 300);
 context.window.addEventListener = () => {};
-context.clinicLocalDate = date => date.toISOString().slice(0, 10);
 vm.runInContext(fs.readFileSync("scripts/components/admin-vaccinations.js", "utf8"), context);
 const modal = context.adminClinicVaccinations();
 assert.equal(modal.recordKind, 'manual');
@@ -111,7 +110,7 @@ modal.$nextTick = callback => callback(); modal.$refs = {};
 modal.$store = {clinicAccess: {permissions: {clinical: true}}};
 modal.appointment = { id: 1, status: "in_consultation", weight_kg: 12.4 };
 modal.formModal.clinicAppointmentId = 1; modal.treatmentType = "medicine";
-modal.selectMedicine({...item, is_active: true, quantity_on_hand: 3, available_quantity: 3});
+modal.selectMedicine({...item, is_active: true, quantity_on_hand: 3, available_quantity: 3, next_batch: {expiry_date: '2099-01-01'}});
 assert.equal(modal.medicineQuote.price, 700);
 assert.equal(modal.form.inventory_quantity, 1);
 assert.equal(modal.form.dose_unit, "");

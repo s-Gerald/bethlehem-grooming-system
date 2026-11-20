@@ -33,8 +33,94 @@ class AdminVaccinationApiTest extends TestCase
             'vaccine_name' => 'Ceftriaxone', 'manual_price' => '350.50', 'complete_entry' => true,
             'dose_amount' => '0.8', 'dose_unit' => 'mL', 'route' => 'intramuscular',
             'administration_site' => 'Right thigh', 'notes' => 'Administered during consultation',
+            'product_expiry_date' => '2027-07-23',
             'request_key' => (string) \Illuminate\Support\Str::uuid(),
         ], $changes);
+    }
+
+    public static function treatmentTypes(): array
+    {
+        return [['vaccine'], ['medicine']];
+    }
+
+    #[DataProvider('treatmentTypes')]
+    public function test_manual_expiration_is_required_on_add_and_must_not_precede_administration(string $type): void
+    {
+        $this->medicineStock();
+        $payload = $this->manualTreatment(['treatment_type' => $type]);
+        unset($payload['product_expiry_date']);
+        $this->postJson('/api/admin/pets/101/vaccinations', $payload)->assertUnprocessable()->assertJsonValidationErrors('product_expiry_date');
+        foreach ([null, '', 'not-a-date', '2026-07-22'] as $expiry) {
+            $this->postJson('/api/admin/pets/101/vaccinations', $payload + ['product_expiry_date' => $expiry])
+                ->assertUnprocessable()->assertJsonValidationErrors('product_expiry_date');
+        }
+        $this->assertDatabaseCount('vaccination_records', 0);
+        $this->assertDatabaseCount('clinic_charges', 0);
+        foreach (['2026-07-23', '2027-07-23'] as $expiry) {
+            $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->manualTreatment([
+                'treatment_type' => $type, 'product_expiry_date' => $expiry,
+            ]))->assertCreated()->assertJsonPath('vaccination.product_expiry_date', $expiry)->json('vaccination.id');
+            $this->patchJson("/api/admin/pets/101/vaccinations/$id", ['complete_entry' => true, 'product_expiry_date' => null])
+                ->assertUnprocessable()->assertJsonValidationErrors('product_expiry_date');
+            $this->assertSame($expiry, \App\Models\VaccinationRecord::findOrFail($id)->product_expiry_date->toDateString());
+            $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'amount' => 350.50]);
+        }
+        $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
+    }
+
+    #[DataProvider('treatmentTypes')]
+    public function test_manual_draft_can_omit_expiration_but_cannot_finalize_until_corrected(string $type): void
+    {
+        $this->medicineStock();
+        $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->manualTreatment([
+            'treatment_type' => $type, 'complete_entry' => false, 'product_expiry_date' => null,
+        ]))->assertCreated()->assertJsonPath('vaccination.product_expiry_date', null)->json('vaccination.id');
+        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->finalizeTreatmentVisit()->assertUnprocessable()->assertJsonValidationErrors("treatments.$id.product_expiry_date");
+        $this->assertDatabaseHas('vaccination_records', ['id' => $id, 'published_at' => null, 'product_expiry_date' => null]);
+        $this->patchJson("/api/admin/pets/101/vaccinations/$id", ['complete_entry' => true, 'product_expiry_date' => '2026-07-23'])
+            ->assertOk()->assertJsonPath('vaccination.product_expiry_date', '2026-07-23');
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'amount' => 350.50]);
+        // Simulate a pre-change active draft that was billed without an expiration.
+        foreach ([null, '2026-07-22'] as $expiry) {
+            DB::table('vaccination_records')->where('id', $id)->update(['product_expiry_date' => $expiry]);
+            $this->finalizeTreatmentVisit()->assertUnprocessable()->assertJsonValidationErrors("treatments.$id.product_expiry_date");
+        }
+        $this->patchJson("/api/admin/pets/101/vaccinations/$id", ['complete_entry' => true, 'product_expiry_date' => '2027-07-23'])->assertOk();
+        $this->finalizeTreatmentVisit()->assertOk();
+        $this->assertDatabaseCount('clinic_charges', 1);
+        $this->getJson("/api/admin/pets/101/vaccinations/$id")->assertOk()->assertJsonPath('vaccination.product_expiry_date', '2027-07-23')
+            ->assertJsonPath('vaccination.state', 'published');
+    }
+
+    #[DataProvider('treatmentTypes')]
+    public function test_inventory_expiration_must_come_from_a_usable_batch_on_add_and_finalization(string $type): void
+    {
+        $this->medicineStock();
+        DB::table('inventory_items')->where('item_id', 301)->update(['category' => $type]);
+        DB::table('inventory_transactions')->where('item_id', 301)->update(['expiry_date' => null]);
+        $payload = $this->medicineTreatment(['treatment_type' => $type, 'complete_entry' => true]);
+        $this->postJson('/api/admin/pets/101/vaccinations', $payload)->assertUnprocessable()->assertJsonValidationErrors('inventory_item_id');
+        $this->postJson('/api/admin/pets/101/vaccinations', $payload + ['product_expiry_date' => '2027-07-23'])
+            ->assertUnprocessable()->assertJsonValidationErrors('product_expiry_date');
+        $id = $this->postJson('/api/admin/pets/101/vaccinations', array_replace($payload, ['complete_entry' => false]))
+            ->assertCreated()->assertJsonPath('vaccination.product_expiry_date', null)->json('vaccination.id');
+        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->finalizeTreatmentVisit()->assertUnprocessable()->assertJsonValidationErrors("treatments.$id.inventory_item_id");
+        DB::table('inventory_transactions')->where('item_id', 301)->update(['expiry_date' => '2027-07-23']);
+        // Completion refreshes the authoritative snapshot even for an old draft without a date.
+        $this->patchJson("/api/admin/pets/101/vaccinations/$id", ['complete_entry' => true])->assertOk()
+            ->assertJsonPath('vaccination.product_expiry_date', '2027-07-23');
+        $this->assertDatabaseHas('clinic_charges', ['vaccination_record_id' => $id, 'amount' => 250]);
+        DB::table('inventory_transactions')->where('item_id', 301)->update(['expiry_date' => null]);
+        $this->finalizeTreatmentVisit()->assertUnprocessable()->assertJsonValidationErrors("treatments.$id.inventory_item_id");
+        $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
+        DB::table('inventory_transactions')->where('item_id', 301)->update(['expiry_date' => '2027-07-23']);
+        $this->finalizeTreatmentVisit()->assertOk();
+        $this->assertDatabaseCount('clinic_charges', 1);
+        $this->assertDatabaseHas('vaccination_records', ['id' => $id, 'batch_number' => 'MED-1']);
+        $this->assertSame('2027-07-23', \App\Models\VaccinationRecord::findOrFail($id)->product_expiry_date->toDateString());
+        $this->assertSame(1, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
     }
 
     public function test_manual_add_update_remove_synchronizes_the_bill_without_stock_use(): void
@@ -1501,7 +1587,7 @@ class AdminVaccinationApiTest extends TestCase
         $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->medicineTreatment())->assertCreated()->json('vaccination.id');
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertUnprocessable();
         DB::table('inventory_transactions')->update(['expiry_date' => '2027-07-23']);
-        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['inventory_quantity' => 3])->assertOk();
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['inventory_quantity' => 3, 'inventory_item_id' => 301])->assertOk();
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertUnprocessable();
         $this->assertDatabaseCount('clinic_charges', 1);
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
@@ -1707,7 +1793,7 @@ class AdminVaccinationApiTest extends TestCase
         DB::table('inventory_item_weight_prices')->insert(['item_id' => 301, 'min_weight_kg' => 1, 'max_weight_kg' => 5, 'price' => 400]);
         $this->postJson('/api/admin/pets/101/vaccinations', $this->medicineTreatment(['expected_price' => 400, 'expected_weight_kg' => 4]))
             ->assertUnprocessable()->assertJsonValidationErrors('weight_kg');
-        $id = $this->insertVaccination(101, 'Clinic Medicine', '2026-07-23', $this->medicineTreatment(['expected_price' => 400, 'expected_weight_kg' => 4]));
+        $id = $this->insertVaccination(101, 'Clinic Medicine', '2026-07-23', $this->medicineTreatment(['expected_price' => 400, 'expected_weight_kg' => 4]) + ['product_expiry_date' => '2027-07-23']);
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertUnprocessable()->assertJsonValidationErrors('weight_kg');
         DB::table('clinic_vitals')->insert(['clinic_appointment_id' => 201, 'weight_kg' => 8]);
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertUnprocessable();
@@ -2055,7 +2141,7 @@ class AdminVaccinationApiTest extends TestCase
         ])->assertCreated()->json('vaccination.id');
         $this->postJson('/api/admin/clinic-cases/201/finish')->assertUnprocessable()->assertJsonValidationErrors('treatments.'.$id.'.treatment');
         $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", [
-            'vaccine_name' => 'Manual treatment', 'manual_price' => '350.50', 'dose_amount' => '0.8', 'dose_unit' => 'mL', 'route' => 'oral',
+            'vaccine_name' => 'Manual treatment', 'manual_price' => '350.50', 'dose_amount' => '0.8', 'dose_unit' => 'mL', 'route' => 'oral', 'product_expiry_date' => '2027-07-23',
         ])->assertOk();
         $this->postJson('/api/admin/clinic-cases/201/finish')->assertOk();
         $this->assertNotNull(DB::table('vaccination_records')->where('id', $id)->value('published_at'));
@@ -2225,6 +2311,7 @@ class AdminVaccinationApiTest extends TestCase
     private function insertFinalizableDraft(?int $itemId, ?int $appointmentId): int
     {
         return $this->insertVaccination(101, 'Rabies Vaccine', '2026-07-23', [
+            'product_expiry_date' => $itemId ? '2026-12-01' : null,
             'inventory_item_id' => $itemId,
             'inventory_quantity' => 1,
             'clinic_appointment_id' => $appointmentId,

@@ -7,6 +7,17 @@ use App\Models\VaccinationRecord;
 /** Structural entry guardrails, never a drug-dose recommendation or diagnosis. */
 final class ClinicClinicalRules
 {
+    public const INVENTORY_EXPIRY_MESSAGE = 'Review the Inventory stock/batch and select a product with a valid expiration date.';
+
+    public static function productExpiryErrors(?string $expiry, ?string $administered, bool $required = false): array
+    {
+        if (blank($expiry)) return $required ? ['product_expiry_date' => 'Enter the product expiration date.'] : [];
+        if ($administered && \Carbon\CarbonImmutable::parse($expiry)->startOfDay()->lt(\Carbon\CarbonImmutable::parse($administered)->startOfDay())) {
+            return ['product_expiry_date' => 'This date must be on or after the administration date.'];
+        }
+        return [];
+    }
+
     public static function catalog(): array
     {
         static $catalog;

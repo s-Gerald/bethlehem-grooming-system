@@ -109,7 +109,7 @@ class AdminVaccinationController extends Controller
                         'vaccination' => $this->formatRecord($this->loadResponseRelations($existing))]);
                 }
             }
-            $data = $this->addInventorySnapshot($data);
+            $data = $this->addInventorySnapshot($data, completeEntry: $request->boolean('complete_entry'));
 
             $case = null;
             if (! empty($data['clinic_appointment_id'])) {
@@ -284,7 +284,7 @@ class AdminVaccinationController extends Controller
                     return $this->conflict('This case is no longer eligible for clinical changes.');
                 }
             }
-            $data = $this->addInventorySnapshot($data);
+            $data = $this->addInventorySnapshot($data, $record, $request->boolean('complete_entry'));
 
             $record->fill($data);
             $record->save();
@@ -538,8 +538,17 @@ class AdminVaccinationController extends Controller
                 $unit = is_string($custom) ? ClinicClinicalRules::normalizeDoseUnit($custom) : null;
             }
             $required = $completeEntry && $currentTreatment;
+            if (! $usesInventory && ! $validator->errors()->has('product_expiry_date') && ! $validator->errors()->has('administered_date')) {
+                $errors = ClinicClinicalRules::productExpiryErrors(
+                    $request->input('product_expiry_date', $record?->product_expiry_date?->toDateString()),
+                    $fillAdministrationDate ? now()->toDateString() : $request->input('administered_date', $record?->administered_date?->toDateString()),
+                    $required,
+                );
+            } else {
+                $errors = [];
+            }
             $route = $required || $request->has('route') ? $request->input('route', $record?->route) : null;
-            $errors = ClinicClinicalRules::doseErrors($amount, $unit, $required)
+            $errors += ClinicClinicalRules::doseErrors($amount, $unit, $required)
                 + ClinicClinicalRules::administrationErrors(
                     $route,
                     $request->input('administration_site', $record?->administration_site),
@@ -590,7 +599,7 @@ class AdminVaccinationController extends Controller
         if (! $record) $data['treatment_type'] = $type;
         if ($medicine) {
             $data = [...$data, 'next_due_date' => null, 'product_name' => null,
-                'manufacturer' => null, 'batch_number' => null, 'product_expiry_date' => null];
+                'manufacturer' => null, 'batch_number' => null];
         }
         if (! $usesInventory) $data = [...$data, 'inventory_item_id' => null, 'inventory_quantity' => null];
         else $data['manual_price'] = null;
@@ -602,11 +611,9 @@ class AdminVaccinationController extends Controller
         }
         if (! $usesInventory) {
             $administered = $data['administered_date'] ?? $record?->administered_date?->toDateString();
-            foreach (['next_due_date', 'product_expiry_date'] as $field) {
-                $later = array_key_exists($field, $data) ? $data[$field] : $record?->{$field}?->toDateString();
-                if ($administered && $later && CarbonImmutable::parse($later)->lt(CarbonImmutable::parse($administered))) {
-                    throw ValidationException::withMessages([$field => 'This date must be on or after the administration date.']);
-                }
+            $nextDue = array_key_exists('next_due_date', $data) ? $data['next_due_date'] : $record?->next_due_date?->toDateString();
+            if ($administered && $nextDue && CarbonImmutable::parse($nextDue)->lt(CarbonImmutable::parse($administered))) {
+                throw ValidationException::withMessages(['next_due_date' => 'This date must be on or after the administration date.']);
             }
         }
         return $data;
@@ -642,16 +649,21 @@ class AdminVaccinationController extends Controller
     }
 
     // Drafts show the batch FEFO would use now; publish() fixes the batch actually consumed.
-    private function addInventorySnapshot(array $data): array
+    private function addInventorySnapshot(array $data, ?VaccinationRecord $record = null, bool $completeEntry = false): array
     {
-        if (empty($data['inventory_item_id'])) {
+        $itemId = $data['inventory_item_id'] ?? $record?->inventory_item_id;
+        if (($data['record_source'] ?? null) !== 'inventory' || ! $itemId
+            || (! array_key_exists('inventory_item_id', $data) && ! $completeEntry)) {
             return $data;
         }
 
-        $item = InventoryItem::query()->findOrFail($data['inventory_item_id']);
+        $item = InventoryItem::query()->findOrFail($itemId);
         $batch = $this->batchBalances->nextAvailableBatch(
             $this->batchBalances->forItem((int) $item->item_id),
         );
+        if ($completeEntry && ClinicClinicalRules::productExpiryErrors($batch['expiry_date'] ?? null, now()->toDateString(), true)) {
+            throw ValidationException::withMessages(['inventory_item_id' => ClinicClinicalRules::INVENTORY_EXPIRY_MESSAGE]);
+        }
 
         return [
             ...$data,

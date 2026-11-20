@@ -594,6 +594,17 @@ function adminClinicVaccinations() {
       const error = this.manualPriceError(this.form.manual_price, this.completionAttempted);
       this.updateFieldErrors(['manual_price'], error ? {manual_price: error} : {}, interaction === 'blur');
     },
+    productExpiryErrors(expiry, administered, source, required) {
+      const value = String(expiry ?? '').trim();
+      if (!value && !required) return {};
+      const date = new Date(value + 'T00:00:00');
+      const invalid = !value || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(date.getTime()) || clinicLocalDate(date) !== value;
+      if (source === 'inventory') return invalid || (administered && value < administered)
+        ? {inventory_item_id: 'Review the Inventory stock/batch and select a product with a valid expiration date.'} : {};
+      if (!value) return {product_expiry_date: 'Enter the product expiration date.'};
+      if (invalid) return {product_expiry_date: 'Enter a valid product expiration date.'};
+      return administered && value < administered ? {product_expiry_date: 'This date must be on or after the administration date.'} : {};
+    },
     incompleteInventoryTreatmentErrors() {
       for (const record of this.records) {
         const source = record.record_source || (record.inventory_item_id ? 'inventory' : 'historical');
@@ -601,6 +612,7 @@ function adminClinicVaccinations() {
         const errors = {
           ...clinicDoseErrors(record.dose_amount, record.dose_unit, true),
           ...this.administrationFieldErrors(record, true),
+          ...this.productExpiryErrors(record.product_expiry_date, record.administered_date, source, true),
         };
         if (source === 'manual') {
           if (!record.vaccine_name?.trim()) errors.vaccine_name = 'Enter the treatment name.';
@@ -648,6 +660,7 @@ function adminClinicVaccinations() {
         if (medicine && this.selectedMedicine && this.medicineQuote?.error) errors.inventory_item_id = this.medicineQuote.error;
         if (complete && medicine && !this.formModal.clinicAppointmentId) errors.clinic_appointment_id = "An ongoing Clinic case is required for a medicine treatment.";
         if (complete && !value("administered_date")) errors.administered_date = "Review this treatment’s missing administration date before saving.";
+        if (complete && this.selectedProduct) Object.assign(errors, this.productExpiryErrors(this.selectedProduct.next_batch?.expiry_date, value('administered_date'), 'inventory', true));
       }
 
       Object.assign(errors, this.doseFieldErrors(complete && this.currentClinicalRequired), this.administrationFieldErrors(this.form, complete && this.currentClinicalRequired));
@@ -665,9 +678,8 @@ function adminClinicVaccinations() {
         if (this.recordKind === 'historical' && ((complete && !value("administered_date")) || (value("administered_date") && (!/^\d{4}-\d{2}-\d{2}$/.test(value("administered_date")) || Number.isNaN(new Date(value("administered_date")).getTime()) || value("administered_date") > vaccinationToday())))) {
           errors.administered_date = "Enter the actual administration date, on or before today.";
         }
-        for (const field of medicine ? [] : ["next_due_date", "product_expiry_date"]) {
-          if (value(field) && value(field) < value("administered_date")) errors[field] = "This date must be on or after the administration date.";
-        }
+        Object.assign(errors, this.productExpiryErrors(value('product_expiry_date'), value('administered_date'), this.recordKind, complete && this.currentClinicalRequired));
+        if (!medicine && value('next_due_date') && value('next_due_date') < value('administered_date')) errors.next_due_date = 'This date must be on or after the administration date.';
       }
 
       return errors;

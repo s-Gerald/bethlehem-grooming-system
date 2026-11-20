@@ -25,7 +25,7 @@ const attach = state => {
   return state;
 };
 const appt = id => ({id, pet: {id: 7, name: 'Mochi'}, status: 'in_consultation', vitals: {weight_kg: 12}});
-const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'Rabies', available_quantity: 10, unit: 'vial'};
+const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'Rabies', available_quantity: 10, unit: 'vial', next_batch: {expiry_date: '2099-01-01'}};
 (async () => {
   const intakeRecord = attach(context.adminClinicModal());
   const intakeTreatment = attach(context.adminClinicVaccinations());
@@ -63,7 +63,8 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   context.API.createAdminPetVaccination = async (pet, payload) => {
     writes.push(['create',pet,payload]);
     if (failCreate) throw new Error('Lost response');
-    const vaccination = {id:10, state:'draft', administered_date: payload.inventory_item_id ? context.vaccinationToday() : null, ...payload};
+    const vaccination = {id:10, state:'draft', administered_date: context.vaccinationToday(),
+      product_expiry_date: payload.inventory_item_id ? product.next_batch.expiry_date : payload.product_expiry_date, ...payload};
     savedRecords = [vaccination]; return {vaccination};
   };
   context.API.publishAdminPetVaccination = async () => {throw new Error('Individual treatments must not be published');};
@@ -161,7 +162,7 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   assert.equal(writes.at(-1)[2].complete_entry,undefined);
 
   state.openForAppointment(appt(91)); await settle(); modal.open = true;
-  state.records[0] = {...state.records[0], record_source: 'inventory', inventory_item_id: 5, dose_amount: '0.5', dose_unit: 'mL',
+  state.records[0] = {...state.records[0], record_source: 'inventory', inventory_item_id: 5, product_expiry_date: '2099-01-01', dose_amount: '0.5', dose_unit: 'mL',
     route: 'intramuscular', administration_site: null};
   const finishCount = caseSaves.length;
   await modal.saveRecord(true);
@@ -184,6 +185,7 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   state.form.route = 'subcutaneous';
   assert.equal(state.siteRequired, true, 'Manual treatments require the same clinical injection details');
   state.form.dose_amount='0.8'; state.form.dose_unit='mL'; state.form.administration_site='Right thigh';
+  state.form.product_expiry_date='2099-01-01';
   for (const price of ['abc','₱350','-1','+1','1e5','350.501','0','10000.01','3.5.0','350.','.50']) {
     state.form.manual_price=price;
     assert.ok(state.formValidationErrors(true).manual_price, `Reject invalid Manual price ${price}`);

@@ -41,6 +41,34 @@ const draft = {
 };
 
 (async () => {
+  for (const type of ['vaccine', 'medicine']) {
+    const manual = component();
+    manual.recordKind = 'manual'; manual.treatmentType = type; manual.formModal.clinicAppointmentId = 201;
+    Object.assign(manual.form, {vaccine_name: 'Current treatment', manual_price: '350.50', dose_amount: '0.8', dose_unit: 'mL', route: 'oral'});
+    assert.equal(manual.validateForm(true), false, `${type}: expiration is required on Add Treatment`);
+    assert.equal(manual.formErrors.product_expiry_date, 'Enter the product expiration date.');
+    assert.equal(manual.formErrorSummary, 'Check the highlighted fields.');
+    assert.equal(manual.validateForm(false), true, `${type}: incomplete draft can omit expiration`);
+    manual.form.product_expiry_date = '2020-01-01';
+    assert.ok(manual.formValidationErrors(true).product_expiry_date, `${type}: expiration cannot precede administration`);
+    for (const expiry of ['not-a-date', '2099-02-30']) {
+      manual.form.product_expiry_date = expiry;
+      assert.ok(manual.formValidationErrors(true).product_expiry_date, `${type}: invalid expiration date is rejected`);
+    }
+    for (const expiry of [sandbox.vaccinationToday(), '2099-01-01']) {
+      manual.form.product_expiry_date = expiry;
+      assert.equal(manual.validateForm(true), true, `${type}: same-day or later expiration is valid`);
+      assert.equal(manual.buildPayload().product_expiry_date, expiry);
+    }
+    manual.records = [{id: 12, state: 'draft', record_source: 'manual', vaccine_name: 'Saved draft', manual_price: '350.50',
+      dose_amount: '0.8', dose_unit: 'mL', route: 'oral', administered_date: sandbox.vaccinationToday(), product_expiry_date: null}];
+    assert.ok(manual.incompleteInventoryTreatmentErrors()['treatments.12.product_expiry_date'], 'Existing drafts require expiration before case completion');
+    const inventory = component(); inventory.treatmentType = type; inventory.formModal.clinicAppointmentId = 201;
+    const item = {...vaccine, category: type, pricing_method: 'flat', selling_price: 250, next_batch: {expiry_date: null}};
+    inventory.selectProduct(item);
+    Object.assign(inventory.form, {dose_amount: '0.8', dose_unit: 'mL', route: 'oral'});
+    assert.ok(inventory.formValidationErrors(true).inventory_item_id, `${type}: missing Inventory batch expiry requires stock review`);
+  }
   const discovery = component();
   discovery.formModal.open = true;
   discovery.vaccineOptions = [vaccine, {...vaccine, item_id: 302, category: 'medicine'}, {...vaccine, item_id: 303, is_active: false}, {...vaccine, item_id: 304, stock_status: 'expired', available_quantity: 0}];

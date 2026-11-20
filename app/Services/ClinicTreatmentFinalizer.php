@@ -7,6 +7,7 @@ use App\Models\GatewayPayment;
 use App\Models\InventoryItem;
 use App\Models\User;
 use App\Models\VaccinationRecord;
+use App\Support\ClinicClinicalRules;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
@@ -52,6 +53,10 @@ class ClinicTreatmentFinalizer
             }
             $balance = $this->batchBalances->forItem((int) $item->item_id);
             $availability = $this->batchBalances->treatmentAvailability($item, $balance);
+            if (($availability['next_batch'] || $balance['unknown_expiry_quantity'] > 0)
+                && ClinicClinicalRules::productExpiryErrors($availability['next_batch']['expiry_date'] ?? null, $record->administered_date?->toDateString(), true)) {
+                throw ValidationException::withMessages(['inventory_item_id' => ClinicClinicalRules::INVENTORY_EXPIRY_MESSAGE]);
+            }
             if ((float) $record->inventory_quantity > $availability['available_quantity']) {
                 throw ValidationException::withMessages(['inventory_quantity' => 'Quantity used exceeds available unexpired stock.']);
             }
@@ -112,12 +117,17 @@ class ClinicTreatmentFinalizer
 
         $balance = $this->batchBalances->forItem($item->item_id);
         $reservation = GatewayPayment::reservedQuantities([$item->item_id])[$item->item_id] ?? 0;
-        $available = $this->batchBalances->treatmentAvailability($item, $balance)['available_quantity'];
+        $availability = $this->batchBalances->treatmentAvailability($item, $balance);
+        $available = $availability['available_quantity'];
         $available = min($available, $this->batchBalances->quantities($item, $balance, (float) $reservation)['saleable_quantity']);
         $medicine = app(ClinicMedicineChargeService::class);
-        $prepared = $records->map(function (VaccinationRecord $record, int $id) use ($cases, $item, $scope, &$available) {
+        $prepared = $records->map(function (VaccinationRecord $record, int $id) use ($cases, $item, $scope, $availability, &$available) {
             $case = $cases->get($id);
             try {
+                $record->forceFill([
+                    'batch_number' => $availability['next_batch']['batch_number'] ?? null,
+                    'product_expiry_date' => $availability['next_batch']['expiry_date'] ?? null,
+                ]);
                 $this->assertPublishable($record);
                 if ((float) $record->inventory_quantity > $available) {
                     throw ValidationException::withMessages(['inventory_quantity' => 'The selected patients need more unexpired stock than is available.']);

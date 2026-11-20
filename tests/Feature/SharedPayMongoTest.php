@@ -34,6 +34,7 @@ class SharedPayMongoTest extends TestCase
                 'clinic_appointment_id' => 1, 'pet_id' => 4, 'record_source' => 'manual', 'treatment_type' => 'medicine',
                 'vaccine_name' => 'Ceftriaxone', 'manual_price' => '350.50', 'dose_amount' => '0.8', 'dose_unit' => 'mL',
                 'route' => 'oral', 'administered_date' => now()->toDateString(),
+                'product_expiry_date' => now()->addYear()->toDateString(),
             ]);
             app(\App\Services\ClinicTreatmentChargeService::class)->sync($record, $case);
             $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'total_amount' => 850.50]);

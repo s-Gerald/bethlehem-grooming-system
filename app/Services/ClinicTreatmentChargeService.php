@@ -15,6 +15,11 @@ class ClinicTreatmentChargeService
         $current = $record->record_source !== 'historical';
         $errors = ClinicClinicalRules::doseErrors($record->dose_amount, $record->dose_unit, $current)
             + ClinicClinicalRules::administrationErrors($record->route, $record->administration_site, $current);
+        if ($current) {
+            $expiryErrors = ClinicClinicalRules::productExpiryErrors($record->product_expiry_date?->toDateString(), $record->administered_date?->toDateString(), true);
+            $errors += $record->record_source === 'inventory' && $expiryErrors
+                ? ['inventory_item_id' => ClinicClinicalRules::INVENTORY_EXPIRY_MESSAGE] : $expiryErrors;
+        }
         if ($record->voided_at !== null || ! $record->hasPublishingRequirements()) {
             $errors['treatment'] = 'Complete the treatment name and administration date.';
         }
