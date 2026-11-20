@@ -40,6 +40,22 @@ function page() {
 }
 (async () => {
   const state = page();
+  const invoice = context.window.PaymentInvoice;
+  const treatmentCharges = ['medicine', 'vaccine'].map((kind, id) => ({id, kind, description: 'Epoeitin Alpha 4000IU', quantity: '1.00', inventory_quantity: 5, unit_price: '1700.00', amount: '1700.00'}));
+  const chargeSnapshot = JSON.stringify(treatmentCharges);
+  for (const charge of treatmentCharges) assert.equal(invoice.clinicChargeQuantity(charge), '—', 'A single treatment billing quantity is suppressed even when inventory usage exists');
+  assert.equal(invoice.clinicInvoiceHasQuantity({charges: treatmentCharges}), false);
+  assert.equal(invoice.clinicInvoiceHasQuantity({patients: [{charges: [treatmentCharges[0]]}, {charges: [treatmentCharges[1]]}], charges: []}), false);
+  assert.equal(invoice.clinicInvoiceHasQuantity({charges: []}), false);
+  assert.equal(invoice.clinicChargeQuantity({kind: 'medicine', quantity: null}), '—');
+  for (const kind of ['medicine', 'vaccine', 'service']) {
+    const meaningful = {kind, description: 'Epoeitin Alpha 4000IU', quantity: '2.00'};
+    assert.equal(invoice.clinicChargeQuantity(meaningful), '2');
+    assert.equal(invoice.clinicInvoiceHasQuantity({charges: [...treatmentCharges, meaningful]}), true);
+    assert.equal(invoice.clinicInvoiceHasQuantity({patients: [{charges: treatmentCharges}, {charges: [meaningful]}], charges: []}), true, 'Quantity in another patient still keeps the invoice-wide column');
+  }
+  assert.equal(invoice.clinicChargeQuantity({kind: 'service', quantity: 1}), '1', 'Non-treatment quantities keep their existing meaning');
+  assert.equal(JSON.stringify(treatmentCharges), chargeSnapshot, 'Print formatting preserves all financial and inventory data');
   for (const kind of ['medicine', 'vaccine']) {
     for (const quantity of [1, '1.00']) {
       const charge = {kind, description: 'ProHeart', quantity, unit_price: '3200.00', amount: '3200.00'};
@@ -79,6 +95,7 @@ function page() {
   assert.equal(state.receiptModal.ownerName, 'Recorded Owner');
   assert.equal(state.receiptModal.processedBy, 'Grace · Clinic Receptionist');
   assert.equal(state.receiptModal.charges[0].description, 'Clinic consultation');
+  assert.equal(invoice.clinicInvoiceHasQuantity(state.receiptModal), true, 'Immediate payment receipts retain service quantities');
   state.payment.amountPaid = '999';
   assert.equal(state.receiptModal.amountPaid, '500.00', 'Receipt is independent of the form');
   state.printClinicInvoice();
@@ -103,6 +120,19 @@ function page() {
   assert.equal(zero.canConfirmPayment, true, 'Zero-charge case can still complete');
   zero.$store.clinicAccess.permissions.payment = false;
   assert.equal(zero.canConfirmPayment, false);
+
+  const printState = page();
+  const treatmentPayment = {...recorded, charges: treatmentCharges, total_amount: '3400.00', cash_received: '3500.00', change: 100};
+  printState.completeClinicPayment(treatmentPayment);
+  assert.equal(invoice.clinicInvoiceHasQuantity(printState.receiptModal), false);
+  assert.equal(printState.receiptModal.finalPrice, 3400);
+  assert.equal(printState.receiptModal.amountPaid, '3500.00');
+  assert.equal(printState.receiptModal.change, 100);
+  printState.printClinicInvoice();
+  assert.equal(prints.at(-1), 'clinicPaymentInvoice');
+  printState.completeClinicPayment(treatmentPayment, {id: 9, total_amount: '3400.00', cash_received: '3500.00', change: 100,
+    patients: treatmentCharges.map((charge, id) => ({id, status: 'completed', charges: [charge]}))});
+  assert.equal(invoice.clinicInvoiceHasQuantity(printState.receiptModal), false, 'Grouped immediate-payment receipts use patient charges');
 
   const clinic = context.window.PaymentInvoice.clinicTemplate;
   for (const label of ['Clinic reference', 'Patient', 'Clinic Charges', 'Processed by', 'Invoice total', 'Balance due']) assert.ok(clinic.includes(label));

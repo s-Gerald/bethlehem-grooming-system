@@ -130,6 +130,19 @@ context.window.PaymentInvoice.print = id => assert.equal(id, 'clinicPaymentInvoi
 ui.printInvoice();
 assert.equal(JSON.stringify(clinicTx), clinicBefore);
 ui.closeDetails();
+for (const grouped of [false, true]) {
+  const charges = ['medicine', 'vaccine'].map((kind, id) => ({id, kind, description: 'Epoeitin Alpha 4000IU', quantity: 1, unit_price: '1700.00', amount: '1700.00'}));
+  const treatmentTx = {...clinicTx, finalPrice: 3400, amountPaid: 3500, changeGiven: 100,
+    charges: grouped ? [] : charges, patients: grouped ? charges.map((charge, id) => ({id, charges: [charge]})) : []};
+  const snapshot = JSON.stringify(treatmentTx);
+  ui.openDetails(treatmentTx, null);
+  assert.equal(context.window.PaymentInvoice.clinicInvoiceHasQuantity(ui.receiptModal), false, 'Historical Clinic invoices share single-treatment quantity suppression');
+  charges.forEach(charge => assert.equal(context.window.PaymentInvoice.clinicChargeQuantity(charge), '—'));
+  assert.equal(ui.receiptModal.finalPrice, 3400); assert.equal(ui.receiptModal.amountPaid, 3500); assert.equal(ui.receiptModal.change, 100);
+  ui.printInvoice();
+  assert.equal(JSON.stringify(treatmentTx), snapshot);
+  ui.closeDetails();
+}
 assert.equal(ui.formatTransactionDate({paidAt: null, dateKey: 'unknown'}), '—');
 ui.transactions = [{...clinicTx, dateKey: 'unknown', paidAt: null}, clinicTx];
 assert.equal(ui.groupedTransactions[0].dateKey, '2026-10-03');

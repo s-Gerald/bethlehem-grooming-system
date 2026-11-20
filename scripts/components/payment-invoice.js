@@ -7,8 +7,17 @@ window.PaymentInvoice = (() => {
     month: "short", day: "numeric", year: "numeric",
   });
   const formatPeso = (amount) => currency.format(Number(amount || 0));
+  const clinicChargeQuantity = (charge) => charge.quantity == null || (['medicine', 'vaccine'].includes(charge.kind) && Number(charge.quantity) === 1)
+    ? '—' : Number(charge.quantity).toLocaleString('en-PH', {maximumFractionDigits: 2});
   return {
     formatPeso,
+    clinicChargeQuantity,
+    clinicInvoiceHasQuantity(receipt) {
+      const patients = receipt?.patients;
+      return patients?.length
+        ? patients.some(patient => (patient.charges || []).some(charge => clinicChargeQuantity(charge) !== '—'))
+        : (receipt?.charges || []).some(charge => clinicChargeQuantity(charge) !== '—');
+    },
     paymentId(value, method) {
       return String(method ?? '').toLowerCase() !== 'cash' && /^pay_\S+$/.test(value ?? '') ? value : null;
     },
@@ -66,7 +75,7 @@ window.PaymentInvoice = (() => {
     },
     templateFor(type = 'grooming') {
       const clinic = type === 'clinic';
-      return `<section id="${clinic ? 'clinicPaymentInvoice' : 'paymentInvoice'}">
+      return `<section id="${clinic ? 'clinicPaymentInvoice' : 'paymentInvoice'}"${clinic ? ' x-data="{showQuantity: false}" x-effect="showQuantity = window.PaymentInvoice.clinicInvoiceHasQuantity(receiptModal)"' : ''}>
   <header class="payment-invoice-header">
     <div class="payment-invoice-brand">
       <img src="/assets/images/clinic/Bethlehem_Logo-256.png" alt="Bethlehem Animal Clinic logo" class="payment-invoice-logo" />
@@ -97,11 +106,11 @@ window.PaymentInvoice = (() => {
           <h3 x-text="patient.pet_name || 'Patient'"></h3><p x-text="patient.reference"></p>
         </header>
         <table class="payment-invoice-table">
-          <thead><tr><th scope="col">Description</th><th scope="col">Qty</th><th scope="col">Unit Price</th><th scope="col">Amount</th></tr></thead>
+          <thead><tr><th scope="col">Description</th><th x-show="showQuantity" scope="col">Qty</th><th scope="col">Unit Price</th><th scope="col">Amount</th></tr></thead>
           <tbody>
             <template x-for="charge in patient.charges" :key="charge.id">
               <tr>
-                <td x-text="charge.description"></td><td x-text="paymentChargeQuantity(charge)"></td>
+                <td x-text="charge.description"></td><td x-show="showQuantity" x-text="window.PaymentInvoice.clinicChargeQuantity(charge)"></td>
                 <td x-text="formatInvoicePeso(charge.unit_price)"></td><td x-text="formatInvoicePeso(charge.amount)"></td>
               </tr>
             </template>
@@ -121,12 +130,12 @@ window.PaymentInvoice = (() => {
   <section x-show="!receiptModal.patients?.length" class="payment-invoice-section">
     <h2>Clinic Charges</h2>
     <table class="payment-invoice-table">
-      <thead><tr><th scope="col">Description</th><th scope="col">Qty</th><th scope="col">Unit Price</th><th scope="col">Amount</th></tr></thead>
+      <thead><tr><th scope="col">Description</th><th x-show="showQuantity" scope="col">Qty</th><th scope="col">Unit Price</th><th scope="col">Amount</th></tr></thead>
       <tbody>
         <template x-for="charge in receiptModal.charges" :key="charge.id">
           <tr>
             <td x-text="charge.description"></td>
-            <td x-text="paymentChargeQuantity(charge)"></td>
+            <td x-show="showQuantity" x-text="window.PaymentInvoice.clinicChargeQuantity(charge)"></td>
             <td x-text="charge.unit_price == null ? '—' : formatInvoicePeso(charge.unit_price)"></td>
             <td x-text="formatInvoicePeso(charge.amount)"></td>
           </tr>
